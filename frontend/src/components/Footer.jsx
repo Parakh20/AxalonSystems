@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-const LOGO_URL = "https://customer-assets.emergentagent.com/job_58ff1737-c27d-4aa3-a122-97ea875a1003/artifacts/ozferzxn_LogoWithName.png";
+const LOGO_URL = "/logo.png";
 
 const footerLinks = {
   Product: [
@@ -30,7 +30,7 @@ export default function Footer() {
             <img
               src={LOGO_URL}
               alt="Axalon Systems"
-              className="h-7 brightness-0 invert opacity-80 mb-5"
+              className="h-7 invert opacity-80 mb-5"
             />
             <p className="text-sm text-gray-500 leading-relaxed">
               Autonomous inspection drones for reliable industrial decisions.

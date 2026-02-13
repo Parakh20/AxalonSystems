@@ -9,7 +9,7 @@ import CTABanner from '../components/CTABanner';
 gsap.registerPlugin(ScrollTrigger);
 
 const SOLAR_RGB = "https://images.unsplash.com/photo-1770936994282-8811fb7129ac?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200";
-const THERMAL_IMG = "https://images.unsplash.com/photo-1765410847873-a9bee6e4ddbf?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200";
+const THERMAL_IMG = "/thermal_solar.jpg";
 const SOLAR_CLOSE = "https://images.unsplash.com/photo-1743352476730-056502fba10b?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200";
 
 const caseStudies = [
@@ -140,11 +140,9 @@ export default function ResourcesPage() {
                 src={THERMAL_IMG}
                 alt="Thermal view showing hotspots"
                 className="absolute inset-0 w-full h-full object-cover"
-                style={{ filter: 'brightness(0.9) hue-rotate(180deg)' }}
+                style={{ filter: 'brightness(0.9)' }}
                 draggable={false}
               />
-              {/* Thermal overlay tint */}
-              <div className="absolute inset-0 bg-gradient-to-br from-red-500/20 via-yellow-500/10 to-blue-500/20 mix-blend-overlay" />
             </div>
 
             {/* Slider line */}

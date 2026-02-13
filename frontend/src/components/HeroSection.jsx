@@ -98,6 +98,16 @@ export default function HeroSection() {
       {/* Content */}
       <div ref={contentRef} className="relative z-10 max-w-7xl mx-auto px-6 md:px-12 lg:px-24 pt-32 pb-20">
         <div className="max-w-2xl">
+          {/* Axalon logo mark */}
+          <div className="hero-caption mb-8">
+            <img
+              src="/logo.png"
+              alt="Axalon Systems logo"
+              className="w-16 h-16 md:w-20 md:h-20 rounded-lg shadow-[0_0_20px_rgba(0,209,178,0.15)] border border-white/10"
+              style={{ filter: 'invert(1)' }}
+            />
+          </div>
+
           <p className="hero-caption text-sm tracking-[0.2em] uppercase text-[#00D1B2] font-medium mb-6 font-body">
             Autonomous Inspection Platform
           </p>

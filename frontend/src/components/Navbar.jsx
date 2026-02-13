@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, ArrowRight } from 'lucide-react';
 
-const LOGO_URL = "https://customer-assets.emergentagent.com/job_58ff1737-c27d-4aa3-a122-97ea875a1003/artifacts/ozferzxn_LogoWithName.png";
+const LOGO_URL = "/logo.png";
 
 const navLinks = [
   { label: 'Product', path: '/product' },
@@ -28,11 +28,10 @@ export default function Navbar() {
   return (
     <nav
       data-testid="navbar"
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-        scrolled
-          ? 'bg-[#0B0D10]/90 backdrop-blur-xl border-b border-white/[0.06]'
-          : 'bg-transparent'
-      }`}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled
+        ? 'bg-[#0B0D10]/90 backdrop-blur-xl border-b border-white/[0.06]'
+        : 'bg-transparent'
+        }`}
     >
       <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-24">
         <div className="flex items-center justify-between h-20">
@@ -41,7 +40,7 @@ export default function Navbar() {
             <img
               src={LOGO_URL}
               alt="Axalon Systems"
-              className="h-8 brightness-0 invert opacity-90 group-hover:opacity-100 transition-opacity"
+              className="h-8 invert opacity-90 group-hover:opacity-100 transition-opacity"
             />
           </Link>
 
@@ -52,11 +51,10 @@ export default function Navbar() {
                 key={link.path}
                 to={link.path}
                 data-testid={`nav-link-${link.label.toLowerCase()}`}
-                className={`text-sm tracking-wide transition-colors duration-300 ${
-                  location.pathname === link.path
-                    ? 'text-[#00D1B2]'
-                    : 'text-gray-400 hover:text-white'
-                }`}
+                className={`text-sm tracking-wide transition-colors duration-300 ${location.pathname === link.path
+                  ? 'text-[#00D1B2]'
+                  : 'text-gray-400 hover:text-white'
+                  }`}
               >
                 {link.label}
               </Link>
@@ -94,9 +92,8 @@ export default function Navbar() {
               <Link
                 key={link.path}
                 to={link.path}
-                className={`block text-lg ${
-                  location.pathname === link.path ? 'text-[#00D1B2]' : 'text-gray-400'
-                }`}
+                className={`block text-lg ${location.pathname === link.path ? 'text-[#00D1B2]' : 'text-gray-400'
+                  }`}
               >
                 {link.label}
               </Link>
