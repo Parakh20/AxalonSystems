@@ -146,7 +146,7 @@ export default function HeroSection() {
               <p className="text-xs tracking-wider uppercase text-gray-500 mt-1">Detection accuracy</p>
             </div>
             <div>
-              <p className="text-2xl md:text-3xl font-display font-medium text-white">3x</p>
+              <p className="text-2xl md:text-3xl font-display font-medium text-white">10x</p>
               <p className="text-xs tracking-wider uppercase text-gray-500 mt-1">Faster inspections</p>
             </div>
             <div>
