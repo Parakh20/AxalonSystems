@@ -65,10 +65,10 @@ export default function Navbar() {
           <div className="hidden md:flex items-center gap-4">
             <Link
               to="/contact"
-              data-testid="nav-cta-demo"
+              data-testid="nav-cta-contact"
               className="inline-flex items-center gap-2 bg-[#00D1B2] text-[#0B0D10] px-6 py-2.5 text-sm font-medium rounded-sm hover:bg-[#6EE7F9] transition-all duration-300 shadow-[0_0_15px_rgba(0,209,178,0.2)] hover:shadow-[0_0_25px_rgba(110,231,249,0.4)]"
             >
-              Request a demo
+              Contact us
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -102,7 +102,7 @@ export default function Navbar() {
               to="/contact"
               className="inline-flex items-center gap-2 bg-[#00D1B2] text-[#0B0D10] px-6 py-3 text-sm font-medium rounded-sm w-full justify-center"
             >
-              Request a demo
+              Contact us
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>

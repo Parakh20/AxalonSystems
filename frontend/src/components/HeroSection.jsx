@@ -126,7 +126,7 @@ export default function HeroSection() {
               data-testid="hero-cta-demo"
               className="hero-cta inline-flex items-center gap-2 bg-[#00D1B2] text-[#0B0D10] px-8 py-4 text-sm font-medium rounded-sm hover:bg-[#6EE7F9] transition-all duration-300 shadow-[0_0_15px_rgba(0,209,178,0.2)] hover:shadow-[0_0_25px_rgba(110,231,249,0.4)]"
             >
-              Request a demo
+              Contact us
               <ArrowRight className="w-4 h-4" />
             </Link>
             <a

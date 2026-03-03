@@ -15,7 +15,7 @@ export default function CTABanner() {
           See Axalon in action on your solar assets
         </h2>
         <p className="text-base leading-relaxed text-gray-400 mb-10 max-w-lg mx-auto">
-          Schedule a personalized demo with our team. We'll walk through autonomous flight, real-time AI processing, and automated reporting.
+          Get in touch with our team to learn about autonomous flight, real-time AI processing, and automated reporting.
         </p>
         <div className="flex flex-wrap gap-4 justify-center">
           <Link
@@ -23,7 +23,7 @@ export default function CTABanner() {
             data-testid="cta-demo-button"
             className="inline-flex items-center gap-2 bg-[#00D1B2] text-[#0B0D10] px-8 py-4 text-sm font-medium rounded-sm hover:bg-[#6EE7F9] transition-all duration-300 shadow-[0_0_15px_rgba(0,209,178,0.2)] hover:shadow-[0_0_25px_rgba(110,231,249,0.4)]"
           >
-            Request a demo
+            Contact us
             <ArrowRight className="w-4 h-4" />
           </Link>
           <Link
