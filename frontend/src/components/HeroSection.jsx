@@ -99,12 +99,12 @@ export default function HeroSection() {
       <div ref={contentRef} className="relative z-10 max-w-7xl mx-auto px-6 md:px-12 lg:px-24 pt-32 pb-20">
         <div className="max-w-2xl">
           {/* Axalon logo mark */}
-          <div className="hero-caption mb-8">
+          <div className="hero-caption mb-1">
             <img
-              src="/logo.png"
+              src="/LogoWithName.png"
               alt="Axalon Systems logo"
-              className="w-16 h-16 md:w-20 md:h-20 rounded-lg shadow-[0_0_20px_rgba(0,209,178,0.15)] border border-white/10"
-              style={{ filter: 'invert(1)' }}
+              className="h-80 md:h-112"
+              style={{ filter: 'invert(1)', mixBlendMode: 'screen' }}
             />
           </div>
 

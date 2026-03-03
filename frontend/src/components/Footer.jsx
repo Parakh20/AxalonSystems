@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-const LOGO_URL = "/logo.png";
+const LOGO_URL = "/Logo.png";
 
 const footerLinks = {
   Product: [
@@ -30,7 +30,7 @@ export default function Footer() {
             <img
               src={LOGO_URL}
               alt="Axalon Systems"
-              className="h-7 invert opacity-80 mb-5"
+              className="h-14 invert opacity-80 mb-5"
             />
             <p className="text-sm text-gray-500 leading-relaxed">
               Autonomous inspection drones for reliable industrial decisions.
