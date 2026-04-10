@@ -58,6 +58,19 @@ chainlit.md
 .ipynb_checkpoints/
 .ac
 
+# ML — large data files (not tracked in git)
+ml/data/images/
+ml/data/labels/
+ml/data/augmented/
+ml/output/annotated/
+ml/runs/thermal/train/weights/
+
+# Claude Code tooling
+.claude/
+.remember/
+memory/
+test_reports/
+
 # Deployment
 .vercel
 
