@@ -26,7 +26,7 @@ from ml.src.utils import (
 logger = get_logger("axalon.detector")
 
 # Default model path relative to repo root
-DEFAULT_WEIGHTS = Path(__file__).resolve().parents[3] / "ml" / "checkpoints" / "best.pt"
+DEFAULT_WEIGHTS = Path(__file__).resolve().parents[2] / "ml" / "checkpoints" / "best.pt"
 
 
 class SolarDetector:

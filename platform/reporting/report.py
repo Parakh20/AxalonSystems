@@ -12,7 +12,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from ml.src.utils import CANONICAL_CLASSES, SEVERITY_MAP, get_logger
+from ml.src.utils import get_logger
 
 logger = get_logger("axalon.reporting")
 

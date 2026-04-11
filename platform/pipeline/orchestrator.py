@@ -7,7 +7,6 @@ Runs the complete pipeline for one or many image pairs:
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, date
 from pathlib import Path
 
