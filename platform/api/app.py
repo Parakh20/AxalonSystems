@@ -10,7 +10,7 @@ Endpoints:
     GET  /park/{park_id}   Park inspection history summary
 
 Run with:
-    uvicorn axalon_platform.api.app:app --host 0.0.0.0 --port 8000
+    uvicorn axalon.api.app:app --host 0.0.0.0 --port 8000
 """
 
 from __future__ import annotations

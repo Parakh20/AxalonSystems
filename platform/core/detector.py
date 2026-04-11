@@ -2,9 +2,9 @@
 detector.py — YOLOv8 inference wrapper for solar anomaly detection.
 
 Uses the pre-trained model at:
-    solar_thermal_detection/checkpoints/best.pt
+    ml/checkpoints/best.pt
 
-Import severity/class constants ONLY from src/utils.py — never redefine them here.
+Import severity/class constants ONLY from ml/src/utils.py — never redefine them here.
 """
 
 from __future__ import annotations

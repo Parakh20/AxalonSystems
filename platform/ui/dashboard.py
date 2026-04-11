@@ -2,7 +2,7 @@
 dashboard.py — Streamlit web dashboard for solar inspection operators.
 
 Run with:
-    streamlit run axalon_platform/ui/dashboard.py
+    streamlit run platform/ui/dashboard.py
 
 Pages:
     1. Inspect   — Upload thermal+RGB, view results instantly
