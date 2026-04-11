@@ -1,19 +1,42 @@
 """Tests for FastAPI endpoints."""
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from unittest.mock import MagicMock
+
+import axalon.api.app as api_module
 
 
 @pytest.fixture
-def client(tmp_path):
-    """Test client with mocked orchestrator to avoid model loading."""
-    import axalon.api.app as api_module
-    # Reset module-level state
+def client():
+    """FastAPI TestClient with mocked orchestrator and in-memory DB.
+
+    Uses StaticPool so all SQLAlchemy operations share one connection — required
+    because SQLite in-memory databases are per-connection. Without StaticPool,
+    create_all() and Session() would each get separate connections, each with
+    their own empty database, causing 'no such table' errors.
+    """
+    metadata = api_module.Park.__table__.metadata
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,  # single shared connection = single in-memory DB
+    )
+    metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
     api_module._JOBS.clear()
     api_module._detector = None
-    with patch("axalon.api.app.InspectionOrchestrator"):
-        from axalon.api.app import app
-        yield TestClient(app)
+
+    original_get_session = api_module.get_session
+    api_module.get_session = lambda: Session()
+    api_module.InspectionOrchestrator = MagicMock()
+
+    yield TestClient(api_module.app)
+
+    api_module.get_session = original_get_session
 
 
 def test_health_ok(client):
@@ -23,6 +46,7 @@ def test_health_ok(client):
     assert body["status"] == "ok"
     assert "model" in body
     assert "weights" in body
+    assert body["db"] == "ok"
 
 
 def test_status_unknown_job(client):
@@ -35,11 +59,13 @@ def test_report_unknown_job(client):
     assert resp.status_code == 404
 
 
-def test_parks_returns_list(client):
-    """GET /parks hits DB — should return list even if empty (or DB error handled)."""
+def test_parks_returns_empty_list(client):
+    """GET /parks returns empty list on fresh in-memory DB."""
     resp = client.get("/parks")
-    # Either 200 (with parks list) or 500 if DB not init'd — we just assert it's reachable
-    assert resp.status_code in (200, 500)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["parks"] == []
+    assert body["total"] == 0
 
 
 def test_park_not_found(client):

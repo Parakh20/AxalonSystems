@@ -16,7 +16,6 @@ Run with:
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
 import uuid
 import zipfile
@@ -272,9 +271,11 @@ def list_parks():
 def health():
     try:
         session = get_session()
-        park_count = session.query(Park).count()
-        session.close()
-        db_status = "ok"
+        try:
+            park_count = session.query(Park).count()
+            db_status = "ok"
+        finally:
+            session.close()
     except Exception as e:
         park_count = 0
         db_status = f"error: {e}"
