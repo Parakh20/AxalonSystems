@@ -80,9 +80,9 @@
         </tr>
     </thead>
     <tbody>
-        {% for i, det in detections | enumerate(start=1) %}
+        {% for det in detections %}
         <tr class="sev-{{ det.severity }}">
-            <td>{{ i }}</td>
+            <td>{{ loop.index }}</td>
             <td>{{ det.get('panel_id', 'N/A') }}</td>
             <td>{{ det.get('class', '') }}</td>
             <td class="sev-{{ det.severity }}">{{ det.severity }}</td>
