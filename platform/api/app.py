@@ -15,9 +15,11 @@ Run with:
 
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 import uuid
+import zipfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile, BackgroundTasks, HTTPException
@@ -27,6 +29,8 @@ from fastapi.staticfiles import StaticFiles
 from axalon.pipeline.orchestrator import InspectionOrchestrator
 from axalon.reporting.report import generate_json_report, generate_excel_report
 from axalon.reporting.geojson_writer import write_geojson
+from axalon.db.session import get_session
+from axalon.db.models import Park, Inspection
 
 app = FastAPI(
     title="Axalon Solar Inspection API",
@@ -125,7 +129,6 @@ async def inspect_batch(
 
 
 def _run_batch_job(job_id: str, zip_path: Path, park_id: str, altitude_m: float):
-    import zipfile
     extract_dir = OUTPUT_DIR / job_id
     extract_dir.mkdir(exist_ok=True)
 
@@ -206,22 +209,80 @@ def download_report(job_id: str, format: str = "json"):
 
 @app.get("/park/{park_id}")
 def get_park_summary(park_id: str):
-    """Get aggregated anomaly summary for a solar park across all inspections."""
-    park_jobs = [j for j in _JOBS.values()
-                 if j.get("park_id") == park_id and j.get("status") == "completed"]
-    if not park_jobs:
-        raise HTTPException(status_code=404, detail=f"No completed inspections for park: {park_id}")
+    """Get park summary + inspection history from DB."""
+    session = get_session()
+    try:
+        park = session.query(Park).filter_by(id=park_id).first()
+        if park is None:
+            raise HTTPException(status_code=404, detail=f"Park not found: {park_id}")
+        inspections = (
+            session.query(Inspection)
+            .filter_by(park_id=park_id)
+            .order_by(Inspection.created_at.desc())
+            .all()
+        )
+        return {
+            "park_id": park_id,
+            "name": park.name,
+            "mode": park.mode,
+            "total_panels": park.total_panels,
+            "rows": park.rows,
+            "cols": park.cols,
+            "total_inspections": len(inspections),
+            "inspections": [
+                {
+                    "id": insp.id,
+                    "flight_date": insp.flight_date,
+                    "total_images": insp.total_images,
+                    "total_detections": insp.total_detections,
+                    "summary": json.loads(insp.summary) if insp.summary else {},
+                }
+                for insp in inspections
+            ],
+        }
+    finally:
+        session.close()
 
-    latest = sorted(park_jobs, key=lambda j: j.get("flight_date", ""), reverse=True)[0]
-    return {
-        "park_id": park_id,
-        "total_inspections": len(park_jobs),
-        "last_inspection": latest.get("flight_date"),
-        "latest_summary": latest.get("summary", {}),
-        "latest_total_detections": latest.get("total_detections", 0),
-    }
+
+@app.get("/parks")
+def list_parks():
+    """List all parks from DB."""
+    session = get_session()
+    try:
+        parks = session.query(Park).all()
+        return {
+            "parks": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "mode": p.mode,
+                    "total_panels": p.total_panels,
+                    "rows": p.rows,
+                    "cols": p.cols,
+                }
+                for p in parks
+            ],
+            "total": len(parks),
+        }
+    finally:
+        session.close()
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": "YOLOv8s best.pt"}
+    try:
+        session = get_session()
+        park_count = session.query(Park).count()
+        session.close()
+        db_status = "ok"
+    except Exception as e:
+        park_count = 0
+        db_status = f"error: {e}"
+    return {
+        "status": "ok",
+        "model": "YOLOv8s",
+        "weights": "ml/checkpoints/best.pt",
+        "version": "1.0.0",
+        "db": db_status,
+        "parks_in_db": park_count,
+    }
