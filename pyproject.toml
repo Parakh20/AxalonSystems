@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axalon-systems"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = []   # runtime deps in requirements_platform.txt
+
+[tool.setuptools]
+packages = ["axalon", "ml"]
+
+[tool.setuptools.package-dir]
+# Map Python package name → directory on disk
+# NOTE: 'platform' dir registered as 'axalon' to avoid shadowing stdlib platform module
+"axalon" = "platform"
+"ml" = "ml"
+
+[tool.pytest.ini_options]
+# importlib mode prevents platform/ dir from shadowing stdlib 'platform' module
+# Always run tests with: PYTHONSAFEPATH=1 python -m pytest
+addopts = "--import-mode=importlib"
+testpaths = ["tests"]
