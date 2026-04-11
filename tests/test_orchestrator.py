@@ -26,7 +26,7 @@ def mock_detector():
 
 @pytest.fixture
 def orchestrator(tmp_path, mock_detector):
-    """Orchestrator with mocked detector and in-memory DB."""
+    """Orchestrator with mocked detector and in-memory DB. Resets global DB state on teardown."""
     with patch("axalon.pipeline.orchestrator.SolarDetector", return_value=mock_detector):
         from axalon.pipeline.orchestrator import InspectionOrchestrator
         orch = InspectionOrchestrator(
@@ -34,7 +34,11 @@ def orchestrator(tmp_path, mock_detector):
             db_url="sqlite:///:memory:",
         )
     orch.detector = mock_detector
-    return orch
+    yield orch
+    # Reset global engine so subsequent tests start with a clean slate
+    import axalon.db.session as _sess
+    _sess._engine = None
+    _sess._SessionLocal = None
 
 
 def test_match_panel_id_nearest():
@@ -72,6 +76,25 @@ def test_inspect_pair_assigns_panel_id(orchestrator, tmp_path):
         panel_map=panel_map,
     )
     assert result["detections"][0]["panel_id"] == "R1-C1"
+
+
+def test_ensure_park_idempotent(orchestrator):
+    """_ensure_park must not raise or double-insert when called twice for the same park_id."""
+    from axalon.pipeline.orchestrator import _ensure_park
+    from axalon.db.session import get_session
+    from axalon.db.models import Park
+
+    layout = {"rows": 4, "total_panels": 20, "mode": "auto", "panel_map": {}}
+    session = get_session()
+    _ensure_park(session, "PARK-IDEM", layout)
+    session.close()
+
+    # Second call must not raise (PK violation would propagate as IntegrityError)
+    session = get_session()
+    _ensure_park(session, "PARK-IDEM", layout)
+    count = session.query(Park).filter_by(id="PARK-IDEM").count()
+    session.close()
+    assert count == 1
 
 
 def test_inspect_pair_persists_to_db(orchestrator, tmp_path):

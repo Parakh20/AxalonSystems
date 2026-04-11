@@ -15,7 +15,9 @@ from ml.src.utils import draw_detections_severity, load_bgr, get_logger
 
 from axalon.core.detector import SolarDetector
 from axalon.core.fusion import ImageFusion
-from axalon.core.geo import detection_to_gps
+import cv2
+
+from axalon.core.geo import detection_to_gps, extract_gps_exif
 from axalon.park.layout import ParkLayoutDetector
 from axalon.db.session import init_db, get_session
 from axalon.db.models import Park, Inspection, Detection as DbDetection
@@ -109,7 +111,6 @@ class InspectionOrchestrator:
         img_h, img_w = thermal_bgr.shape[:2]
 
         # GPS enrichment
-        from axalon.core.geo import extract_gps_exif
         image_gps = extract_gps_exif(thermal_path)
         for det in detections:
             if image_gps:
@@ -128,7 +129,6 @@ class InspectionOrchestrator:
         job_dir.mkdir(parents=True, exist_ok=True)
 
         thermal_out = job_dir / f"{thermal_path.stem}_annotated.jpg"
-        import cv2
         cv2.imwrite(str(thermal_out), annotated_thermal)
 
         # RGB fusion overlay
@@ -212,7 +212,6 @@ class InspectionOrchestrator:
         for pair in pairs:
             rgb_path = pair.get("rgb")
             if rgb_path and Path(rgb_path).exists():
-                from axalon.core.geo import extract_gps_exif
                 img = load_bgr(rgb_path)
                 if img is not None:
                     rgb_images.append(img)
