@@ -20,9 +20,8 @@ export default function MainScene() {
 
   return (
     <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 0,
+      width: '100%',
+      height: '100%',
       background: '#020208',
     }}>
       <Canvas
