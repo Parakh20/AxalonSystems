@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import DynamicMainScene from '@/components/DynamicMainScene'
 import DynamicCursor from '@/components/DynamicCursor'
 import Navbar from '@/components/Navbar'
 
@@ -18,17 +17,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        {/* Full-screen immersive 3D world — scroll-driven, fixed behind everything */}
-        <DynamicMainScene />
-
         {/* Custom teal cursor */}
         <DynamicCursor />
 
         {/* Navbar floats at z-index 100 */}
         <Navbar />
 
-        {/* Scroll container with HTML overlays at z-index 1 */}
-        <main style={{ position: 'relative', zIndex: 1 }}>
+        {/* Split-layout page — manages its own 3D canvas in the right sticky panel */}
+        <main>
           {children}
         </main>
       </body>
