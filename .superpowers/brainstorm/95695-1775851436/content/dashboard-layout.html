@@ -1,0 +1,261 @@
+<h2>Streamlit Dashboard — Two Main Pages</h2>
+<p class="subtitle">Page 1: Upload & Results &nbsp;|&nbsp; Page 2: Park Map</p>
+
+<div class="split" style="margin-top:1.5rem">
+
+  <!-- PAGE 1 -->
+  <div class="mockup">
+    <div class="mockup-header">🔍 Page 1 — Inspect (Upload & Results)</div>
+    <div class="mockup-body" style="padding:0;font-size:0.78em">
+
+      <!-- Sidebar -->
+      <div style="display:flex;height:100%">
+        <div style="width:140px;background:#1e293b;color:#94a3b8;padding:0.75rem;font-size:0.8em;flex-shrink:0">
+          <div style="color:#f8fafc;font-weight:700;margin-bottom:1rem">⬡ Axalon</div>
+          <div style="color:#f8fafc;margin-bottom:0.5rem">🔍 Inspect</div>
+          <div style="margin-bottom:0.5rem">📦 Batch</div>
+          <div style="margin-bottom:0.5rem">🗺 Park Map</div>
+          <div style="margin-bottom:0.5rem">📋 History</div>
+          <div style="margin-bottom:0.5rem">⚙ Settings</div>
+          <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid #334155;font-size:0.75em">
+            YOLOv8s best.pt<br/>11 classes
+          </div>
+        </div>
+
+        <!-- Main -->
+        <div style="flex:1;padding:0.75rem;background:#f8fafc">
+          <!-- Config row -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;margin-bottom:0.75rem">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:0.4rem">
+              <div style="color:#64748b;font-size:0.7em">Park ID</div>
+              <div style="background:#f1f5f9;border-radius:3px;padding:0.2rem 0.4rem;margin-top:0.2rem;font-size:0.8em">PARK_01</div>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:0.4rem">
+              <div style="color:#64748b;font-size:0.7em">Altitude (m)</div>
+              <div style="background:#f1f5f9;border-radius:3px;padding:0.2rem 0.4rem;margin-top:0.2rem;font-size:0.8em">40.0</div>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:0.4rem">
+              <div style="color:#64748b;font-size:0.7em">Park Mode</div>
+              <div style="background:#f1f5f9;border-radius:3px;padding:0.2rem 0.4rem;margin-top:0.2rem;font-size:0.8em">auto-grid</div>
+            </div>
+          </div>
+
+          <!-- Uploaders -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;margin-bottom:0.75rem">
+            <div style="border:2px dashed #cbd5e1;border-radius:6px;padding:0.6rem;text-align:center;background:#fff">
+              <div style="font-size:1.2em">🌡</div>
+              <div style="font-size:0.75em;color:#64748b">Drop Thermal IR image</div>
+              <div style="font-size:0.65em;color:#94a3b8">JPG / PNG / TIFF</div>
+            </div>
+            <div style="border:2px dashed #cbd5e1;border-radius:6px;padding:0.6rem;text-align:center;background:#fff">
+              <div style="font-size:1.2em">📷</div>
+              <div style="font-size:0.75em;color:#64748b">Drop RGB image (optional)</div>
+              <div style="font-size:0.65em;color:#94a3b8">JPG / PNG</div>
+            </div>
+          </div>
+
+          <!-- Run button -->
+          <div style="background:#2563eb;color:#fff;border-radius:6px;padding:0.4rem;text-align:center;font-weight:700;font-size:0.85em;margin-bottom:0.75rem">🚀 Run Inspection</div>
+
+          <!-- Results -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:0.6rem;margin-bottom:0.5rem">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.4rem;margin-bottom:0.5rem">
+              <div style="background:#ffdddd;border-radius:4px;padding:0.3rem;text-align:center;font-size:0.75em"><strong>3</strong><br/><span style="color:#990000">CRITICAL</span></div>
+              <div style="background:#ffe8cc;border-radius:4px;padding:0.3rem;text-align:center;font-size:0.75em"><strong>2</strong><br/><span style="color:#cc5500">HIGH</span></div>
+              <div style="background:#fffacc;border-radius:4px;padding:0.3rem;text-align:center;font-size:0.75em"><strong>7</strong><br/><span style="color:#888800">MEDIUM</span></div>
+              <div style="background:#e8f0ff;border-radius:4px;padding:0.3rem;text-align:center;font-size:0.75em"><strong>1</strong><br/><span style="color:#003399">LOW</span></div>
+            </div>
+            <!-- Images side by side -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem">
+              <div style="background:#1a1a2e;border-radius:4px;height:80px;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-size:0.7em;position:relative">
+                <div style="position:absolute;top:4px;left:4px;background:rgba(255,0,0,0.7);width:18px;height:12px;border-radius:2px"></div>
+                <div style="position:absolute;top:20px;left:40px;background:rgba(255,165,0,0.7);width:14px;height:10px;border-radius:2px"></div>
+                <div style="position:absolute;top:35px;left:15px;background:rgba(255,0,0,0.7);width:16px;height:10px;border-radius:2px"></div>
+                Thermal annotated
+              </div>
+              <div style="background:#2d4a2d;border-radius:4px;height:80px;display:flex;align-items:center;justify-content:center;color:#86efac;font-size:0.7em;position:relative">
+                <div style="position:absolute;top:4px;left:4px;background:rgba(255,0,0,0.7);width:22px;height:14px;border-radius:2px"></div>
+                <div style="position:absolute;top:22px;left:45px;background:rgba(255,165,0,0.7);width:18px;height:12px;border-radius:2px"></div>
+                RGB overlay
+              </div>
+            </div>
+          </div>
+
+          <!-- Detection table -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:0.5rem;font-size:0.7em">
+            <div style="display:grid;grid-template-columns:70px 80px 60px 50px;gap:0.25rem;font-weight:700;color:#64748b;border-bottom:1px solid #e2e8f0;padding-bottom:0.25rem;margin-bottom:0.25rem">
+              <span>Panel</span><span>Anomaly</span><span>Severity</span><span>Conf</span>
+            </div>
+            <div style="display:grid;grid-template-columns:70px 80px 60px 50px;gap:0.25rem;margin-bottom:0.2rem">
+              <span>R2-C4</span><span>hot-spot-high</span><span style="color:#990000;font-weight:700">CRITICAL</span><span>0.91</span>
+            </div>
+            <div style="display:grid;grid-template-columns:70px 80px 60px 50px;gap:0.25rem;margin-bottom:0.2rem">
+              <span>R3-C1</span><span>bypass-diode</span><span style="color:#990000;font-weight:700">CRITICAL</span><span>0.87</span>
+            </div>
+            <div style="display:grid;grid-template-columns:70px 80px 60px 50px;gap:0.25rem">
+              <span>R1-C7</span><span>string</span><span style="color:#990000;font-weight:700">CRITICAL</span><span>0.83</span>
+            </div>
+          </div>
+
+          <!-- Downloads -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;margin-top:0.5rem">
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:0.35rem;text-align:center;font-size:0.7em">⬇ PDF</div>
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:0.35rem;text-align:center;font-size:0.7em">⬇ Excel</div>
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:0.35rem;text-align:center;font-size:0.7em">⬇ GeoJSON</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 2 -->
+  <div class="mockup">
+    <div class="mockup-header">🗺 Page 2 — Park Map (Anomaly Grid)</div>
+    <div class="mockup-body" style="padding:0;font-size:0.78em">
+      <div style="display:flex;height:100%">
+        <!-- Sidebar same -->
+        <div style="width:140px;background:#1e293b;color:#94a3b8;padding:0.75rem;font-size:0.8em;flex-shrink:0">
+          <div style="color:#f8fafc;font-weight:700;margin-bottom:1rem">⬡ Axalon</div>
+          <div style="margin-bottom:0.5rem">🔍 Inspect</div>
+          <div style="margin-bottom:0.5rem">📦 Batch</div>
+          <div style="color:#f8fafc;font-weight:600;margin-bottom:0.5rem">🗺 Park Map</div>
+          <div style="margin-bottom:0.5rem">📋 History</div>
+          <div style="margin-bottom:0.5rem">⚙ Settings</div>
+        </div>
+
+        <!-- Main -->
+        <div style="flex:1;padding:0.75rem;background:#f8fafc">
+
+          <!-- Park selector -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;margin-bottom:0.75rem">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:0.4rem">
+              <div style="color:#64748b;font-size:0.7em">Park</div>
+              <div style="background:#f1f5f9;border-radius:3px;padding:0.2rem 0.4rem;margin-top:0.2rem;font-size:0.8em">PARK_01 ▾</div>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:0.4rem">
+              <div style="color:#64748b;font-size:0.7em">Inspection Date</div>
+              <div style="background:#f1f5f9;border-radius:3px;padding:0.2rem 0.4rem;margin-top:0.2rem;font-size:0.8em">2026-04-11 ▾</div>
+            </div>
+          </div>
+
+          <!-- Severity filter -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.3rem;margin-bottom:0.75rem">
+            <div style="background:#ffdddd;border:2px solid #dc2626;border-radius:4px;padding:0.3rem;text-align:center;font-size:0.7em;font-weight:700">☑ CRITICAL</div>
+            <div style="background:#ffe8cc;border:2px solid #ea580c;border-radius:4px;padding:0.3rem;text-align:center;font-size:0.7em;font-weight:700">☑ HIGH</div>
+            <div style="background:#fffacc;border:1px solid #d1d5db;border-radius:4px;padding:0.3rem;text-align:center;font-size:0.7em;color:#9ca3af">☐ MEDIUM</div>
+            <div style="background:#e8f0ff;border:1px solid #d1d5db;border-radius:4px;padding:0.3rem;text-align:center;font-size:0.7em;color:#9ca3af">☐ LOW</div>
+          </div>
+
+          <!-- Grid map -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:0.6rem;margin-bottom:0.5rem">
+            <div style="font-size:0.7em;color:#64748b;margin-bottom:0.4rem;font-weight:700">Solar Park Grid — PARK_01 &nbsp; <span style="font-weight:400">(8 rows × 12 cols)</span></div>
+            <!-- Grid -->
+            <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:2px">
+              <!-- Row 1 -->
+              <div style="background:#d1fae5;height:14px;border-radius:2px" title="R1-C1"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fee2e2;height:14px;border-radius:2px" title="R1-C3: hot-spot-high CRITICAL"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fed7aa;height:14px;border-radius:2px" title="R1-C6: offline-module HIGH"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fee2e2;height:14px;border-radius:2px" title="R1-C8: string CRITICAL"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <!-- Row 2 -->
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fef9c3;height:14px;border-radius:2px" title="R2-C2: cell-multi MEDIUM"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fee2e2;height:14px;border-radius:2px" title="R2-C4: hot-spot-high CRITICAL"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fed7aa;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <!-- Rows 3-8 (mostly green with scattered anomalies) -->
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fee2e2;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fef9c3;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fee2e2;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fef9c3;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fed7aa;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fee2e2;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fef9c3;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fed7aa;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fee2e2;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#fef9c3;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+              <div style="background:#d1fae5;height:14px;border-radius:2px"></div>
+            </div>
+            <!-- Legend -->
+            <div style="display:flex;gap:0.75rem;margin-top:0.4rem;font-size:0.68em">
+              <span style="display:flex;align-items:center;gap:0.2rem"><span style="width:10px;height:10px;background:#fee2e2;display:inline-block;border-radius:2px"></span>CRITICAL</span>
+              <span style="display:flex;align-items:center;gap:0.2rem"><span style="width:10px;height:10px;background:#fed7aa;display:inline-block;border-radius:2px"></span>HIGH</span>
+              <span style="display:flex;align-items:center;gap:0.2rem"><span style="width:10px;height:10px;background:#fef9c3;display:inline-block;border-radius:2px"></span>MEDIUM</span>
+              <span style="display:flex;align-items:center;gap:0.2rem"><span style="width:10px;height:10px;background:#d1fae5;display:inline-block;border-radius:2px"></span>OK</span>
+            </div>
+          </div>
+
+          <!-- Click detail panel -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:0.5rem;font-size:0.7em">
+            <div style="font-weight:700;margin-bottom:0.25rem">Selected: R2-C4</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem">
+              <span>Anomaly: <strong>hot-spot-high</strong></span>
+              <span style="color:#990000;font-weight:700">CRITICAL</span>
+              <span>Confidence: 0.91</span>
+              <span>GPS: 28.4°N 77.1°E</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:1rem;text-align:center">Each cell in the grid = one panel. Click a cell → see anomaly detail. Reply in terminal to continue →</p>

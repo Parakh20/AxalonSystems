@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "axalon-systems"
 version = "1.0.0"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = []   # runtime deps in requirements_platform.txt
 
 [tool.setuptools.package-dir]

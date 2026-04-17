@@ -1,0 +1,42 @@
+<h2>Three Approaches — Pick Your Architecture</h2>
+<p class="subtitle">The key decision: what powers the operator dashboard and client portal?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Streamlit-Only</h3>
+      <p>Everything in Streamlit — upload, results, park map, client reports. One Python app, no frontend work.</p>
+      <div class="pros-cons" style="margin-top:0.75rem">
+        <div class="pros"><h4>Pros</h4><ul><li>Fastest to build</li><li>100% Python</li><li>Works offline/locally</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Not polished enough for client portal</li><li>Hard to multi-tenant</li><li>Limited UI control</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B ★ Recommended</div>
+    <div class="content">
+      <h3>FastAPI + Streamlit + Report Delivery</h3>
+      <p>FastAPI handles all processing. Streamlit is the operator tool. Clients get professional PDF/Excel delivered, with a simple read-only web view via FastAPI.</p>
+      <div class="pros-cons" style="margin-top:0.75rem">
+        <div class="pros"><h4>Pros</h4><ul><li>Clean separation of concerns</li><li>Scales to cloud without rewrite</li><li>Docker-ready from day 1</li><li>Operator + client needs met</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Slightly more setup</li><li>Client portal is read-only initially</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>FastAPI + React Portal (reuse website)</h3>
+      <p>Build the operator dashboard and client portal inside the existing React website. Full-stack monorepo — one polished product from day 1.</p>
+      <div class="pros-cons" style="margin-top:0.75rem">
+        <div class="pros"><h4>Pros</h4><ul><li>Best client experience</li><li>Single brand/product</li><li>Best long-term architecture</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Most work upfront</li><li>React frontend dev needed</li><li>Overkill for local phase</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Click to select, then reply in the terminal</p>

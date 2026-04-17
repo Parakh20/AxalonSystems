@@ -4,8 +4,26 @@
 
 ```
 AxalonSystems/
-├── website/                         ← Company website (React frontend + Python backend)
-│   ├── frontend/                    ← React + Tailwind + shadcn/ui
+├── website/                         ← Company website
+│   ├── nextjs/                      ← NEW: Next.js 14 site — single R3F canvas, scroll-driven 3D
+│   │   ├── scrollStore.ts           ← Module singleton: scrollStore.progress (0→1), zero re-renders
+│   │   ├── app/layout.tsx           ← Root: DynamicMainScene (fixed canvas) + Navbar
+│   │   ├── app/page.tsx             ← 600vh scroll container; 6 × ScrollSection with sticky overlays
+│   │   ├── app/globals.css          ← Design tokens, fonts, responsive breakpoints
+│   │   ├── components/Scene/
+│   │   │   ├── MainScene.tsx        ← Root Canvas: lighting, Stars, SolarField, Drone, CameraRig, Bloom
+│   │   │   ├── SolarField.tsx       ← 396 instanced panels + terrain + grid (1 draw call); thermal-scan ready
+│   │   │   ├── Drone.tsx            ← Primitive drone: body+arms+rotors+gimbal, teal PointLight, sine hover
+│   │   │   └── CameraRig.tsx        ← CatmullRomCurve3 path (6 waypoints), scroll→camera, FOV breathing
+│   │   ├── components/UI/
+│   │   │   └── HeroOverlay.tsx      ← Scene 1 HTML: word-reveal headline, stats, telemetry badge
+│   │   ├── components/Navbar.tsx    ← Glass navbar, scroll-aware
+│   │   └── components/DynamicMainScene.tsx ← ssr:false wrapper for MainScene
+│   │   ├── components/Scene/ThermalScan.tsx ← Scene 2: scan line + scanning drone, scroll-driven
+│   │   ├── components/Scene/SceneController.tsx ← Inside Canvas; maps scroll→per-scene progress
+│   │   ├── components/UI/ThermalOverlay.tsx ← Scene 2 HTML: live fault counter, scan bar, class list
+│   │   [NEXT: DetectionBoxes.tsx, DroneFleet.tsx, HologramPanel.tsx]
+│   ├── frontend/                    ← OLD: CRA + Tailwind + shadcn/ui (deprecated)
 │   ├── backend/                     ← Python/Flask API (contact form, etc.)
 │   ├── design_guidelines.json       ← Brand colours, typography
 │   └── render.yaml                  ← Render.com deployment config

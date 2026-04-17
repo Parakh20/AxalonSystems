@@ -19,6 +19,9 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve Python: prefer the active env's 'python', fall back to 'python3'
+PYTHON="$(command -v python || command -v python3)"
 PORT="${PORT:-8000}"
 DASH_PORT="${DASH_PORT:-8501}"
 HOST="${HOST:-0.0.0.0}"
@@ -37,12 +40,13 @@ warn()    { echo -e "${YELLOW}[axalon]${RESET} $*"; }
 error()   { echo -e "${RED}[axalon]${RESET} $*" >&2; }
 
 # ── Dependency check ──────────────────────────────────────────────────────────
+# Run checks from /tmp so that the local platform/ directory does not shadow
+# the stdlib 'platform' module (which streamlit imports at startup).
 check_deps() {
     local missing=()
-    command -v python3 >/dev/null 2>&1 || missing+=("python3")
-    python3 -c "import uvicorn" 2>/dev/null || missing+=("uvicorn (pip install uvicorn[standard])")
-    python3 -c "import streamlit" 2>/dev/null || missing+=("streamlit (pip install streamlit)")
-    python3 -c "import axalon" 2>/dev/null || missing+=("axalon package (pip install -e .)")
+    (cd /tmp && "$PYTHON" -c "import uvicorn") 2>/dev/null || missing+=("uvicorn (pip install uvicorn[standard])")
+    (cd /tmp && "$PYTHON" -c "import streamlit") 2>/dev/null || missing+=("streamlit (pip install streamlit)")
+    (cd /tmp && "$PYTHON" -c "import axalon") 2>/dev/null || missing+=("axalon package (pip install -e .)")
 
     if [ ${#missing[@]} -gt 0 ]; then
         error "Missing dependencies:"
@@ -72,8 +76,8 @@ start_api() {
         return
     fi
     info "Starting FastAPI on http://${HOST}:${PORT} ..."
-    cd "${REPO_ROOT}"
-    nohup python3 -m uvicorn axalon.api.app:app \
+    # Run from /tmp so platform/ dir doesn't shadow stdlib 'platform' module
+    nohup env -C /tmp "$PYTHON" -m uvicorn axalon.api.app:app \
         --host "$HOST" \
         --port "$PORT" \
         > "${REPO_ROOT}/logs/api.log" 2>&1 &
@@ -94,8 +98,8 @@ start_dashboard() {
         return
     fi
     info "Starting Streamlit dashboard on http://${HOST}:${DASH_PORT} ..."
-    cd "${REPO_ROOT}"
-    nohup python3 -m streamlit run platform/ui/dashboard.py \
+    # Run from /tmp so platform/ dir doesn't shadow stdlib 'platform' module
+    nohup env -C /tmp "$PYTHON" -m streamlit run "${REPO_ROOT}/platform/ui/dashboard.py" \
         --server.port "$DASH_PORT" \
         --server.address "$HOST" \
         --server.headless true \
@@ -195,8 +199,8 @@ case "$COMMAND" in
         start_api
         info "API running in background. Starting dashboard..."
         info "Press Ctrl+C to stop the dashboard (API keeps running, use './run.sh stop' to stop all)"
-        cd "${REPO_ROOT}"
-        python3 -m streamlit run platform/ui/dashboard.py \
+        # Run from /tmp so platform/ dir doesn't shadow stdlib 'platform' module
+        env -C /tmp "$PYTHON" -m streamlit run "${REPO_ROOT}/platform/ui/dashboard.py" \
             --server.port "$DASH_PORT" \
             --server.address "$HOST" \
             --server.headless true

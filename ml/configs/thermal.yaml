@@ -1,0 +1,34 @@
+# ── Thermal Model Training Config ──────────────────────────────────────
+# Loaded by Notebook 02. Override any value in the CONFIG cell instead.
+
+# Dataset
+dataset_yaml: data/thermal_dataset.yaml
+imgsz: 640
+
+# Model
+model: yolov8s.pt          # COCO-pretrained backbone; swap for yolov8m.pt to scale up
+
+# Training hyperparameters
+epochs: 100
+batch: 16
+device: 0                  # GPU device id; 'cpu' as fallback is handled in notebook
+lr0: 0.01
+lrf: 0.001
+cos_lr: true
+warmup_epochs: 3
+patience: 15               # early-stopping patience
+
+# Augmentation (YOLOv8 built-in; thermal-specific overrides)
+hsv_h: 0.0                 # no hue shift — thermal images have no meaningful hue
+hsv_s: 0.0                 # no saturation — thermal is grayscale-like
+hsv_v: 0.4                 # small value/brightness jitter kept
+mosaic: 1.0
+mixup: 0.1
+copy_paste: 0.1
+close_mosaic: 10           # disable mosaic in last N epochs for stable convergence
+
+# Output
+project: runs/thermal
+name: train
+save_period: 10            # save checkpoint every N epochs
+

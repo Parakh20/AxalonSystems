@@ -24,7 +24,7 @@ from ml.src.utils import SEVERITY_COLOR_BGR, draw_detections_severity, get_logge
 from axalon.pipeline.orchestrator import InspectionOrchestrator
 from axalon.reporting.report import generate_excel_report, generate_pdf_report, generate_json_report
 from axalon.reporting.geojson_writer import write_geojson
-from axalon.db.session import get_engine, get_session
+from axalon.db.session import get_engine, session_scope as get_session
 from axalon.db.models import Park, Inspection, Detection
 
 logger = get_logger("axalon.dashboard")

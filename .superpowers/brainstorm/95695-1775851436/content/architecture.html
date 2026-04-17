@@ -1,0 +1,64 @@
+<h2>System Architecture</h2>
+<p class="subtitle">FastAPI backbone · Streamlit operator dashboard · PDF/Excel/web for clients</p>
+
+<div class="mockup" style="margin-top:1.5rem">
+  <div class="mockup-header">AxalonSystems Monorepo — Component Map</div>
+  <div class="mockup-body" style="padding:1.5rem;font-family:monospace;font-size:0.82em;line-height:1.8">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1.5rem">
+      <div style="background:#f0f7ff;border:2px solid #2563eb;border-radius:8px;padding:1rem;text-align:center">
+        <div style="font-size:1.1em;font-weight:700;color:#2563eb">ml/</div>
+        <div style="font-size:0.8em;color:#555;margin-top:0.3rem">YOLOv8s model<br/>checkpoints/best.pt<br/>src/utils.py ← canonical</div>
+      </div>
+      <div style="background:#f0fff4;border:2px solid #16a34a;border-radius:8px;padding:1rem;text-align:center">
+        <div style="font-size:1.1em;font-weight:700;color:#16a34a">platform/</div>
+        <div style="font-size:0.8em;color:#555;margin-top:0.3rem">FastAPI API<br/>Streamlit dashboard<br/>pipeline + reporting</div>
+      </div>
+      <div style="background:#fdf4ff;border:2px solid #9333ea;border-radius:8px;padding:1rem;text-align:center">
+        <div style="font-size:1.1em;font-weight:700;color:#9333ea">website/</div>
+        <div style="font-size:0.8em;color:#555;margin-top:0.3rem">Marketing site<br/>React + Tailwind<br/>Phase 2: client portal</div>
+      </div>
+    </div>
+
+    <!-- Entry points -->
+    <div style="text-align:center;margin-bottom:0.75rem;color:#888;font-size:0.85em">━━━ Three entry points (all use the same engine) ━━━</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:1.5rem">
+      <div style="background:#fff7ed;border:1px solid #ea580c;border-radius:6px;padding:0.75rem;text-align:center;font-size:0.85em">
+        <strong>🖥 CLI</strong><br/><code>python main.py inspect/batch/api/dashboard</code>
+      </div>
+      <div style="background:#fff7ed;border:1px solid #ea580c;border-radius:6px;padding:0.75rem;text-align:center;font-size:0.85em">
+        <strong>🌐 FastAPI</strong><br/>REST API on :8000<br/>POST /inspect · GET /report
+      </div>
+      <div style="background:#fff7ed;border:1px solid #ea580c;border-radius:6px;padding:0.75rem;text-align:center;font-size:0.85em">
+        <strong>📊 Streamlit</strong><br/>Operator dashboard<br/>localhost:8501
+      </div>
+    </div>
+
+    <!-- Pipeline -->
+    <div style="text-align:center;margin-bottom:0.75rem;color:#888;font-size:0.85em">━━━ Shared pipeline (called by all three) ━━━</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
+      <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.82em;text-align:center"><strong>Ingest</strong><br/>pair thermal+RGB</div>
+      <div style="color:#aaa;font-size:1.2em">→</div>
+      <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.82em;text-align:center"><strong>Detect</strong><br/>YOLOv8s inference</div>
+      <div style="color:#aaa;font-size:1.2em">→</div>
+      <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.82em;text-align:center"><strong>Localize</strong><br/>auto-grid R{r}-C{c}</div>
+      <div style="color:#aaa;font-size:1.2em">→</div>
+      <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.82em;text-align:center"><strong>Geo-tag</strong><br/>GPS from EXIF</div>
+      <div style="color:#aaa;font-size:1.2em">→</div>
+      <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.82em;text-align:center"><strong>Report</strong><br/>PDF·Excel·GeoJSON</div>
+      <div style="color:#aaa;font-size:1.2em">→</div>
+      <div style="background:#e0f2fe;border:1px solid #0284c7;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.82em;text-align:center"><strong>Store</strong><br/>SQLite DB</div>
+    </div>
+
+    <!-- Outputs -->
+    <div style="text-align:center;margin-bottom:0.75rem;color:#888;font-size:0.85em">━━━ Client deliverables ━━━</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.75rem">
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:0.75rem;text-align:center;font-size:0.8em">📄 <strong>PDF</strong><br/>Executive report</div>
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:0.75rem;text-align:center;font-size:0.8em">📊 <strong>Excel</strong><br/>4-sheet workbook</div>
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:0.75rem;text-align:center;font-size:0.8em">🗺 <strong>GeoJSON</strong><br/>QGIS / Google Earth</div>
+      <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:0.75rem;text-align:center;font-size:0.8em">🖼 <strong>Images</strong><br/>Annotated thermal+RGB</div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem;text-align:center">Does this architecture make sense? Reply in the terminal →</p>

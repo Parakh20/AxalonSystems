@@ -1,0 +1,186 @@
+- generic [ref=e4]:
+  - navigation [ref=e5]:
+    - generic [ref=e7]:
+      - link "Axalon Systems" [ref=e8] [cursor=pointer]:
+        - /url: /
+        - img "Axalon Systems" [ref=e9]
+      - generic [ref=e11]:
+        - link "Product" [ref=e12] [cursor=pointer]:
+          - /url: /product
+          - generic [ref=e13]: Product
+        - link "Resources" [ref=e14] [cursor=pointer]:
+          - /url: /resources
+          - generic [ref=e15]: Resources
+        - link "Contact" [ref=e16] [cursor=pointer]:
+          - /url: /contact
+          - generic [ref=e17]: Contact
+      - link "Contact us" [ref=e20] [cursor=pointer]:
+        - /url: /contact
+        - text: Contact us
+        - img [ref=e21]
+  - generic [ref=e26]:
+    - generic [ref=e29]: Autonomous Inspection Platform
+    - heading "Autonomous inspection drones built for reliable industrial decisions." [level=1] [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e33]: Autonomous
+        - generic [ref=e35]: inspection
+        - generic [ref=e37]: drones
+        - generic [ref=e39]: built
+        - generic [ref=e41]: for
+        - generic [ref=e43]: reliable
+        - generic [ref=e45]: industrial
+        - generic [ref=e47]: decisions.
+    - paragraph [ref=e48]: AI-enabled, modular UAS for precise data capture and automated reporting — starting with solar asset inspections.
+    - generic [ref=e49]:
+      - link "Contact us" [ref=e51] [cursor=pointer]:
+        - /url: /contact
+        - text: Contact us
+        - img [ref=e52]
+      - link "Download datasheet" [ref=e55] [cursor=pointer]:
+        - /url: "#features"
+        - img [ref=e56]
+        - text: Download datasheet
+    - generic [ref=e59]:
+      - generic [ref=e60]:
+        - paragraph [ref=e61]: 99.7%
+        - paragraph [ref=e62]: Detection accuracy
+      - generic [ref=e63]:
+        - paragraph [ref=e64]: 10x
+        - paragraph [ref=e65]: Faster than manual
+      - generic [ref=e66]:
+        - paragraph [ref=e67]: 50MW+
+        - paragraph [ref=e68]: Capacity inspected
+  - generic [ref=e71]:
+    - generic [ref=e72]:
+      - generic [ref=e73]:
+        - paragraph [ref=e74]: 01 — Capabilities
+        - heading "Engineering precision at every layer" [level=2] [ref=e75]:
+          - text: Engineering precision
+          - text: at every layer
+      - paragraph [ref=e76]: Five integrated modules, each precision-engineered for demanding inspection environments.
+    - generic [ref=e77]:
+      - generic [ref=e78]:
+        - generic [ref=e80]:
+          - img [ref=e82]
+          - heading "Autonomous Flight" [level=3] [ref=e84]
+          - paragraph [ref=e85]: Fully autonomous mission planning and execution with intelligent path optimization and obstacle avoidance.
+        - generic [ref=e90]:
+          - img [ref=e92]
+          - heading "LiDAR Mapping" [level=3] [ref=e97]
+          - paragraph [ref=e98]: High-density 3D point cloud generation for terrain modeling, asset digitization, and anomaly detection.
+        - generic [ref=e100]:
+          - img [ref=e102]
+          - heading "Telemetry Security" [level=3] [ref=e104]
+          - paragraph [ref=e105]: End-to-end encrypted communication with AES-256 data protection for all mission and inspection data.
+      - generic [ref=e106]:
+        - generic [ref=e108]:
+          - img [ref=e110]
+          - heading "Onboard AI" [level=3] [ref=e112]
+          - paragraph [ref=e113]: Edge-compute AI inference for real-time defect detection, classification, and automated reporting.
+        - generic [ref=e115]:
+          - img [ref=e117]
+          - heading "Modular Payload" [level=3] [ref=e119]
+          - paragraph [ref=e120]: Hot-swappable sensor bays supporting LiDAR, RGB, thermal, and multispectral payloads.
+  - generic [ref=e124]:
+    - generic [ref=e125]:
+      - paragraph [ref=e126]: 02 — How it works
+      - heading "From deployment to decisions in minutes" [level=2] [ref=e127]:
+        - text: From deployment to decisions
+        - text: in minutes
+    - generic [ref=e129]:
+      - generic [ref=e131]:
+        - generic [ref=e132]:
+          - generic [ref=e133]: "01"
+          - img [ref=e136]
+        - heading "Plan the mission" [level=3] [ref=e139]
+        - paragraph [ref=e140]: Define inspection boundaries and parameters. The system auto-generates optimized flight paths with full terrain awareness.
+      - generic [ref=e142]:
+        - generic [ref=e143]:
+          - generic [ref=e144]: "02"
+          - img [ref=e147]
+        - heading "Autonomous capture" [level=3] [ref=e150]
+        - paragraph [ref=e151]: Deploy the drone for fully autonomous data collection. LiDAR, RGB, and thermal sensors capture synchronized multi-layer datasets.
+      - generic [ref=e153]:
+        - generic [ref=e154]:
+          - generic [ref=e155]: "03"
+          - img [ref=e158]
+        - heading "AI-powered report" [level=3] [ref=e161]
+        - paragraph [ref=e162]: Onboard AI processes data in real-time. Receive automated inspection reports with detected anomalies, severity classification, and GPS-tagged findings.
+  - generic [ref=e166]:
+    - generic [ref=e167]:
+      - paragraph [ref=e168]: 99.7%
+      - paragraph [ref=e169]: Defect detection rate
+    - generic [ref=e170]:
+      - paragraph [ref=e171]: 3x
+      - paragraph [ref=e172]: Faster than manual
+    - generic [ref=e173]:
+      - paragraph [ref=e174]: 50MW+
+      - paragraph [ref=e175]: Solar capacity inspected
+    - generic [ref=e176]:
+      - paragraph [ref=e177]: <2hr
+      - paragraph [ref=e178]: From flight to report
+  - generic [ref=e182]:
+    - paragraph [ref=e183]: Ready to transform inspections?
+    - heading "See Axalon in action on your solar assets" [level=2] [ref=e184]:
+      - text: See Axalon in action
+      - text: on your solar assets
+    - paragraph [ref=e185]: Get in touch with our team to learn about autonomous flight, real-time AI processing, and automated reporting.
+    - generic [ref=e186]:
+      - link "Contact us" [ref=e188] [cursor=pointer]:
+        - /url: /contact
+        - text: Contact us
+        - img [ref=e189]
+      - link "View product specs" [ref=e192] [cursor=pointer]:
+        - /url: /product
+  - contentinfo [ref=e193]:
+    - generic [ref=e194]:
+      - generic [ref=e195]:
+        - generic [ref=e196]:
+          - img "Axalon Systems" [ref=e197]
+          - paragraph [ref=e198]: Autonomous inspection drones for reliable industrial decisions.
+          - generic [ref=e201]: Systems nominal
+        - generic [ref=e202]:
+          - generic [ref=e203]:
+            - heading "Product" [level=4] [ref=e204]
+            - list [ref=e205]:
+              - generic [ref=e206]:
+                - listitem [ref=e207]:
+                  - link "Overview" [ref=e208] [cursor=pointer]:
+                    - /url: /product
+                - listitem [ref=e209]:
+                  - link "Specifications" [ref=e210] [cursor=pointer]:
+                    - /url: /product#specs
+                - listitem [ref=e211]:
+                  - link "Payload Options" [ref=e212] [cursor=pointer]:
+                    - /url: /product#payload
+          - generic [ref=e213]:
+            - heading "Resources" [level=4] [ref=e214]
+            - list [ref=e215]:
+              - generic [ref=e216]:
+                - listitem [ref=e217]:
+                  - link "Case Studies" [ref=e218] [cursor=pointer]:
+                    - /url: /resources
+                - listitem [ref=e219]:
+                  - link "Documentation" [ref=e220] [cursor=pointer]:
+                    - /url: /resources
+                - listitem [ref=e221]:
+                  - link "API Reference" [ref=e222] [cursor=pointer]:
+                    - /url: /resources
+          - generic [ref=e223]:
+            - heading "Company" [level=4] [ref=e224]
+            - list [ref=e225]:
+              - generic [ref=e226]:
+                - listitem [ref=e227]:
+                  - link "About" [ref=e228] [cursor=pointer]:
+                    - /url: /contact
+                - listitem [ref=e229]:
+                  - link "Contact" [ref=e230] [cursor=pointer]:
+                    - /url: /contact
+                - listitem [ref=e231]:
+                  - link "Careers" [ref=e232] [cursor=pointer]:
+                    - /url: /contact
+      - generic [ref=e233]:
+        - paragraph [ref=e234]: © 2026 Axalon Systems. All rights reserved.
+        - generic [ref=e235]:
+          - generic [ref=e236] [cursor=pointer]: Privacy Policy
+          - generic [ref=e237] [cursor=pointer]: Terms of Service

@@ -90,4 +90,10 @@ agenthub/agents/youtube/db
 .cache/
 
 # Mobile development
-android-sdk/ axalon_systems.egg-info/
+android-sdk/
+
+# Axalon platform — runtime artifacts
+axalon.db
+axalon_systems.egg-info/
+logs/
+output/
