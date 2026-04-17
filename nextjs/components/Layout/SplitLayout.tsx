@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 const SECTION_NUMS = ['01', '02', '03', '04', '05', '06']
+const SECTION_IDS = ['hero', 'thermal', 'detection', 'fleet', 'report', 'contact']
 
 export default function SplitLayout({
   leftContent,
@@ -12,7 +13,10 @@ export default function SplitLayout({
   rightContent: React.ReactNode
 }) {
   const [progress, setProgress] = useState(0)
+  const [activeSection, setActiveSection] = useState(0)
+  const leftRef = useRef<HTMLDivElement>(null)
 
+  // Scroll progress for the indicator fill line
   useEffect(() => {
     const onScroll = () => {
       const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
@@ -22,7 +26,31 @@ export default function SplitLayout({
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  const activeSection = Math.min(5, Math.floor(progress * 6))
+  // IntersectionObserver: fire when each section is 40% visible
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idx = SECTION_IDS.indexOf(entry.target.getAttribute('data-section') ?? '')
+            if (idx !== -1) setActiveSection(idx)
+          }
+        })
+      },
+      { threshold: 0.4 },
+    )
+
+    // Wait one tick for leftContent to mount, then observe its sections
+    const timer = setTimeout(() => {
+      if (!leftRef.current) return
+      leftRef.current.querySelectorAll('[data-section]').forEach((el) => observer.observe(el))
+    }, 100)
+
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+    }
+  }, [leftContent])
   // Dot moves from top to bottom of the indicator track (40vh centred)
   const dotPct = progress * 100
 
@@ -32,7 +60,7 @@ export default function SplitLayout({
     <div style={{ display: 'flex', alignItems: 'flex-start', minHeight: '100vh' }}>
 
       {/* ── LEFT: scrollable content (40%) ── */}
-      <div style={{
+      <div ref={leftRef} style={{
         width: '40%',
         background: '#050508',
         position: 'relative',
