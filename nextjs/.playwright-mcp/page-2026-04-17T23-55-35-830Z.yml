@@ -1,0 +1,272 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - link "AXALON SYSTEMS" [ref=e3] [cursor=pointer]:
+      - /url: "#"
+    - generic [ref=e4]:
+      - link "Technology" [ref=e5] [cursor=pointer]:
+        - /url: "#technology"
+        - text: Technology
+      - link "Mission" [ref=e6] [cursor=pointer]:
+        - /url: "#mission"
+        - text: Mission
+      - link "Contact" [ref=e7] [cursor=pointer]:
+        - /url: "#contact"
+        - text: Contact
+      - link "REQUEST DEMO" [ref=e8] [cursor=pointer]:
+        - /url: "#contact"
+  - main [ref=e9]:
+    - generic [ref=e11]:
+      - generic:
+        - generic: "01"
+      - generic:
+        - generic: "02"
+      - generic:
+        - generic: "03"
+      - generic:
+        - generic: "04"
+      - generic:
+        - generic: "05"
+      - generic:
+        - generic: "06"
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - generic [ref=e16]: 01 — Autonomous Inspection Platform
+          - heading "Autonomous inspection drones built for reliable industrial decisions." [level=1] [ref=e17]:
+            - generic [ref=e19]: Autonomous
+            - generic [ref=e21]: inspection
+            - generic [ref=e23]: drones
+            - generic [ref=e25]: built
+            - generic [ref=e27]: for
+            - generic [ref=e29]: reliable
+            - generic [ref=e31]: industrial
+            - generic [ref=e33]: decisions.
+          - paragraph [ref=e34]: AI-enabled drone systems for precise solar asset inspection. Thermal + RGB fusion · 11-class fault detection · Real-time reports.
+          - generic [ref=e35]:
+            - link "See Technology →" [ref=e36] [cursor=pointer]:
+              - /url: "#thermal"
+            - link "Request Demo" [ref=e37] [cursor=pointer]:
+              - /url: "#contact"
+          - generic [ref=e38]:
+            - generic [ref=e39]:
+              - paragraph [ref=e40]: 99.7%
+              - paragraph [ref=e41]: Accuracy
+            - generic [ref=e42]:
+              - paragraph [ref=e43]: 10x
+              - paragraph [ref=e44]: Faster
+            - generic [ref=e45]:
+              - paragraph [ref=e46]: 50MW+
+              - paragraph [ref=e47]: Inspected
+          - generic [ref=e50]: ALT 35M · 9.4M/S · 18°55′N 72°49′E
+        - generic [ref=e52]:
+          - generic [ref=e55]: 02 — Thermal Intelligence
+          - heading "Thermal Intelligence." [level=2] [ref=e56]
+          - paragraph [ref=e57]: 11-class fault detection at 0.734 mAP50 accuracy. Trained on 20,000 thermal IR images captured across real solar farms.
+          - generic [ref=e60]:
+            - generic [ref=e61]: Scan coverage
+            - generic [ref=e62]: 0%
+          - generic [ref=e64]:
+            - generic [ref=e65]:
+              - generic [ref=e66]:
+                - paragraph [ref=e67]: Anomalies detected
+                - paragraph [ref=e68]: "00"
+              - generic [ref=e69]:
+                - paragraph [ref=e70]: AXALON·SCAN
+                - generic [ref=e73]: LIVE
+            - generic [ref=e74]:
+              - generic [ref=e75]:
+                - generic [ref=e78]: Hot-spot High
+                - generic [ref=e79]: CRITICAL
+              - generic [ref=e80]:
+                - generic [ref=e83]: Bypass Diode
+                - generic [ref=e84]: CRITICAL
+              - generic [ref=e85]:
+                - generic [ref=e88]: String Fault
+                - generic [ref=e89]: CRITICAL
+              - generic [ref=e90]:
+                - generic [ref=e93]: Offline Module
+                - generic [ref=e94]: HIGH
+              - generic [ref=e95]:
+                - generic [ref=e98]: Short Circuit
+                - generic [ref=e99]: HIGH
+              - generic [ref=e100]:
+                - generic [ref=e103]: Hot-spot Low
+                - generic [ref=e104]: HIGH
+              - generic [ref=e105]:
+                - generic [ref=e108]: Cell Damage
+                - generic [ref=e109]: MEDIUM
+              - generic [ref=e110]:
+                - generic [ref=e113]: Soiling
+                - generic [ref=e114]: LOW
+            - generic [ref=e115]: THERMAL·IR · 320×256px · 30Hz · YOLOv8s
+        - generic [ref=e117]:
+          - generic [ref=e120]: 03 — Dual-Sensor Fusion
+          - heading "Thermal + RGB. Cross-validated." [level=2] [ref=e121]
+          - paragraph [ref=e122]: YOLOv8s trained on 20,000 thermal frames, fused with RGB context. Every anomaly confirmed across both sensors before flagging.
+          - generic [ref=e123]:
+            - generic [ref=e126]: THERMAL IR
+            - generic [ref=e129]: RGB VISUAL
+            - generic [ref=e132]: AI FUSION
+          - generic [ref=e133]:
+            - generic [ref=e134]:
+              - generic [ref=e135]:
+                - paragraph [ref=e136]: Detections confirmed
+                - paragraph [ref=e137]: "00"
+              - generic [ref=e138]:
+                - paragraph [ref=e139]: AXALON·AI
+                - generic [ref=e142]: ACTIVE
+            - generic [ref=e143]:
+              - generic [ref=e144]:
+                - paragraph [ref=e145]: mAP50
+                - paragraph [ref=e146]: "0.734"
+              - generic [ref=e147]:
+                - paragraph [ref=e148]: Precision
+                - paragraph [ref=e149]: 88.3%
+              - generic [ref=e150]:
+                - paragraph [ref=e151]: Recall
+                - paragraph [ref=e152]: 79.1%
+              - generic [ref=e153]:
+                - paragraph [ref=e154]: Classes
+                - paragraph [ref=e155]: "11"
+            - generic [ref=e157]:
+              - generic [ref=e158]: Avg. confidence
+              - generic [ref=e159]: 0%
+            - generic [ref=e161]: YOLOv8s · RGB+IR FUSION · 640×640px · 30Hz
+        - generic [ref=e163]:
+          - generic [ref=e166]: 04 — Full-Site Coverage
+          - heading "One flight. Every panel." [level=2] [ref=e167]
+          - paragraph [ref=e168]: Three autonomous drones sweep the entire site in formation. Full coverage in a single coordinated flight — no manual targeting.
+          - generic [ref=e169]:
+            - generic [ref=e171]:
+              - generic [ref=e172]: Site coverage
+              - generic [ref=e173]: 0%
+            - paragraph [ref=e175]: 0 / 396 panels scanned
+          - generic [ref=e176]:
+            - generic [ref=e177]:
+              - generic [ref=e178]:
+                - paragraph [ref=e179]: Fleet status
+                - paragraph [ref=e180]: 3 ACTIVE
+              - generic [ref=e183]: AUTONOMOUS
+            - generic [ref=e184]:
+              - generic [ref=e185]:
+                - generic [ref=e187]:
+                  - generic [ref=e189]: AXL-01
+                  - generic [ref=e190]: LEAD
+                - generic [ref=e191]:
+                  - generic [ref=e192]:
+                    - paragraph [ref=e193]: ALT
+                    - paragraph [ref=e194]: 35m
+                  - generic [ref=e195]:
+                    - paragraph [ref=e196]: SPD
+                    - paragraph [ref=e197]: 9.2m/s
+                  - generic [ref=e198]:
+                    - paragraph [ref=e199]: BAT
+                    - paragraph [ref=e200]: 100%
+              - generic [ref=e201]:
+                - generic [ref=e203]:
+                  - generic [ref=e205]: AXL-02
+                  - generic [ref=e206]: WING-L
+                - generic [ref=e207]:
+                  - generic [ref=e208]:
+                    - paragraph [ref=e209]: ALT
+                    - paragraph [ref=e210]: 36m
+                  - generic [ref=e211]:
+                    - paragraph [ref=e212]: SPD
+                    - paragraph [ref=e213]: 9m/s
+                  - generic [ref=e214]:
+                    - paragraph [ref=e215]: BAT
+                    - paragraph [ref=e216]: 100%
+              - generic [ref=e217]:
+                - generic [ref=e219]:
+                  - generic [ref=e221]: AXL-03
+                  - generic [ref=e222]: WING-R
+                - generic [ref=e223]:
+                  - generic [ref=e224]:
+                    - paragraph [ref=e225]: ALT
+                    - paragraph [ref=e226]: 34m
+                  - generic [ref=e227]:
+                    - paragraph [ref=e228]: SPD
+                    - paragraph [ref=e229]: 9.4m/s
+                  - generic [ref=e230]:
+                    - paragraph [ref=e231]: BAT
+                    - paragraph [ref=e232]: 100%
+            - generic [ref=e233]: RTK·GPS · MESH·COMMS · AUTO-RTH
+        - generic [ref=e235]:
+          - generic [ref=e238]: 05 — Instant Reports
+          - heading "AI-generated fault maps." [level=2] [ref=e239]
+          - paragraph [ref=e240]: Every flight ends with a complete inspection report — panel-level fault maps with GPS coordinates, severity rankings, and maintenance priorities.
+          - generic [ref=e241]:
+            - generic [ref=e242]:
+              - generic [ref=e244]: ✓
+              - generic [ref=e245]: Panel-level GPS localisation
+            - generic [ref=e246]:
+              - generic [ref=e248]: ✓
+              - generic [ref=e249]: Automated severity classification
+            - generic [ref=e250]:
+              - generic [ref=e252]: ✓
+              - generic [ref=e253]: Maintenance priority queue
+            - generic [ref=e254]:
+              - generic [ref=e256]: ✓
+              - generic [ref=e257]: PDF + GeoJSON + Excel export
+          - generic [ref=e258]:
+            - generic [ref=e259]:
+              - generic [ref=e260]:
+                - paragraph [ref=e261]: Report summary
+                - generic [ref=e264]: LIVE
+              - generic [ref=e265]:
+                - paragraph [ref=e266]: "00"
+                - paragraph [ref=e267]:
+                  - text: anomalies
+                  - text: detected
+            - generic [ref=e268]:
+              - generic [ref=e270]:
+                - generic [ref=e271]: CRITICAL
+                - generic [ref=e272]: "0"
+              - generic [ref=e275]:
+                - generic [ref=e276]: HIGH
+                - generic [ref=e277]: "0"
+              - generic [ref=e280]:
+                - generic [ref=e281]: MEDIUM
+                - generic [ref=e282]: "0"
+              - generic [ref=e285]:
+                - generic [ref=e286]: LOW
+                - generic [ref=e287]: "0"
+            - generic [ref=e289]:
+              - paragraph [ref=e290]: Estimated impact
+              - generic [ref=e291]:
+                - generic [ref=e292]:
+                  - paragraph [ref=e293]: 0%
+                  - paragraph [ref=e294]: Power loss
+                - generic [ref=e295]:
+                  - paragraph [ref=e296]: ₹0
+                  - paragraph [ref=e297]: Annual loss
+        - generic [ref=e298]:
+          - generic [ref=e301]: 06 — Ready to Inspect?
+          - heading "Request a demo flight." [level=2] [ref=e302]
+          - paragraph [ref=e303]: Let us inspect your solar farm — no commitment. Full fault report within 48 hours of the flight.
+          - generic [ref=e305]:
+            - paragraph [ref=e306]: Get in touch
+            - generic [ref=e307]:
+              - textbox "Full name" [ref=e308]
+              - textbox "Work email" [ref=e309]
+            - textbox "Company / solar farm name" [ref=e310]
+            - textbox "Site size, location, or any questions..." [ref=e311]
+            - button "Request demo flight →" [ref=e312] [cursor=pointer]
+            - paragraph [ref=e313]:
+              - text: Or email
+              - link "contact@axalonsystems.com" [ref=e314] [cursor=pointer]:
+                - /url: mailto:contact@axalonsystems.com
+          - generic [ref=e315]:
+            - generic [ref=e316]:
+              - paragraph [ref=e317]: 99.7%
+              - paragraph [ref=e318]: Accuracy
+            - generic [ref=e319]:
+              - paragraph [ref=e320]: 10×
+              - paragraph [ref=e321]: Faster
+            - generic [ref=e322]:
+              - paragraph [ref=e323]: 50MW+
+              - paragraph [ref=e324]: Inspected
+          - generic [ref=e325]:
+            - generic [ref=e326]: Privacy
+            - generic [ref=e327]: Terms
+            - generic [ref=e328]: IIT Bombay Incubated
+            - generic [ref=e329]: © 2026 Axalon Systems
