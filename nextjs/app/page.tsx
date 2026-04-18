@@ -336,6 +336,9 @@ export default function Home() {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const splitLineRef = useRef<HTMLDivElement>(null)
   const leftInnerRef = useRef<HTMLDivElement>(null)
+  const progressFillRef = useRef<HTMLDivElement>(null)
+  const progressDotRef = useRef<HTMLDivElement>(null)
+  const progressLabelRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     // ── Split-line flash: appears at center, slides to 40%, fades out ─────────
@@ -389,6 +392,15 @@ export default function Home() {
         }
       }
 
+      // ── Progress bar ─────────────────────────────────────────────────────
+      const pct = scrollY / maxScroll
+      if (progressFillRef.current) progressFillRef.current.style.height = `${pct * 100}vh`
+      if (progressDotRef.current) progressDotRef.current.style.top = `${pct * 100}vh`
+      if (progressLabelRef.current) {
+        const section = Math.min(6, Math.floor(pct * 7) + 1)
+        progressLabelRef.current.textContent = String(section).padStart(2, '0')
+      }
+
       // ── Sync left panel translateY with main scroll ───────────────────────
       // Split zone spans 100vh → 500vh; left panel has 4 sections × 100vh = 400vh content
       const splitStart = vh
@@ -420,8 +432,64 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── Split-line flash (animated in Step 4) ── */}
+      {/* ── Split-line flash ── */}
       <div id="split-line" ref={splitLineRef} />
+
+      {/* ── Scroll progress bar (far left edge) ── */}
+      <div style={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        width: '2px',
+        height: '100vh',
+        background: 'rgba(255,255,255,0.05)',
+        zIndex: 100,
+        pointerEvents: 'none',
+      }}>
+        {/* Gradient fill */}
+        <div
+          ref={progressFillRef}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '0vh',
+            background: 'linear-gradient(to bottom, #00f0c8, #6c63ff)',
+          }}
+        />
+        {/* Moving dot + section label */}
+        <div
+          ref={progressDotRef}
+          style={{
+            position: 'absolute',
+            top: '0vh',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <div style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: '#00f0c8',
+            boxShadow: '0 0 8px rgba(0,240,200,0.9)',
+            flexShrink: 0,
+          }} />
+          <span
+            ref={progressLabelRef}
+            style={{
+              fontFamily: 'Space Grotesk, monospace',
+              fontSize: '0.55rem',
+              letterSpacing: '0.1em',
+              color: 'rgba(0,240,200,0.7)',
+            }}
+          >01</span>
+        </div>
+      </div>
 
       {/* ── Scroll container: provides page height + positions hero/CTA overlays ── */}
       <div style={{ height: '700vh', position: 'relative' }}>
