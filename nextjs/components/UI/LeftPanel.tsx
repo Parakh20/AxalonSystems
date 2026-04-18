@@ -823,16 +823,14 @@ function CTASection() {
   )
 }
 
-// ─── ROOT EXPORT ─────────────────────────────────────────────────────────────
+// ─── ROOT EXPORT — sections 2-5 only (hero + CTA are full-width zones) ───────
 export default function LeftPanel() {
   return (
-    <div>
-      <HeroSection />
+    <div id="left-panel-inner">
       <ThermalSection />
       <DetectionSection />
       <FleetSection />
       <ReportSection />
-      <CTASection />
     </div>
   )
 }
