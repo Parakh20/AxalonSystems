@@ -338,6 +338,26 @@ export default function Home() {
   const leftInnerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    // ── Split-line flash: appears at center, slides to 40%, fades out ─────────
+    const fireSplitLine = () => {
+      const line = splitLineRef.current
+      if (!line) return
+      // Phase 1: snap to center, appear instantly
+      line.style.transition = 'none'
+      line.style.left = '50%'
+      line.style.opacity = '1'
+      // Phase 2: slide to split point (requestAnimationFrame lets the snap settle first)
+      requestAnimationFrame(() => {
+        line.style.transition = 'left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+        line.style.left = '40%'
+      })
+      // Phase 3: fade out after slide completes
+      setTimeout(() => {
+        line.style.transition = 'opacity 0.3s ease'
+        line.style.opacity = '0'
+      }, 600)
+    }
+
     const update = () => {
       const scrollY = window.scrollY
       const vh = window.innerHeight
@@ -350,16 +370,21 @@ export default function Home() {
 
       // ── Layout state machine ──────────────────────────────────────────────
       if (wrapper) {
+        const wasHero = !wrapper.classList.contains('split-active') && !wrapper.classList.contains('cta-active')
+
         if (scrollY > vh * 5.2) {
           // CTA zone
           wrapper.classList.add('cta-active')
           wrapper.classList.remove('split-active')
         } else if (scrollY > vh * 0.8) {
-          // Split zone
+          // Split zone — fire line animation only on first entry from hero
+          if (wasHero) fireSplitLine()
           wrapper.classList.add('split-active')
           wrapper.classList.remove('cta-active')
         } else {
-          // Hero zone
+          // Hero zone — reset line
+          const line = splitLineRef.current
+          if (line) { line.style.opacity = '0'; line.style.left = '50%' }
           wrapper.classList.remove('split-active', 'cta-active')
         }
       }
