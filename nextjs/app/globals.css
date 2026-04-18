@@ -137,6 +137,15 @@ body {
   will-change: transform;
 }
 
+/* Smooth transitions on both panels */
+#left-panel {
+  transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+#right-panel {
+  transition: width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
 /* Split-active: left panel slides in, canvas narrows to 60% */
 #main-wrapper.split-active #left-panel {
   transform: translateX(0);

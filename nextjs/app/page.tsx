@@ -342,13 +342,30 @@ export default function Home() {
       const scrollY = window.scrollY
       const vh = window.innerHeight
       const maxScroll = Math.max(1, document.documentElement.scrollHeight - vh)
+      const wrapper = wrapperRef.current
 
       // Wire scrollStore for 3D scene
       scrollStore.progress = scrollY / maxScroll
       scrollStore.raw = scrollY
 
-      // Sync left panel — translateY to reveal sections as user scrolls through split zone
-      // Split zone: 1vh → 5vh (100vh → 500vh)
+      // ── Layout state machine ──────────────────────────────────────────────
+      if (wrapper) {
+        if (scrollY > vh * 5.2) {
+          // CTA zone
+          wrapper.classList.add('cta-active')
+          wrapper.classList.remove('split-active')
+        } else if (scrollY > vh * 0.8) {
+          // Split zone
+          wrapper.classList.add('split-active')
+          wrapper.classList.remove('cta-active')
+        } else {
+          // Hero zone
+          wrapper.classList.remove('split-active', 'cta-active')
+        }
+      }
+
+      // ── Sync left panel translateY with main scroll ───────────────────────
+      // Split zone spans 100vh → 500vh; left panel has 4 sections × 100vh = 400vh content
       const splitStart = vh
       const splitEnd = vh * 5
       if (leftInnerRef.current) {
