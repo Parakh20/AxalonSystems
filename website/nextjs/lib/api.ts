@@ -76,6 +76,6 @@ export const api = {
     request<SettingsBlob>('/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(blob),
+      body: JSON.stringify({ settings: blob }),
     }),
 }
