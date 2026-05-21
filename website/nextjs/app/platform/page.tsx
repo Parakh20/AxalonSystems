@@ -24,6 +24,7 @@ import {
 import dynamic from 'next/dynamic'
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ToastProvider, useToast } from '@/components/Platform/Toast'
+import { api, ApiError, API_BASE } from '@/lib/api'
 import {
   useMapData,
   type Anomaly as MapAnomaly,
@@ -144,8 +145,6 @@ type ParkSummary = {
 
 type SettingsBlob = Record<string, Record<string, unknown>>
 
-const API_BASE = process.env.NEXT_PUBLIC_AXALON_API_URL || 'http://localhost:8000'
-
 const demoJobs: BatchJob[] = [
   {
     id: 'batch-8f24c91a',
@@ -184,6 +183,7 @@ export default function PlatformPage() {
 function PlatformPageBody() {
   const toast = useToast()
   const fileInput = useRef<HTMLInputElement>(null)
+  const offlineToastedRef = useRef(false)
   const [jobs, setJobs] = useState<BatchJob[]>(demoJobs)
   const [activeJobId, setActiveJobId] = useState(demoJobs[0].id)
   const [parkId, setParkId] = useState('MH_SOLAR_07')
@@ -273,17 +273,24 @@ function PlatformPageBody() {
 
   useEffect(() => {
     let cancelled = false
-    fetch(`${API_BASE}/health`)
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('API offline'))))
-      .then((data: Health) => {
+    ;(async () => {
+      try {
+        const data = await api.health()
         if (!cancelled) {
-          setHealth(data)
-          setMessage(`API online: ${data.model}`)
+          setHealth(data as Health)
+          setMessage(`API online: ${(data as Health).model}`)
+          offlineToastedRef.current = false
         }
-      })
-      .catch(() => {
-        if (!cancelled) setMessage(`API offline at ${API_BASE}`)
-      })
+      } catch (err) {
+        if (!cancelled) {
+          if (!offlineToastedRef.current) {
+            toast.error(err instanceof ApiError ? err.message : `API offline at ${API_BASE}`)
+            offlineToastedRef.current = true
+          }
+          setMessage(`API offline at ${API_BASE}`)
+        }
+      }
+    })()
     return () => {
       cancelled = true
     }
@@ -301,10 +308,11 @@ function PlatformPageBody() {
       const updates = await Promise.all(
         liveJobs.map(async (job) => {
           try {
-            const res = await fetch(`${API_BASE}/status/${job.id}`)
-            if (!res.ok) return null
-            return { id: job.id, data: await res.json() }
-          } catch {
+            const data = await api.status(job.id)
+            return { id: job.id, data }
+          } catch (err) {
+            // Suppress per-poll toasts to avoid spamming; errors are transient network blips
+            console.warn('status poll failed for', job.id, err)
             return null
           }
         }),
@@ -316,11 +324,11 @@ function PlatformPageBody() {
           if (!update) return job
           return {
             ...job,
-            status: update.data.status,
+            status: (update.data.state ?? update.data.status) as JobStatus,
             progress: Number(update.data.progress || 0),
             processed: Number(update.data.processed || 0),
             total: Number(update.data.total || job.total),
-            error: update.data.error,
+            error: update.data.message,
           }
         }),
       )
@@ -332,14 +340,21 @@ function PlatformPageBody() {
   useEffect(() => {
     let cancelled = false
     setActiveOrtho(null)
-    fetch(`${API_BASE}/park/${encodeURIComponent(activeJob.parkId)}/orthos`)
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('No orthos endpoint'))))
-      .then((data: { orthos: OrthoMeta[] }) => {
-        if (!cancelled) setOrthos(data.orthos || [])
-      })
-      .catch(() => {
-        if (!cancelled) setOrthos([])
-      })
+    ;(async () => {
+      try {
+        const data = await api.orthos(activeJob.parkId)
+        if (!cancelled) {
+          const raw = data as unknown as { orthos?: OrthoMeta[] } | OrthoMeta[]
+          const list = Array.isArray(raw) ? raw : ((raw as { orthos?: OrthoMeta[] }).orthos ?? [])
+          setOrthos(list)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err instanceof ApiError ? err.message : String(err))
+          setOrthos([])
+        }
+      }
+    })()
     return () => {
       cancelled = true
     }
@@ -356,20 +371,18 @@ function PlatformPageBody() {
     const form = new FormData()
     form.append('file', file)
     try {
-      const res = await fetch(
-        `${API_BASE}/park/${encodeURIComponent(activeJob.parkId)}/ortho`,
-        { method: 'POST', body: form },
-      )
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Upload failed')
+      const data = await api.uploadOrtho(activeJob.parkId, form)
+      const ortho = data as unknown as OrthoMeta
       setOrthos((current) => {
-        const next = current.filter((o) => o.name !== data.name)
-        return [...next, data as OrthoMeta]
+        const next = current.filter((o) => o.name !== ortho.name)
+        return [...next, ortho]
       })
-      setActiveOrtho(data as OrthoMeta)
-      setMessage(`Ortho ${data.name} ready · ${data.crs}`)
+      setActiveOrtho(ortho)
+      setMessage(`Ortho ${ortho.name} ready · ${(ortho as Record<string, unknown>).crs}`)
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Ortho upload failed')
+      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Ortho upload failed')
+      setMessage(msg)
+      toast.error(msg)
     } finally {
       setOrthoUploading(false)
     }
@@ -410,15 +423,13 @@ function PlatformPageBody() {
     form.append('altitude_m', String(altitude))
 
     try {
-      const res = await fetch(`${API_BASE}/batch`, { method: 'POST', body: form })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Batch submission failed')
+      const data = await api.batch(form)
 
       const job: BatchJob = {
         id: data.job_id,
         parkId,
         fileName: selectedFile.name,
-        status: data.status,
+        status: 'queued',
         progress: 0,
         processed: 0,
         total: 0,
@@ -431,15 +442,17 @@ function PlatformPageBody() {
       setActiveJobId(job.id)
       setSelectedFile(null)
       setMessage(`Queued ${data.job_id}`)
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not submit batch')
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Could not submit batch')
+      setMessage(msg)
+      toast.error(msg)
     } finally {
       setIsUploading(false)
     }
   }
 
   function reportHref(format: ReportFormat) {
-    return `${API_BASE}/report/${activeJob.id}?format=${format}`
+    return api.reportUrl(activeJob.id, format as 'json' | 'excel' | 'geojson' | 'pdf')
   }
 
   // ── Inspect (single image) ──
@@ -453,12 +466,12 @@ function PlatformPageBody() {
     form.append('park_id', 'unknown')
     form.append('altitude_m', String(altitude))
     try {
-      const res = await fetch(`${API_BASE}/inspect`, { method: 'POST', body: form })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Inspect failed')
+      const data = await api.inspect(form)
       setInspectResult(data as InspectResult)
     } catch (err) {
-      setInspectError(err instanceof Error ? err.message : 'Inspect failed')
+      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Inspect failed')
+      setInspectError(msg)
+      toast.error(msg)
     } finally {
       setInspectBusy(false)
     }
@@ -467,38 +480,54 @@ function PlatformPageBody() {
   // ── History: load parks + selected park summary ──
   useEffect(() => {
     if (tab !== 'history') return
-    fetch(`${API_BASE}/parks`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('parks fetch failed'))))
-      .then((d: { parks: Array<{ id: string; name?: string }> }) => {
-        setParkList(d.parks || [])
-        if (!historyParkId && d.parks && d.parks[0]) setHistoryParkId(d.parks[0].id)
-      })
-      .catch(() => setParkList([]))
+    ;(async () => {
+      try {
+        const d = await api.parks()
+        const parks = (d as unknown as { parks: Array<{ id: string; name?: string }> }).parks || (d as Array<{ id: string; name?: string }>) || []
+        setParkList(parks)
+        if (!historyParkId && parks[0]) setHistoryParkId(parks[0].id)
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : String(err))
+        setParkList([])
+      }
+    })()
   }, [tab, historyParkId])
 
   useEffect(() => {
     if (tab !== 'history' || !historyParkId) return
     setHistoryLoading(true)
-    fetch(`${API_BASE}/park/${encodeURIComponent(historyParkId)}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('park fetch failed'))))
-      .then((d: ParkSummary) => setParkSummary(d))
-      .catch(() => setParkSummary(null))
-      .finally(() => setHistoryLoading(false))
+    ;(async () => {
+      try {
+        const d = await api.park(historyParkId)
+        setParkSummary(d as ParkSummary)
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : String(err))
+        setParkSummary(null)
+      } finally {
+        setHistoryLoading(false)
+      }
+    })()
   }, [tab, historyParkId])
 
   // ── Settings: load on first visit ──
   useEffect(() => {
     if (tab !== 'settings' || settings) return
     setSettingsBusy(true)
-    fetch(`${API_BASE}/settings`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('settings fetch failed'))))
-      .then((d: { settings: SettingsBlob }) => {
-        setSettings(d.settings)
+    ;(async () => {
+      try {
+        const d = await api.getSettings()
+        const blob = (d as unknown as { settings: SettingsBlob }).settings || (d as SettingsBlob)
+        setSettings(blob)
         setSettingsDirty(false)
         setSettingsMsg('Loaded from settings.yaml')
-      })
-      .catch((e) => setSettingsMsg(e instanceof Error ? e.message : 'Settings unavailable'))
-      .finally(() => setSettingsBusy(false))
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Settings unavailable')
+        setSettingsMsg(msg)
+        toast.error(msg)
+      } finally {
+        setSettingsBusy(false)
+      }
+    })()
   }, [tab, settings])
 
   function updateSetting(group: string, key: string, value: unknown) {
@@ -513,17 +542,13 @@ function PlatformPageBody() {
     if (!settings) return
     setSettingsBusy(true)
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ settings }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Save failed')
+      await api.putSettings(settings as import('@/lib/api').SettingsBlob)
       setSettingsDirty(false)
       setSettingsMsg('Saved · platform restart may be required for some fields')
     } catch (err) {
-      setSettingsMsg(err instanceof Error ? err.message : 'Save failed')
+      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Save failed')
+      setSettingsMsg(msg)
+      toast.error(msg)
     } finally {
       setSettingsBusy(false)
     }
