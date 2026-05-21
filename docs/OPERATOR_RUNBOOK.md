@@ -11,7 +11,7 @@ The 10-minute walk through a real local inspection from zero.
 ## 1. Generate the sample mission
 
 ```bash
-python scripts/make_sample_mission.py
+python3 scripts/make_sample_mission.py
 cd tests/fixtures && zip -rq sample_mission.zip sample_mission/ && cd -
 ```
 
