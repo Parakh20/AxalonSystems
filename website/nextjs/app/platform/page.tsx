@@ -161,18 +161,6 @@ const demoJobs: BatchJob[] = [
     createdAt: '09:42',
     detections: { critical: 7, high: 18, medium: 42, low: 31 },
   },
-  {
-    id: 'batch-47cd20e2',
-    parkId: 'RJ_BLOCK_C',
-    fileName: 'rj_block_c_thermal_rgb.zip',
-    status: 'completed',
-    progress: 1,
-    processed: 1180,
-    total: 1180,
-    altitude: 38,
-    createdAt: '08:18',
-    detections: { critical: 2, high: 11, medium: 29, low: 16 },
-  },
 ]
 
 export default function PlatformPage() {
