@@ -122,7 +122,10 @@ type InspectResult = {
   job_id: string
   status: string
   total_detections: number
-  summary?: Record<string, number>
+  summary?: {
+    by_severity?: Record<string, number>
+    [k: string]: unknown
+  }
   detections: InspectDetection[]
 }
 
@@ -1936,12 +1939,22 @@ function PlatformPageBody() {
                 />
                 <Chip
                   label="Critical"
-                  value={String(inspectResult?.summary?.CRITICAL ?? inspectResult?.summary?.critical ?? 0)}
+                  value={String(
+                    inspectResult?.summary?.by_severity?.CRITICAL ??
+                    inspectResult?.summary?.CRITICAL ??
+                    inspectResult?.summary?.critical ??
+                    0
+                  )}
                   tone="crit"
                 />
                 <Chip
                   label="High"
-                  value={String(inspectResult?.summary?.HIGH ?? inspectResult?.summary?.high ?? 0)}
+                  value={String(
+                    inspectResult?.summary?.by_severity?.HIGH ??
+                    inspectResult?.summary?.HIGH ??
+                    inspectResult?.summary?.high ??
+                    0
+                  )}
                   tone="muted"
                 />
               </div>
