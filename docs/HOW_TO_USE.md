@@ -1,65 +1,93 @@
 # How to Use Axalon Solar Inspection Platform
 
-## Option 1: Streamlit Dashboard (recommended for operators)
+Axalon has three operator entry points:
+
+- `./run.sh platform` — Next.js platform UI on :3000
+- `./run.sh api` — FastAPI server on :8000
+- `./run.sh all` — API + platform UI together
+- `python main.py ...` — CLI workflows
+- `./run.sh doctor` — quick environment check
+- `./run.sh setup` — install local dependencies
+
+`run.sh` is the easiest local workflow because it checks dependencies, avoids the local `platform/` naming trap, and writes logs to `logs/`.
+
+## Option 1: Platform UI (recommended)
 
 ```bash
-streamlit run platform/ui/dashboard.py
+./run.sh doctor
+./run.sh all
 ```
 
-Open http://localhost:8501 in your browser.
+Open `http://localhost:3000/platform`.
 
-**Daily workflow:**
-1. Go to **📦 Batch** page
-2. Enter Park ID and full path to your flight folder
-3. Enter drone altitude
-4. Click **Start Batch Inspection**
-5. Watch live progress — park grid updates as each image is processed
-6. Download PDF, Excel, or GeoJSON reports when done
+Daily operator flow:
+
+1. Enter a park ID and a local flight folder path
+2. Review the mission preflight summary
+3. Run the batch inspection
+4. Inspect the park map and download JSON, Excel, GeoJSON, and PDF reports
+
+Notes:
+
+- The UI calls the FastAPI backend on `:8000` for inference.
+- PDF download depends on WeasyPrint system libraries from `docs/INSTALLATION.md`.
 
 ## Option 2: CLI
 
 ```bash
-# Inspect entire park folder
+# Inspect one thermal + RGB pair
+python main.py inspect \
+  --thermal /path/to/thermal_001.jpg \
+  --rgb /path/to/rgb_001.jpg \
+  --park-id PARK_01 \
+  --altitude 45
+
+# Inspect an entire mission folder
 python main.py batch \
   --folder /path/to/flight_mission/ \
   --park-id PARK_01 \
   --altitude 45
 
-# Inspect single image pair (debug)
-python main.py inspect \
-  --thermal /path/to/thermal_001.jpg \
-  --rgb /path/to/rgb_001.jpg \
-  --park-id PARK_01
-
-# Start REST API server
-python main.py api
-
-# Launch Streamlit dashboard
-python main.py dashboard
+# Start the REST API
+python main.py api --host 0.0.0.0 --port 8000
 ```
 
-## Option 3: REST API
+CLI batch writes reports to `output/{batch_id}/`.
+
+## Option 3: REST API directly
 
 ```bash
-# Start API
-uvicorn axalon.api.app:app --host 0.0.0.0 --port 8000
+./run.sh api
+```
 
-# Submit batch job
+Open API docs at `http://localhost:8000/docs`.
+
+Common API flow:
+
+1. `POST /batch` with a ZIP archive of a mission folder
+2. Poll `GET /status/{job_id}`
+3. Download `pdf`, `excel`, `json`, or `geojson` from `GET /report/{job_id}`
+
+Example:
+
+```bash
 curl -X POST http://localhost:8000/batch \
-  -F "folder_path=/path/to/flight_mission/" \
-  -F "park_id=PARK_01"
+  -F "images=@/absolute/path/to/mission.zip" \
+  -F "park_id=PARK_01" \
+  -F "altitude_m=45"
 
-# Check job status
-curl http://localhost:8000/status/BATCH-PARK_01-20260411-143022
+curl http://localhost:8000/status/batch-1234abcd
 
-# Download PDF report
-curl http://localhost:8000/report/BATCH-PARK_01-20260411-143022?format=pdf -o report.pdf
+curl "http://localhost:8000/report/batch-1234abcd?format=pdf" -o inspection_report.pdf
 ```
 
 ## Output Files
 
-All outputs go to `output/{batch_id}/`:
-- `inspection_report.pdf` — executive report for clients
-- `inspection_report.xlsx` — 4-sheet workbook (Summary/Detections/Priority/GPS)
-- `park_anomaly_map.geojson` — GPS-tagged anomalies for QGIS / Google Earth
-- `annotated/` — annotated thermal and RGB images
+Batch jobs write to `output/{batch_id}/`:
+
+- `inspection_report.json`
+- `inspection_report.xlsx`
+- `park_anomaly_map.geojson`
+- `inspection_report.pdf` if PDF dependencies are installed
+
+Single-image CLI runs write to `output/{job_id}/` and include JSON plus annotated imagery.

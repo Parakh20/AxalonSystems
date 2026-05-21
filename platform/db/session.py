@@ -22,6 +22,11 @@ def init_db(db_url: str = "sqlite:///axalon.db") -> None:
         conn.execute("PRAGMA foreign_keys=ON")
 
     Base.metadata.create_all(_engine)
+
+    # Apply local-dev migrations for columns added to existing tables.
+    from axalon.db.migrate import run_migrations
+    run_migrations(_engine)
+
     _SessionLocal = sessionmaker(bind=_engine)
 
 

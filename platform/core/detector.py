@@ -19,6 +19,9 @@ from ml.src.utils import (
     CANONICAL_CLASSES,
     SEVERITY_MAP,
     SEVERITY_COLOR_BGR,
+    IEC_COA_MAP,
+    IEC_COA_ACTION,
+    IEC_ABNORMALITY_TYPE,
     yolo_to_pixel,
     get_logger,
 )
@@ -114,6 +117,9 @@ class SolarDetector:
                 class_name = CANONICAL_CLASSES[class_id] if class_id < len(CANONICAL_CLASSES) else "unknown"
                 severity = SEVERITY_MAP.get(class_name, "LOW")
                 color_bgr = SEVERITY_COLOR_BGR.get(severity, (128, 128, 128))
+                iec_coa = IEC_COA_MAP.get(class_name, 2)
+                iec_action = IEC_COA_ACTION.get(iec_coa, "")
+                abnormality_type = IEC_ABNORMALITY_TYPE.get(class_name, "extended")
 
                 detections.append({
                     "class": class_name,
@@ -123,6 +129,14 @@ class SolarDetector:
                     "bbox_norm": [cx, cy, bw, bh],
                     "severity": severity,
                     "color_bgr": color_bgr,
+                    # IEC TS 62446-3:2017 fields
+                    "iec_coa": iec_coa,
+                    "iec_action": iec_action,
+                    "abnormality_type": abnormality_type,
+                    # Temperature fields populated downstream if delta_t is measured
+                    "delta_t_measured": None,
+                    "delta_t_normalized": None,
+                    "irradiance_wm2": None,
                 })
 
         logger.info("Detections: %d in %s", len(detections), thermal_image_path.name)
@@ -139,11 +153,15 @@ class SolarDetector:
         """
         return [self.predict(p) for p in image_paths]
 
-    def detection_summary(self, detections: list[dict]) -> dict[str, int]:
-        """Count detections by severity level."""
-        summary = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    def detection_summary(self, detections: list[dict]) -> dict:
+        """Count detections by severity level and IEC CoA."""
+        severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        coa_counts = {1: 0, 2: 0, 3: 0}
         for det in detections:
             sev = det.get("severity", "LOW")
-            if sev in summary:
-                summary[sev] += 1
-        return summary
+            if sev in severity_counts:
+                severity_counts[sev] += 1
+            coa = det.get("iec_coa", 2)
+            if coa in coa_counts:
+                coa_counts[coa] += 1
+        return {"by_severity": severity_counts, "by_iec_coa": coa_counts}

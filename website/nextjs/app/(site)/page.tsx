@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { scrollStore } from '@/scrollStore'
 import DynamicMainScene from '@/components/DynamicMainScene'
 import LeftPanel from '@/components/UI/LeftPanel'
@@ -28,46 +28,48 @@ const inputStyle: React.CSSProperties = {
 }
 
 // ─── Hero content (full-width, overlay on canvas) ────────────────────────────
-function HeroContent() {
+function HeroContent({ isMobile = false }: { isMobile?: boolean }) {
   return (
     <section
       id="hero"
       className="layout-hero"
       style={{
-        height: '100vh',
+        minHeight: isMobile ? '100svh' : '100vh',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         textAlign: 'center',
-        padding: '0 4rem',
+        padding: isMobile ? '7rem 1.25rem 3rem' : '0 4rem',
       }}
     >
       <p style={{
         fontFamily: 'Space Grotesk, sans-serif',
-        fontSize: '0.65rem',
+        fontSize: isMobile ? '0.58rem' : '0.65rem',
         fontWeight: 500,
-        letterSpacing: '0.28em',
+        letterSpacing: isMobile ? '0.18em' : '0.28em',
         textTransform: 'uppercase',
         color: C.teal,
-        marginBottom: '1.6rem',
+        marginBottom: isMobile ? '1.2rem' : '1.6rem',
         display: 'flex',
         alignItems: 'center',
         gap: '0.5rem',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
       }}>
-        <span style={{ width: '22px', height: '1px', background: C.teal }} />
+        <span style={{ width: isMobile ? '16px' : '22px', height: '1px', background: C.teal }} />
         01 — Autonomous Inspection Platform
-        <span style={{ width: '22px', height: '1px', background: C.teal }} />
+        <span style={{ width: isMobile ? '16px' : '22px', height: '1px', background: C.teal }} />
       </p>
 
       <h1 style={{
         fontFamily: 'Syne, sans-serif',
         fontWeight: 800,
-        fontSize: 'clamp(2.8rem, 5.5vw, 5rem)',
-        lineHeight: 0.95,
+        fontSize: isMobile ? 'clamp(2.35rem, 11vw, 3.2rem)' : 'clamp(2.8rem, 5.5vw, 5rem)',
+        lineHeight: isMobile ? 1 : 0.95,
         color: C.text,
         letterSpacing: '-0.03em',
-        marginBottom: '1.5rem',
+        marginBottom: isMobile ? '1.1rem' : '1.5rem',
         maxWidth: '900px',
       }}>
         Autonomous inspection<br />
@@ -84,19 +86,26 @@ function HeroContent() {
 
       <p style={{
         fontFamily: 'Space Grotesk, sans-serif',
-        fontSize: '1rem',
+        fontSize: isMobile ? '0.92rem' : '1rem',
         color: C.muted,
-        lineHeight: 1.75,
-        marginBottom: '2.5rem',
-        maxWidth: '480px',
+        lineHeight: isMobile ? 1.65 : 1.75,
+        marginBottom: isMobile ? '1.8rem' : '2.5rem',
+        maxWidth: isMobile ? '32rem' : '480px',
       }}>
         AI-enabled drone systems for precise solar asset inspection.
         Thermal + RGB fusion · 11-class fault detection · Real-time reports.
       </p>
 
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '3rem' }}>
+      <div style={{
+        display: 'flex',
+        gap: '1rem',
+        marginBottom: isMobile ? '2rem' : '3rem',
+        flexDirection: isMobile ? 'column' : 'row',
+        width: isMobile ? '100%' : 'auto',
+        maxWidth: isMobile ? '24rem' : 'none',
+      }}>
         <button style={{
-          padding: '0.8rem 2rem',
+          padding: isMobile ? '0.95rem 1.4rem' : '0.8rem 2rem',
           background: `linear-gradient(135deg, ${C.teal} 0%, ${C.purple} 100%)`,
           border: 'none',
           borderRadius: '4px',
@@ -107,11 +116,12 @@ function HeroContent() {
           letterSpacing: '0.06em',
           cursor: 'pointer',
           boxShadow: '0 0 24px rgba(0,240,200,0.28)',
+          width: isMobile ? '100%' : 'auto',
         }}>
           See Technology →
         </button>
         <button style={{
-          padding: '0.8rem 2rem',
+          padding: isMobile ? '0.95rem 1.4rem' : '0.8rem 2rem',
           background: 'transparent',
           border: `1px solid rgba(0,240,200,0.3)`,
           borderRadius: '4px',
@@ -121,22 +131,35 @@ function HeroContent() {
           fontSize: '0.85rem',
           letterSpacing: '0.06em',
           cursor: 'pointer',
+          width: isMobile ? '100%' : 'auto',
         }}>
           Request Demo
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: '3rem' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))',
+        gap: isMobile ? '1rem' : '3rem',
+        width: isMobile ? '100%' : 'auto',
+        maxWidth: isMobile ? '26rem' : 'none',
+      }}>
         {[
           { v: '99.7%', l: 'ACCURACY' },
           { v: '10x', l: 'FASTER' },
           { v: '50MW+', l: 'INSPECTED' },
         ].map(({ v, l }) => (
-          <div key={l} style={{ textAlign: 'center' }}>
+          <div
+            key={l}
+            style={{
+              textAlign: 'center',
+              gridColumn: isMobile && l === 'INSPECTED' ? '1 / -1' : 'auto',
+            }}
+          >
             <p style={{
               fontFamily: 'Syne, sans-serif',
               fontWeight: 800,
-              fontSize: '1.6rem',
+              fontSize: isMobile ? '1.35rem' : '1.6rem',
               background: `linear-gradient(135deg, ${C.teal}, ${C.purple})`,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -146,8 +169,8 @@ function HeroContent() {
             }}>{v}</p>
             <p style={{
               fontFamily: 'Space Grotesk, sans-serif',
-              fontSize: '0.58rem',
-              letterSpacing: '0.18em',
+              fontSize: isMobile ? '0.52rem' : '0.58rem',
+              letterSpacing: isMobile ? '0.14em' : '0.18em',
               color: C.muted,
             }}>{l}</p>
           </div>
@@ -157,17 +180,24 @@ function HeroContent() {
       {/* Telemetry badge */}
       <div style={{
         position: 'absolute',
-        bottom: '2.5rem',
+        bottom: isMobile ? '1.25rem' : '2.5rem',
         display: 'flex',
         alignItems: 'center',
         gap: '0.4rem',
         background: 'rgba(0,240,200,0.06)',
         border: '1px solid rgba(0,240,200,0.15)',
         borderRadius: '100px',
-        padding: '0.4rem 1rem',
+        padding: isMobile ? '0.35rem 0.8rem' : '0.4rem 1rem',
+        maxWidth: 'calc(100vw - 2rem)',
       }}>
         <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: C.teal, boxShadow: '0 0 6px rgba(0,240,200,0.8)' }} />
-        <span style={{ fontFamily: 'Space Grotesk, monospace', fontSize: '0.6rem', color: C.teal, letterSpacing: '0.1em' }}>
+        <span style={{
+          fontFamily: 'Space Grotesk, monospace',
+          fontSize: isMobile ? '0.52rem' : '0.6rem',
+          color: C.teal,
+          letterSpacing: isMobile ? '0.06em' : '0.1em',
+          whiteSpace: 'nowrap',
+        }}>
           ALT 35M · 9.4M/S · 18°55′N 72°49′E
         </span>
       </div>
@@ -176,27 +206,28 @@ function HeroContent() {
 }
 
 // ─── CTA content (full-width, overlay on canvas) ─────────────────────────────
-function CTAContent() {
+function CTAContent({ isMobile = false }: { isMobile?: boolean }) {
   return (
     <section
       id="cta-section"
       className="layout-cta"
       style={{
-        height: '100vh',
+        minHeight: isMobile ? 'auto' : '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '5rem',
-        padding: '0 6rem',
+        gap: isMobile ? '2rem' : '5rem',
+        padding: isMobile ? '4rem 1.25rem 5rem' : '0 6rem',
+        flexDirection: isMobile ? 'column' : 'row',
       }}
     >
       {/* Left: headline */}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, width: '100%', maxWidth: isMobile ? '34rem' : 'none' }}>
         <p style={{
           fontFamily: 'Space Grotesk, sans-serif',
-          fontSize: '0.65rem',
+          fontSize: isMobile ? '0.58rem' : '0.65rem',
           fontWeight: 500,
-          letterSpacing: '0.28em',
+          letterSpacing: isMobile ? '0.18em' : '0.28em',
           textTransform: 'uppercase',
           color: C.teal,
           marginBottom: '1.4rem',
@@ -211,8 +242,8 @@ function CTAContent() {
         <h2 style={{
           fontFamily: 'Syne, sans-serif',
           fontWeight: 800,
-          fontSize: 'clamp(2.5rem, 4vw, 4rem)',
-          lineHeight: 1,
+          fontSize: isMobile ? 'clamp(2rem, 10vw, 2.8rem)' : 'clamp(2.5rem, 4vw, 4rem)',
+          lineHeight: isMobile ? 1.05 : 1,
           color: C.text,
           letterSpacing: '-0.03em',
           marginBottom: '1.2rem',
@@ -228,9 +259,9 @@ function CTAContent() {
 
         <p style={{
           fontFamily: 'Space Grotesk, sans-serif',
-          fontSize: '0.95rem',
+          fontSize: isMobile ? '0.9rem' : '0.95rem',
           color: C.muted,
-          lineHeight: 1.75,
+          lineHeight: isMobile ? 1.65 : 1.75,
           maxWidth: '340px',
           marginBottom: '2rem',
         }}>
@@ -238,17 +269,21 @@ function CTAContent() {
           Full fault report within 48 hours of the flight.
         </p>
 
-        <div style={{ display: 'flex', gap: '2.5rem' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))',
+          gap: isMobile ? '1rem' : '2.5rem',
+        }}>
           {[
             { v: '99.7%', l: 'Detection accuracy' },
             { v: '10x', l: 'Faster than manual' },
             { v: '50MW+', l: 'Sites inspected' },
           ].map(({ v, l }) => (
-            <div key={l}>
+            <div key={l} style={{ gridColumn: isMobile && l === 'Sites inspected' ? '1 / -1' : 'auto' }}>
               <p style={{
                 fontFamily: 'Syne, sans-serif',
                 fontWeight: 800,
-                fontSize: '1.5rem',
+                fontSize: isMobile ? '1.3rem' : '1.5rem',
                 background: `linear-gradient(135deg, ${C.teal}, ${C.purple})`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
@@ -269,13 +304,14 @@ function CTAContent() {
 
       {/* Right: form card */}
       <div style={{
-        width: '420px',
+        width: isMobile ? '100%' : '420px',
+        maxWidth: isMobile ? '34rem' : '420px',
         flexShrink: 0,
         background: 'rgba(13,13,20,0.85)',
         backdropFilter: 'blur(20px)',
         border: '1px solid rgba(0,240,200,0.1)',
         borderRadius: '8px',
-        padding: '2rem',
+        padding: isMobile ? '1.35rem' : '2rem',
       }}>
         <p style={{
           fontFamily: 'Space Grotesk, sans-serif',
@@ -339,8 +375,22 @@ export default function Home() {
   const progressFillRef = useRef<HTMLDivElement>(null)
   const progressDotRef = useRef<HTMLDivElement>(null)
   const progressLabelRef = useRef<HTMLSpanElement>(null)
+  const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 900)
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    if (isMobile) {
+      const wrapper = wrapperRef.current
+      if (wrapper) wrapper.classList.remove('split-active', 'cta-active')
+      return
+    }
+
     // ── Split-line flash: appears at center, slides to 40%, fades out ─────────
     const fireSplitLine = () => {
       const line = splitLineRef.current
@@ -414,10 +464,14 @@ export default function Home() {
     window.addEventListener('scroll', update, { passive: true })
     update()
     return () => window.removeEventListener('scroll', update)
-  }, [])
+  }, [isMobile])
 
   return (
-    <div id="main-wrapper" ref={wrapperRef}>
+    <div
+      id="main-wrapper"
+      ref={wrapperRef}
+      className={isMobile ? 'mobile-layout' : undefined}
+    >
 
       {/* ── Fixed canvas panel (right) ── */}
       <div id="right-panel">
@@ -425,83 +479,93 @@ export default function Home() {
       </div>
 
       {/* ── Fixed left content panel ── */}
-      <div id="left-panel">
-        {/* leftInnerRef enables scroll-driven translateY */}
-        <div ref={leftInnerRef}>
-          <LeftPanel />
+      {!isMobile && (
+        <div id="left-panel">
+          {/* leftInnerRef enables scroll-driven translateY */}
+          <div ref={leftInnerRef}>
+            <LeftPanel />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Split-line flash ── */}
-      <div id="split-line" ref={splitLineRef} />
+      {!isMobile && <div id="split-line" ref={splitLineRef} />}
 
       {/* ── Scroll progress bar (far left edge) ── */}
-      <div style={{
-        position: 'fixed',
-        left: 0,
-        top: 0,
-        width: '2px',
-        height: '100vh',
-        background: 'rgba(255,255,255,0.05)',
-        zIndex: 100,
-        pointerEvents: 'none',
-      }}>
-        {/* Gradient fill */}
-        <div
-          ref={progressFillRef}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '0vh',
-            background: 'linear-gradient(to bottom, #00f0c8, #6c63ff)',
-          }}
-        />
-        {/* Moving dot + section label */}
-        <div
-          ref={progressDotRef}
-          style={{
-            position: 'absolute',
-            top: '0vh',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          <div style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            background: '#00f0c8',
-            boxShadow: '0 0 8px rgba(0,240,200,0.9)',
-            flexShrink: 0,
-          }} />
-          <span
-            ref={progressLabelRef}
+      {!isMobile && (
+        <div style={{
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          width: '2px',
+          height: '100vh',
+          background: 'rgba(255,255,255,0.05)',
+          zIndex: 100,
+          pointerEvents: 'none',
+        }}>
+          {/* Gradient fill */}
+          <div
+            ref={progressFillRef}
             style={{
-              fontFamily: 'Space Grotesk, monospace',
-              fontSize: '0.55rem',
-              letterSpacing: '0.1em',
-              color: 'rgba(0,240,200,0.7)',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '0vh',
+              background: 'linear-gradient(to bottom, #00f0c8, #6c63ff)',
             }}
-          >01</span>
+          />
+          {/* Moving dot + section label */}
+          <div
+            ref={progressDotRef}
+            style={{
+              position: 'absolute',
+              top: '0vh',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: '#00f0c8',
+              boxShadow: '0 0 8px rgba(0,240,200,0.9)',
+              flexShrink: 0,
+            }} />
+            <span
+              ref={progressLabelRef}
+              style={{
+                fontFamily: 'Space Grotesk, monospace',
+                fontSize: '0.55rem',
+                letterSpacing: '0.1em',
+                color: 'rgba(0,240,200,0.7)',
+              }}
+            >01</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Scroll container: provides page height + positions hero/CTA overlays ── */}
-      <div style={{ height: '700vh', position: 'relative' }}>
+      <div style={{ height: isMobile ? 'auto' : '700vh', position: 'relative' }}>
 
         {/* Zone 1 — Hero (0–100vh) */}
-        <HeroContent />
+        <HeroContent isMobile={isMobile} />
 
         {/* Zone 2 — Split middle (100vh–500vh): left panel slides in, canvas narrows */}
-        <div style={{ height: '400vh' }} />
+        {isMobile ? (
+          <div id="mobile-content-flow">
+            <LeftPanel />
+          </div>
+        ) : (
+          <div style={{ height: '400vh' }} />
+        )}
 
         {/* Zone 3 — CTA (600vh–700vh) */}
-        <CTAContent />
+        <CTAContent isMobile={isMobile} />
 
       </div>
     </div>

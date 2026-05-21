@@ -17,9 +17,6 @@ Usage examples:
 
     # Start the REST API server
     python main.py api
-
-    # Launch the Streamlit dashboard
-    python main.py dashboard
 """
 
 from __future__ import annotations
@@ -63,9 +60,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_api.add_argument("--port", type=int, default=8000)
     p_api.add_argument("--workers", type=int, default=1)
 
-    # dashboard
-    sub.add_parser("dashboard", help="Launch the Streamlit dashboard")
-
     return parser
 
 
@@ -103,7 +97,11 @@ def cmd_inspect(args):
 
 def cmd_batch(args):
     from axalon.pipeline.orchestrator import InspectionOrchestrator
-    from axalon.reporting.report import generate_json_report, generate_excel_report
+    from axalon.reporting.report import (
+        generate_excel_report,
+        generate_json_report,
+        generate_pdf_report,
+    )
     from axalon.reporting.geojson_writer import write_geojson
 
     print(f"Batch inspecting folder: {args.folder}")
@@ -134,6 +132,10 @@ def cmd_batch(args):
     generate_json_report(result, out_dir / "inspection_report.json")
     generate_excel_report(result, out_dir / "inspection_report.xlsx")
     write_geojson(result, out_dir / "park_anomaly_map.geojson")
+    try:
+        generate_pdf_report(result, out_dir / "inspection_report.pdf")
+    except Exception as exc:
+        print(f"PDF report skipped: {exc}")
 
     print(f"\nBatch complete. Reports saved to: {out_dir}")
     print(f"Total images: {result['total_images']}")
@@ -153,15 +155,6 @@ def cmd_api(args):
     )
 
 
-def cmd_dashboard(_args):
-    import subprocess
-    print("Launching Streamlit dashboard...")
-    subprocess.run([
-        sys.executable, "-m", "streamlit", "run",
-        str(Path(__file__).parent / "platform" / "ui" / "dashboard.py"),
-    ])
-
-
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -169,10 +162,9 @@ def main():
     args = parser.parse_args()
 
     commands = {
-        "inspect":   cmd_inspect,
-        "batch":     cmd_batch,
-        "api":       cmd_api,
-        "dashboard": cmd_dashboard,
+        "inspect": cmd_inspect,
+        "batch":   cmd_batch,
+        "api":     cmd_api,
     }
     commands[args.command](args)
 

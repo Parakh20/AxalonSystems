@@ -56,6 +56,97 @@ SEVERITY_COLOR_BGR: dict[str, tuple[int, int, int]] = {
     "LOW":      (255, 0,   0),     # blue
 }
 
+# ── IEC TS 62446-3:2017 — Classes of Abnormality (CoA) ──────────────────────
+# Table 4: CoA 1 = OK, CoA 2 = thermal abnormality, CoA 3 = safety-relevant
+IEC_COA_MAP: dict[str, int] = {
+    "hot-spot-high":       3,   # >40 K — safety-relevant (Annex C, Example 9b)
+    "bypass-diode":        3,   # Heated junction box / diode failure (Annex C, Example 10–12)
+    "string":              3,   # String open circuit — prompt action (Annex C, Example 1–3)
+    "cell-multi":          2,   # Multi-cell anomaly — check and rectify
+    "short-circuit":       2,   # Module short-circuit pattern (Annex C, Example 2)
+    "offline-module":      2,   # Module in open circuit (Annex C, Example 1–3)
+    "cell":                2,   # Single cell 10–40 K (Annex C, Example 7a)
+    "module":              2,   # Module-level extended anomaly
+    "hot-spot-low":        2,   # 10–40 K single cell (Annex C, Example 7a)
+    "soiling":             2,   # Shading/soiling — clean (Annex C, Example 8)
+    "vegetation-shading":  2,   # Vegetation shading
+}
+
+IEC_COA_LABEL: dict[int, str] = {
+    1: "CoA 1 — No Abnormality",
+    2: "CoA 2 — Thermal Abnormality",
+    3: "CoA 3 — Safety-Relevant Thermal Abnormality",
+}
+
+# Recommended action per CoA (IEC 62446-3 Table 4)
+IEC_COA_ACTION: dict[int, str] = {
+    1: "No action required.",
+    2: "Check the cause and, if necessary, rectify in a reasonable period.",
+    3: "Prompt interruption of operation, check the cause and rectify in a reasonable period.",
+}
+
+# ── IEC 62446-3 §7.4 — Abnormality type for temperature normalization ────────
+# "point": localized (<few mm²), x=1.5 for PV modules
+# "extended": cell-size or larger, x=1.0 (linear)
+IEC_ABNORMALITY_TYPE: dict[str, str] = {
+    "bypass-diode":        "point",    # localized at diode/junction-box contact
+    "hot-spot-high":       "extended", # cell-area or larger at >40 K
+    "hot-spot-low":        "extended", # cell-area at 10–40 K
+    "cell":                "extended",
+    "cell-multi":          "extended",
+    "module":              "extended",
+    "string":              "extended",
+    "offline-module":      "extended",
+    "short-circuit":       "extended",
+    "soiling":             "extended",
+    "vegetation-shading":  "extended",
+}
+
+# ΔT range at 1 000 W/m² from Annex C (min_K, max_K); None = not defined
+IEC_DELTA_T_RANGE_K: dict[str, tuple[float | None, float | None]] = {
+    "cell":                (10.0, 40.0),
+    "cell-multi":          (10.0, None),
+    "hot-spot-low":        (10.0, 40.0),
+    "hot-spot-high":       (40.0, None),
+    "module":              (2.0,  7.0),
+    "offline-module":      (2.0,  7.0),
+    "short-circuit":       (2.0,  7.0),
+    "string":              (2.0,  7.0),
+    "bypass-diode":        (3.0,  None),
+    "soiling":             (0.0,  7.0),
+    "vegetation-shading":  (0.0,  None),
+}
+
+
+def normalize_delta_t(
+    delta_t_measured: float,
+    irradiance_wm2: float,
+    abnormality_type: str = "extended",
+    nominal_irradiance_wm2: float = 1000.0,
+) -> float:
+    """Normalize a measured ΔT to nominal irradiance per IEC 62446-3 §7.4.
+
+    Formula: ΔT₂ = (G₂ / G₁)^x × ΔT₁
+        x = 1.5 for point abnormalities in PV modules
+        x = 1.0 for extended-area abnormalities (linear)
+
+    Args:
+        delta_t_measured:      Measured temperature difference (K or °C delta).
+        irradiance_wm2:        Actual in-plane irradiance at time of measurement (W/m²).
+        abnormality_type:      "point" or "extended" (from IEC_ABNORMALITY_TYPE).
+        nominal_irradiance_wm2: Target irradiance for normalization (default 1000 W/m²).
+
+    Returns:
+        ΔT normalized to nominal irradiance.
+
+    Raises:
+        ValueError: if irradiance_wm2 ≤ 0.
+    """
+    if irradiance_wm2 <= 0:
+        raise ValueError(f"irradiance_wm2 must be > 0, got {irradiance_wm2}")
+    x = 1.5 if abnormality_type == "point" else 1.0
+    return (nominal_irradiance_wm2 / irradiance_wm2) ** x * delta_t_measured
+
 # ── YOLO label I/O ──────────────────────────────────────────────────────────
 
 def read_yolo_label(label_path: Path) -> list[tuple[int, float, float, float, float]]:

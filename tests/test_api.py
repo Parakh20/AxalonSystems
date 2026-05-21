@@ -59,6 +59,32 @@ def test_report_unknown_job(client):
     assert resp.status_code == 404
 
 
+def test_report_pdf_download(client, tmp_path):
+    original_output_dir = api_module.OUTPUT_DIR
+    api_module.OUTPUT_DIR = tmp_path
+    try:
+        job_id = "batch-testpdf"
+        report_dir = tmp_path / job_id
+        report_dir.mkdir(parents=True)
+        pdf_path = report_dir / "inspection_report.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 test")
+        api_module._JOBS[job_id] = {"status": "completed"}
+
+        resp = client.get(f"/report/{job_id}?format=pdf")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/pdf")
+        assert resp.content == b"%PDF-1.4 test"
+    finally:
+        api_module.OUTPUT_DIR = original_output_dir
+
+
+def test_report_rejects_unknown_format(client):
+    job_id = "batch-knownjob"
+    api_module._JOBS[job_id] = {"status": "completed"}
+    resp = client.get(f"/report/{job_id}?format=csv")
+    assert resp.status_code == 400
+
+
 def test_parks_returns_empty_list(client):
     """GET /parks returns empty list on fresh in-memory DB."""
     resp = client.get("/parks")

@@ -125,13 +125,19 @@ class ParkLayoutDetector:
             Park layout dict (see AXALON_PLATFORM_SPEC.md §6.2).
         """
         all_panels: list[dict] = []
+        seen_centers: set[tuple[int, int]] = set()
         for idx, img in enumerate(rgb_images):
             panels = self.detect_panels(img)
             gps = gps_coords[idx] if gps_coords and idx < len(gps_coords) else None
             for p in panels:
+                # Deduplicate panels at the same position across images (snap to 20px grid)
+                key = (round(p["center"][0] / 20), round(p["center"][1] / 20))
+                if key in seen_centers:
+                    continue
+                seen_centers.add(key)
                 p["source_image_idx"] = idx
                 p["source_gps"] = gps
-            all_panels.extend(panels)
+                all_panels.append(p)
 
         all_panels = self.assign_grid_ids(all_panels)
 

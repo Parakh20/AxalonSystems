@@ -22,6 +22,7 @@ from axalon.park.layout import ParkLayoutDetector
 from axalon.db.session import init_db, get_session
 from axalon.db.models import Park, Inspection, Detection as DbDetection
 from axalon.pipeline.ingest import find_image_pairs, load_mission_metadata, validate_pair
+from axalon.pipeline.tracking import dedup_detections, reconcile_inspection
 
 logger = get_logger("axalon.orchestrator")
 
@@ -76,7 +77,7 @@ class InspectionOrchestrator:
         db_url: str = "sqlite:///axalon.db",
     ) -> None:
         self.detector = SolarDetector(
-            weights_path=weights_path,
+            **({"weights_path": weights_path} if weights_path is not None else {}),
             conf=conf,
             device=device,
         )
@@ -152,6 +153,9 @@ class InspectionOrchestrator:
             "thermal_path": str(thermal_path),
             "rgb_path": str(rgb_path) if rgb_path else None,
             "flight_date": date.today().isoformat(),
+            "image_gps": image_gps,
+            "image_size": [img_w, img_h],
+            "altitude_m": altitude_m,
             "detections": detections,
             "summary": summary,
             "annotated_thermal": str(thermal_out),
@@ -267,17 +271,25 @@ class InspectionOrchestrator:
             if progress_callback:
                 progress_callback(i + 1, total)
 
-        # PHASE 3: Update inspection record with final counts
+        # PHASE 3: Dedup, reconcile with PanelFault history, update inspection record
+        deduped = dedup_detections(all_detections)
         summary = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
-        for det in all_detections:
+        for det in deduped:
             sev = det.get("severity", "LOW")
             if sev in summary:
                 summary[sev] += 1
 
         session = get_session()
         try:
+            fault_counts = reconcile_inspection(
+                session,
+                park_id=park_id,
+                inspection_id=batch_id,
+                flight_date=flight_date,
+                detections=deduped,
+            )
             insp = session.query(Inspection).filter_by(id=batch_id).first()
-            insp.total_detections = len(all_detections)
+            insp.total_detections = len(deduped)
             insp.summary = json.dumps(summary)
             session.commit()
         finally:
@@ -288,8 +300,10 @@ class InspectionOrchestrator:
             "park_id": park_id,
             "flight_date": flight_date,
             "total_images": total,
-            "total_detections": len(all_detections),
+            "total_detections": len(deduped),
+            "raw_detections": len(all_detections),
             "summary": summary,
+            "fault_tracking": fault_counts,
             "layout": layout,
             "results": all_results,
         }
