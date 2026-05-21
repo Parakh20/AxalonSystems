@@ -27,7 +27,6 @@ packages = [
     "axalon.park",
     "axalon.pipeline",
     "axalon.reporting",
-    "axalon.ui",
     "ml",
     "ml.src",
 ]
