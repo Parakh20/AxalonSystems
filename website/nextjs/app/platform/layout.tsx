@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import './platform.css'
 
 export const metadata: Metadata = {
   title: 'Axalon · Internal Inspection Console',

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements_platform.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - run: pip install -r requirements_platform.txt -r ml/requirements.txt
+      - run: pytest tests/backend/ -ra --strict-markers
+
+  frontend-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('website/nextjs/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+      - run: cd website/nextjs && npm ci
+      - run: cd website/nextjs && npm test
+
+  # NOTE: Playwright e2e tests intentionally excluded from CI.
+  # E2E tests require live services (API, database) and are better suited for
+  # local pre-push validation via `scripts/test_all.sh`. CI focuses on fast,
+  # isolated unit and integration tests that can run in parallel without
+  # external dependencies.

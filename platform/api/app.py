@@ -40,6 +40,7 @@ from axalon.reporting.report import (
 from axalon.reporting.geojson_writer import write_geojson
 from axalon.db.session import get_session
 from axalon.db.models import Park, Inspection, PanelFault, Detection as DbDetection, FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED
+from axalon.park.diff import build_diff
 
 logger = logging.getLogger("axalon.api")
 
@@ -1059,6 +1060,151 @@ def get_park_grid(park_id: str, inspection_id: str | None = None):
             })
 
         return build_grid(detections=detections, park=park, inspection_id=insp.id)
+    finally:
+        session.close()
+
+
+@app.get("/park/{park_id}/diff")
+def diff_park_inspections(park_id: str, inspection_a: str, inspection_b: str):
+    """Compare two inspections of the same park, returning a rich per-panel diff.
+
+    Query params:
+        inspection_a: ID of the baseline inspection
+        inspection_b: ID of the comparison inspection
+
+    Returns a panel-level diff with status new | resolved | changed | unchanged,
+    plus full detection lists for both inspections on each affected panel.
+    """
+    park_id = _validate_park_id(park_id)
+    inspection_a = _validate_job_id(inspection_a)
+    inspection_b = _validate_job_id(inspection_b)
+
+    session = get_session()
+    try:
+        # 1. Validate park exists
+        park = session.query(Park).filter(Park.id == park_id).first()
+        if park is None:
+            raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
+
+        # 2. Validate both inspections exist for this park
+        insp_a = session.query(Inspection).filter(
+            Inspection.id == inspection_a,
+            Inspection.park_id == park_id,
+        ).first()
+        if insp_a is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Inspection {inspection_a!r} not found for park {park_id!r}",
+            )
+
+        insp_b = session.query(Inspection).filter(
+            Inspection.id == inspection_b,
+            Inspection.park_id == park_id,
+        ).first()
+        if insp_b is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Inspection {inspection_b!r} not found for park {park_id!r}",
+            )
+
+        # 3. Fetch all detections for both inspections
+        def _fetch_detections(insp_id: str) -> list[dict]:
+            rows = session.query(DbDetection).filter(
+                DbDetection.inspection_id == insp_id
+            ).all()
+            result = []
+            for d in rows:
+                result.append({
+                    "panel_id": d.panel_id or "R?-C?",
+                    "class": d.class_,
+                    "severity": d.severity,
+                    "confidence": d.confidence,
+                })
+            return result
+
+        dets_a = _fetch_detections(inspection_a)
+        dets_b = _fetch_detections(inspection_b)
+
+        # 4. Compute diff
+        diff = build_diff(dets_a, dets_b)
+
+        # 5. Build per-panel response
+        # Collect all panel_ids that appear in either inspection
+        all_panel_ids: set[str] = set()
+        for det in dets_a + dets_b:
+            all_panel_ids.add(det["panel_id"])
+
+        # Index detections by panel_id for quick lookup
+        def _panel_index(dets: list[dict]) -> dict[str, list[dict]]:
+            idx: dict[str, list[dict]] = {}
+            for det in dets:
+                pid = det["panel_id"]
+                idx.setdefault(pid, []).append({
+                    "class": det["class"],
+                    "severity": det["severity"],
+                    "confidence": det["confidence"],
+                })
+            return idx
+
+        panel_a = _panel_index(dets_a)
+        panel_b = _panel_index(dets_b)
+
+        # Build a (panel_id, class) -> status mapping from diff result
+        panel_status: dict[str, str] = {}
+        for item in diff["new"]:
+            panel_status[item["panel_id"]] = "new"
+        for item in diff["resolved"]:
+            pid = item["panel_id"]
+            # Don't downgrade a panel already marked "new" (edge case: mixed panel)
+            if pid not in panel_status:
+                panel_status[pid] = "resolved"
+        for item in diff["changed"]:
+            pid = item["panel_id"]
+            # "changed" takes precedence over new/resolved if mixed
+            if pid not in panel_status or panel_status[pid] == "unchanged":
+                panel_status[pid] = "changed"
+
+        panels: list[dict] = []
+        for pid in sorted(all_panel_ids):
+            dets_a_panel = panel_a.get(pid, [])
+            dets_b_panel = panel_b.get(pid, [])
+
+            status = panel_status.get(pid, "unchanged")
+
+            # Derive severity_a / severity_b from the panel's highest-severity detection
+            # (or None if not present in that inspection)
+            _severity_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "": 0}
+
+            def _top_severity(det_list: list[dict]) -> str | None:
+                if not det_list:
+                    return None
+                return max(
+                    (d["severity"] or "" for d in det_list),
+                    key=lambda s: _severity_order.get(s, 0),
+                ) or None
+
+            panels.append({
+                "panel_id": pid,
+                "status": status,
+                "severity_a": _top_severity(dets_a_panel),
+                "severity_b": _top_severity(dets_b_panel),
+                "detections_a": dets_a_panel,
+                "detections_b": dets_b_panel,
+            })
+
+        summary = {
+            "new": len(diff["new"]),
+            "resolved": len(diff["resolved"]),
+            "changed": len(diff["changed"]),
+        }
+
+        return {
+            "park_id": park_id,
+            "inspection_a": inspection_a,
+            "inspection_b": inspection_b,
+            "summary": summary,
+            "panels": panels,
+        }
     finally:
         session.close()
 

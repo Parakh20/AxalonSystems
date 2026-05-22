@@ -79,6 +79,23 @@ export type OrthoMeta = {
   [k: string]: unknown
 }
 
+export type DiffPanel = {
+  panel_id: string
+  status: 'new' | 'resolved' | 'changed' | 'unchanged'
+  severity_a: Severity | null
+  severity_b: Severity | null
+  detections_a: { class: string; severity: Severity | null; confidence: number | null }[]
+  detections_b: { class: string; severity: Severity | null; confidence: number | null }[]
+}
+
+export type ParkDiff = {
+  park_id: string
+  inspection_a: string
+  inspection_b: string
+  summary: { new: number; resolved: number; changed: number }
+  panels: DiffPanel[]
+}
+
 export const api = {
   health: () => request<Health>('/health'),
   batch: (form: FormData) =>
@@ -110,4 +127,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ settings: blob }),
     }),
+  parkDiff: (parkId: string, inspectionA: string, inspectionB: string) =>
+    request<ParkDiff>(
+      `/park/${encodeURIComponent(parkId)}/diff?inspection_a=${encodeURIComponent(inspectionA)}&inspection_b=${encodeURIComponent(inspectionB)}`,
+    ),
 }

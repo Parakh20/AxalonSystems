@@ -73,8 +73,66 @@ On the **Settings** tab:
 2. Save.
 3. Reload page — value persists.
 
+## Demo mode
+
+To populate the platform with realistic data without running a real batch job, use the demo seed script:
+
+```bash
+python3 scripts/seed_demo_data.py
+```
+
+This is idempotent — safe to re-run at any time. It will:
+
+1. Drop and recreate the `SOLAR_PARK_DEMO` park with a 6×8 grid (48 panels, `R1-C1` through `R6-C8`).
+2. Insert 3 inspection records timestamped today, today−15 days, and today−30 days, so the History chart shows a multi-point trend.
+3. Insert synthetic `Detection` rows per inspection (~10% CRITICAL, 15% HIGH, 50% MEDIUM, 25% LOW, spread across ~20 panels). No YOLO run required.
+4. Write GPS coordinates on a synthetic grid around 0°N 0°E so the AnomalyMap has spatially distributed markers.
+
+On completion the script prints a summary:
+
+```
+Park: SOLAR_PARK_DEMO | Inspections: 3 | Detections: N
+```
+
+After seeding, the **History**, **Park Map**, and **Diff** tabs all show populated data immediately.
+
+## CI
+
+GitHub Actions runs two independent parallel jobs on every push and PR to `main`:
+
+| Job | Command | What it covers |
+|-----|---------|----------------|
+| `backend-tests` | `pytest tests/backend/ -ra --strict-markers` | API contract, DB models, orchestrator, park-grid aggregator |
+| `frontend-unit` | `cd website/nextjs && npm test` | `api.ts` client, Toast hook, all vitest unit tests |
+
+Playwright e2e is **intentionally excluded** from CI — it requires live services (API + DB) and belongs in `scripts/test_all.sh` for local pre-push runs.
+
+**Reading a failure:**
+
+- Click the failing job in the GitHub Actions panel.
+- Expand the failing step to see the full output.
+- `backend-tests` failures are almost always import errors, DB schema mismatches, or broken endpoint contracts.
+- `frontend-unit` failures are type errors, broken mocks, or component logic bugs.
+- Fix the root cause locally, run `./scripts/test_all.sh` to confirm, then push.
+
 ## Troubleshooting
 
 - **Any silent failure** is a bug. Every failure should produce a visible toast bottom-right of the screen. If it didn't, that's a Phase 1 regression — file it.
 - **PDF download fails** — likely WeasyPrint libs missing. Install per `docs/INSTALLATION.md` or use JSON / Excel / GeoJSON instead.
 - **No detections in the map** — the synthetic hotspots may not match the trained model distribution. Re-run `python scripts/make_sample_mission.py --seed 12345` to get a fresh batch.
+
+## 9. Run the test suite (optional)
+
+Phase 2 added an automated suite covering API contract, pipeline units, frontend units, and a Playwright end-to-end walk of all five tabs.
+
+```bash
+./scripts/test_all.sh
+```
+
+What it does:
+
+- **Backend pytest** (`tests/backend/`) — every API endpoint + the orchestrator + the panel-grid aggregator.
+- **Frontend vitest** (`website/nextjs/tests/unit/`) — the `api.ts` client + the Toast hook.
+- **Frontend playwright** (`website/nextjs/tests/e2e/`) — drives a headless Chromium through every tab including a real batch run.
+
+The script starts the platform services itself if they're not already up, and stops them after. Pass-through exit code: zero on success, non-zero on the first failing suite.
