@@ -180,6 +180,7 @@ Playwright e2e is intentionally excluded — it requires live services and belon
 |---|---|---|
 | Page shell | `website/nextjs/app/platform/page.tsx` | Refactor: slim to ~100 lines |
 | Styles | `website/nextjs/app/platform/platform.css` | New: extract inline styles + responsive breakpoints |
+| | `website/nextjs/app/platform/layout.tsx` | Modify: add `import './platform.css'` (shell inline styles stay) |
 | Tab components | `website/nextjs/components/Platform/OperationsTab.tsx` | New |
 | | `website/nextjs/components/Platform/InspectTab.tsx` | New |
 | | `website/nextjs/components/Platform/HistoryTab.tsx` | New |
