@@ -31,6 +31,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // Shapes — keep loose; the API is the source of truth.
 export type Health = { status: string; [k: string]: unknown }
+
+export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+
+export type GridPanelDetection = {
+  class: string | null
+  confidence: number | null
+  severity: Severity | null
+  thermal_filename: string | null
+  bbox: number[] | null
+}
+
+export type GridPanel = {
+  panel_id: string
+  row: number
+  col: number
+  worst_severity: Severity | null
+  detection_count: number
+  detections: GridPanelDetection[]
+  gps: { lat: number; lon: number } | null
+}
+
+export type ParkGrid = {
+  park_id: string
+  inspection_id: string | null
+  rows: number
+  cols: number
+  panels: GridPanel[]
+}
 export type JobStatus = {
   job_id: string
   state: 'queued' | 'running' | 'succeeded' | 'failed' | string
@@ -64,6 +92,10 @@ export const api = {
   parks: () => request<ParkRef[]>('/parks'),
   park: (parkId: string) =>
     request<ParkSummary>(`/park/${encodeURIComponent(parkId)}`),
+  parkGrid: (parkId: string, inspectionId?: string) => {
+    const q = inspectionId ? `?inspection_id=${encodeURIComponent(inspectionId)}` : ''
+    return request<ParkGrid>(`/park/${encodeURIComponent(parkId)}/grid${q}`)
+  },
   orthos: (parkId: string) =>
     request<OrthoMeta[]>(`/park/${encodeURIComponent(parkId)}/orthos`),
   uploadOrtho: (parkId: string, form: FormData) =>
