@@ -998,6 +998,71 @@ def get_park_summary(park_id: str):
         session.close()
 
 
+@app.get("/park/{park_id}/grid")
+def get_park_grid(park_id: str, inspection_id: str | None = None):
+    """Per-panel grid summary for a park's most recent (or specified) inspection."""
+    from axalon.park.grid import build_grid
+
+    session = get_session()
+    try:
+        park = session.query(Park).filter(Park.id == park_id).first()
+        if park is None:
+            raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
+
+        if inspection_id:
+            insp = session.query(Inspection).filter(
+                Inspection.id == inspection_id,
+                Inspection.park_id == park_id,
+            ).first()
+            if insp is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Inspection {inspection_id!r} not found for park {park_id!r}",
+                )
+        else:
+            insp = (
+                session.query(Inspection)
+                .filter(Inspection.park_id == park_id)
+                .order_by(Inspection.created_at.desc())
+                .first()
+            )
+
+        if insp is None:
+            return {
+                "park_id": park_id,
+                "inspection_id": None,
+                "rows": int(park.rows or 0),
+                "cols": int(park.cols or 0),
+                "panels": [],
+            }
+
+        rows = session.query(DbDetection).filter(DbDetection.inspection_id == insp.id).all()
+        detections = []
+        for d in rows:
+            try:
+                bbox = json.loads(d.bbox) if d.bbox else None
+            except json.JSONDecodeError:
+                bbox = None
+            try:
+                gps = json.loads(d.gps) if d.gps else None
+            except json.JSONDecodeError:
+                gps = None
+            detections.append({
+                "panel_id": d.panel_id,
+                "severity": d.severity,
+                "class": d.class_,
+                "confidence": d.confidence,
+                "image_id": d.image_id,
+                "thermal_filename": f"{d.image_id}.jpg" if d.image_id else None,
+                "bbox": bbox,
+                "gps": gps,
+            })
+
+        return build_grid(detections=detections, park=park, inspection_id=insp.id)
+    finally:
+        session.close()
+
+
 @app.get("/parks")
 def list_parks():
     """List all parks from DB."""
