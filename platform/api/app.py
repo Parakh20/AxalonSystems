@@ -43,7 +43,7 @@ from axalon.reporting.report import (
 )
 from axalon.reporting.geojson_writer import write_geojson
 from axalon.db.session import get_session
-from axalon.db.models import Park, Inspection, PanelFault, Detection as DbDetection, FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED, Correction, Job as DbJob
+from axalon.db.models import Park, Inspection, PanelFault, Detection as DbDetection, FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED, Correction, Job as DbJob, FaultComment
 from axalon.park.diff import build_diff
 
 logger = logging.getLogger("axalon.api")
@@ -1670,7 +1670,7 @@ async def update_settings(payload: dict):
 _ALLOWED_FAULT_STATUSES = {FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED}
 
 
-def _serialize_fault(f: PanelFault) -> dict:
+def _serialize_fault(f: PanelFault, comment_count: int = 0) -> dict:
     return {
         "id": f.id,
         "park_id": f.park_id,
@@ -1688,6 +1688,17 @@ def _serialize_fault(f: PanelFault) -> dict:
         "last_bbox": json.loads(f.last_bbox) if f.last_bbox else None,
         "last_gps": json.loads(f.last_gps) if f.last_gps else None,
         "notes": f.notes,
+        "comment_count": comment_count,
+    }
+
+
+def _serialize_comment(c: FaultComment) -> dict:
+    return {
+        "id": c.id,
+        "fault_id": c.fault_id,
+        "author": c.author,
+        "body": c.body,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
     }
 
 
@@ -1713,11 +1724,18 @@ def list_park_faults(park_id: str, status: str | None = None):
         for f in faults:
             if f.status in counts:
                 counts[f.status] += 1
+        from sqlalchemy import func
+        comment_counts = dict(
+            session.query(FaultComment.fault_id, func.count(FaultComment.id))
+            .filter(FaultComment.fault_id.in_([f.id for f in faults]))
+            .group_by(FaultComment.fault_id)
+            .all()
+        ) if faults else {}
         return {
             "park_id": park_id,
             "total": len(faults),
             "counts_by_status": counts,
-            "faults": [_serialize_fault(f) for f in faults],
+            "faults": [_serialize_fault(f, comment_counts.get(f.id, 0)) for f in faults],
         }
     finally:
         session.close()
@@ -1746,6 +1764,51 @@ def update_fault(fault_id: int, payload: dict):
             fault.notes = str(notes)[:2000]
         session.commit()
         return _serialize_fault(fault)
+    finally:
+        session.close()
+
+
+@app.post("/faults/{fault_id}/comments", status_code=201)
+def create_fault_comment(fault_id: int, body: dict):
+    """Append a comment to a fault's thread."""
+    if fault_id <= 0:
+        raise HTTPException(status_code=400, detail="fault_id must be positive")
+    comment_body = str(body.get("body", "")).strip()
+    if not comment_body:
+        raise HTTPException(status_code=400, detail="body is required")
+    author = str(body.get("author", ""))[:128] if body.get("author") else None
+    session = get_session()
+    try:
+        fault = session.query(PanelFault).filter_by(id=fault_id).first()
+        if fault is None:
+            raise HTTPException(status_code=404, detail="Fault not found")
+        comment = FaultComment(
+            fault_id=fault_id,
+            author=author,
+            body=comment_body[:4000],
+        )
+        session.add(comment)
+        session.commit()
+        session.refresh(comment)
+        return JSONResponse(content=_serialize_comment(comment), status_code=201)
+    finally:
+        session.close()
+
+
+@app.get("/faults/{fault_id}/comments")
+def list_fault_comments(fault_id: int):
+    """List all comments on a fault in chronological order."""
+    if fault_id <= 0:
+        raise HTTPException(status_code=400, detail="fault_id must be positive")
+    session = get_session()
+    try:
+        comments = (
+            session.query(FaultComment)
+            .filter(FaultComment.fault_id == fault_id)
+            .order_by(FaultComment.created_at.asc(), FaultComment.id.asc())
+            .all()
+        )
+        return [_serialize_comment(c) for c in comments]
     finally:
         session.close()
 

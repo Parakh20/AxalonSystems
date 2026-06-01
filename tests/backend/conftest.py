@@ -36,6 +36,8 @@ def temp_db(monkeypatch, tmp_path) -> Path:
     from axalon.db import session as _session
     if hasattr(_session, "_engine"):
         _session._engine = None
+    if hasattr(_session, "_SessionLocal"):
+        _session._SessionLocal = None
     yield db_path
 
 
