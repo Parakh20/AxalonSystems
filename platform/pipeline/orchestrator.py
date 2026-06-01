@@ -266,13 +266,27 @@ class InspectionOrchestrator:
 
         session = get_session()
         try:
+            def _safe_float(val):
+                try:
+                    return float(val) if val not in (None, "") else None
+                except (TypeError, ValueError):
+                    return None
+
             insp = Inspection(
                 id=batch_id,
                 park_id=park_id,
                 flight_date=flight_date,
                 total_images=total,
-                total_detections=0,  # updated after phase 2
+                total_detections=0,
                 summary="{}",
+                client=site_meta.get("client") or None,
+                location=site_meta.get("location") or None,
+                capacity_mw=_safe_float(site_meta.get("capacity_mw")),
+                inspection_type=site_meta.get("inspection_type", "maintenance"),
+                inspection_level=site_meta.get("inspection_level", "simplified"),
+                irradiance_wm2=_safe_float(site_meta.get("irradiance_wm2")),
+                wind_speed_bft=_safe_float(site_meta.get("wind_speed_bft")),
+                cloud_coverage_okta=_safe_float(site_meta.get("cloud_coverage_okta")),
             )
             session.add(insp)
             session.commit()

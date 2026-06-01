@@ -18,18 +18,22 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import os
 import re
+import shutil
 import stat
 import tempfile
-import threading
 import uuid
 import zipfile
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, UploadFile, BackgroundTasks, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, BackgroundTasks, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from axalon.pipeline.orchestrator import InspectionOrchestrator
 from axalon.reporting.report import (
@@ -39,7 +43,7 @@ from axalon.reporting.report import (
 )
 from axalon.reporting.geojson_writer import write_geojson
 from axalon.db.session import get_session
-from axalon.db.models import Park, Inspection, PanelFault, Detection as DbDetection, FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED
+from axalon.db.models import Park, Inspection, PanelFault, Detection as DbDetection, FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED, Correction, Job as DbJob
 from axalon.park.diff import build_diff
 
 logger = logging.getLogger("axalon.api")
@@ -60,12 +64,83 @@ _ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif"}
 # Safe job-ID pattern — prevents directory traversal via job_id path param
 _JOB_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
 
+_bearer = HTTPBearer(auto_error=False)
+
+
+def require_auth(creds: HTTPAuthorizationCredentials | None = Security(_bearer)) -> None:
+    """No-op when AXALON_API_KEY is unset; otherwise require Bearer auth."""
+    api_key = os.environ.get("AXALON_API_KEY", "").strip()
+    if not api_key:
+        return
+    if creds is None or creds.credentials != api_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+def _run_alembic_migrations() -> None:
+    """Run Alembic migrations for persistent DBs; tests still use create_all()."""
+    db_url = os.environ.get("AXALON_DB_URL", "sqlite:///axalon.db")
+    if ":memory:" in db_url or os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    try:
+        from alembic.config import Config as AlembicConfig
+        from alembic import command as alembic_cmd
+
+        repo_root = Path(__file__).resolve().parents[2]
+        cfg = AlembicConfig(str(repo_root / "alembic.ini"))
+        cfg.set_main_option("script_location", str(repo_root / "alembic"))
+        cfg.set_main_option("sqlalchemy.url", db_url)
+        alembic_cmd.upgrade(cfg, "head")
+        logger.info("Alembic migrations: up to date")
+    except Exception as exc:
+        logger.warning("Alembic migration warning: %s", exc)
+
+
+def _cleanup_old_results() -> None:
+    ttl_hours = int(os.environ.get("AXALON_RESULTS_TTL_HOURS", "0"))
+    if ttl_hours <= 0:
+        return
+    cutoff = datetime.utcnow() - timedelta(hours=ttl_hours)
+    session = get_session()
+    try:
+        old_jobs = session.query(DbJob).filter(
+            DbJob.created_at < cutoff,
+            DbJob.state.in_(["succeeded", "failed"]),
+        ).all()
+        for job in old_jobs:
+            job_dir = OUTPUT_DIR / job.id
+            if job_dir.exists():
+                shutil.rmtree(job_dir, ignore_errors=True)
+        if old_jobs:
+            logger.info("Cleaned up output for %s old job(s)", len(old_jobs))
+    finally:
+        session.close()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    _run_alembic_migrations()
+    session = get_session()
+    try:
+        stale = session.query(DbJob).filter(DbJob.state == "running").all()
+        for job in stale:
+            job.state = "queued"
+            job.message = "Re-queued after API restart"
+        session.commit()
+        if stale:
+            logger.info("Re-queued %s interrupted job(s)", len(stale))
+    finally:
+        session.close()
+    _cleanup_old_results()
+    yield
+
+
 app = FastAPI(
     title="Axalon Solar Inspection API",
     version="1.0.0",
+    lifespan=lifespan,
     description=(
         "Solar anomaly detection and panel localization for drone-captured "
-        "thermal IR + RGB imagery. Powered by YOLOv8s (best.pt)."
+        "thermal IR + RGB imagery. Powered by YOLO11m (best.pt)."
     ),
 )
 
@@ -94,18 +169,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Shared state ──────────────────────────────────────────────────────────────
-# In-memory job store — capped to prevent unbounded memory growth.
-# Lock guards concurrent writes from background tasks + request handlers.
-_JOBS: dict[str, dict] = {}
-_JOBS_LOCK = threading.Lock()
-_JOBS_MAX = 500  # evict oldest entries beyond this limit
 
-OUTPUT_DIR = Path("output")
-OUTPUT_DIR.mkdir(exist_ok=True)
+@app.middleware("http")
+async def auth_middleware(request, call_next):
+    if request.url.path == "/health" or request.method == "OPTIONS":
+        return await call_next(request)
+    api_key = os.environ.get("AXALON_API_KEY", "").strip()
+    supplied_key = request.query_params.get("api_key")
+    if api_key and request.headers.get("authorization") != f"Bearer {api_key}" and supplied_key != api_key:
+        return JSONResponse({"detail": "Invalid or missing API key"}, status_code=401)
+    return await call_next(request)
+
+# ── Shared state ──────────────────────────────────────────────────────────────
+OUTPUT_DIR = Path(os.getenv("AXALON_OUTPUT_DIR", "output"))
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 ORTHO_DIR = OUTPUT_DIR / "ortho"
-ORTHO_DIR.mkdir(exist_ok=True)
+ORTHO_DIR.mkdir(parents=True, exist_ok=True)
 
 # Geotiffs can be big — cap to 4 GB
 _MAX_ORTHO_BYTES = 4 * 1024 * 1024 * 1024
@@ -156,31 +236,85 @@ def _validate_job_id(job_id: str) -> str:
     return job_id
 
 
-def _evict_old_jobs() -> None:
-    """Keep _JOBS under _JOBS_MAX by removing the oldest completed entries."""
-    with _JOBS_LOCK:
-        if len(_JOBS) < _JOBS_MAX:
-            return
-        completed = [k for k, v in _JOBS.items() if v.get("status") in ("completed", "failed")]
-        for k in completed[: len(_JOBS) - _JOBS_MAX + 1]:
-            _JOBS.pop(k, None)
-
-
-def _set_job(job_id: str, data: dict) -> None:
-    with _JOBS_LOCK:
-        _JOBS[job_id] = data
+def _state_from_status(status: str | None) -> str:
+    return {
+        "queued": "queued",
+        "processing": "running",
+        "running": "running",
+        "completed": "succeeded",
+        "succeeded": "succeeded",
+        "failed": "failed",
+    }.get(status or "", status or "queued")
 
 
 def _update_job(job_id: str, **fields) -> None:
-    with _JOBS_LOCK:
-        if job_id in _JOBS:
-            _JOBS[job_id].update(fields)
+    session = get_session()
+    try:
+        job = session.query(DbJob).filter(DbJob.id == job_id).first()
+        if job is None:
+            job = DbJob(id=job_id)
+            session.add(job)
+        if "status" in fields and "state" not in fields:
+            fields["state"] = _state_from_status(str(fields.pop("status")))
+        if "progress" in fields:
+            fields.pop("progress")
+        if "error" in fields and "message" not in fields:
+            fields["message"] = fields.pop("error")
+        for key, value in fields.items():
+            if hasattr(job, key):
+                setattr(job, key, value)
+        session.commit()
+    except Exception:
+        logger.exception("Failed to persist job state for %s", job_id)
+    finally:
+        session.close()
+
+
+def _create_job(job_id: str, park_id: str | None = None) -> None:
+    _update_job(job_id, park_id=park_id, state="queued", processed=0, total=0, message=None)
 
 
 def _get_job(job_id: str) -> dict | None:
-    with _JOBS_LOCK:
-        job = _JOBS.get(job_id)
-        return dict(job) if job is not None else None
+    session = get_session()
+    try:
+        job = session.query(DbJob).filter(DbJob.id == job_id).first()
+        if job is None:
+            return None
+        total = int(job.total or 0)
+        processed = int(job.processed or 0)
+        progress = round(processed / total, 2) if total else (1.0 if job.state == "succeeded" else 0.0)
+        status = {
+            "queued": "queued",
+            "running": "processing",
+            "succeeded": "completed",
+            "failed": "failed",
+        }.get(job.state, job.state)
+        return {
+            "job_id": job.id,
+            "state": job.state,
+            "status": status,
+            "progress": progress,
+            "processed": processed,
+            "total": total,
+            "message": job.message,
+            "error": job.message,
+            "park_id": job.park_id,
+            "result_path": job.result_path,
+        }
+    finally:
+        session.close()
+
+
+def _corrections_for_job(job_id: str) -> list[dict]:
+    session = get_session()
+    try:
+        rows = session.query(Correction).filter(Correction.job_id == job_id).all()
+        return [_serialize_correction(row) for row in rows]
+    except Exception:
+        logger.exception("Failed to load corrections for report %s", job_id)
+        return []
+    finally:
+        session.close()
 
 
 # ── POST /inspect ─────────────────────────────────────────────────────────────
@@ -191,7 +325,7 @@ async def inspect_pair(
     rgb_image: UploadFile | None = File(None, description="RGB image (optional)"),
     park_id: str = Form("unknown"),
     park_mode: str = Form("auto"),
-    altitude_m: float = Form(40.0),
+    altitude_m: float = Form(20.0),
     # Optional site metadata — used in PDF/Excel reports
     site_name: str = Form(""),
     client: str = Form(""),
@@ -202,6 +336,8 @@ async def inspect_pair(
     irradiance_wm2: str = Form(""),
     inspection_time: str = Form(""),
     drone_model: str = Form(""),
+    inspection_type: str = Form("maintenance"),
+    inspection_level: str = Form("simplified"),
 ):
     """Inspect a single thermal+RGB image pair."""
     park_id = _validate_park_id(park_id)
@@ -237,15 +373,17 @@ async def inspect_pair(
             raise HTTPException(status_code=413, detail="RGB image exceeds 50 MB limit")
 
     site_meta = {
-        "site_name":       site_name or park_id,
-        "client":          client,
-        "location":        location,
-        "capacity_mw":     capacity_mw,
-        "lat":             lat,
-        "lon":             lon,
-        "irradiance_wm2":  irradiance_wm2,
-        "inspection_time": inspection_time,
-        "drone_model":     drone_model,
+        "site_name":        site_name or park_id,
+        "client":           client,
+        "location":         location,
+        "capacity_mw":      capacity_mw,
+        "lat":              lat,
+        "lon":              lon,
+        "irradiance_wm2":   irradiance_wm2,
+        "inspection_time":  inspection_time,
+        "drone_model":      drone_model,
+        "inspection_type":  inspection_type,
+        "inspection_level": inspection_level,
     }
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -266,14 +404,21 @@ async def inspect_pair(
         )
 
     result["site_meta"] = site_meta
-    _evict_old_jobs()
-    _set_job(result["job_id"], {**result, "status": "completed"})
+    _update_job(
+        result["job_id"],
+        park_id=park_id,
+        state="succeeded",
+        processed=1,
+        total=1,
+        message=None,
+    )
     return JSONResponse(content={
         "job_id": result["job_id"],
         "status": "completed",
         "total_detections": result["total_detections"],
         "summary": result["summary"],
         "detections": result["detections"],
+        "rgb_filename": Path(result.get("annotated_rgb") or "").name,
     })
 
 
@@ -285,7 +430,7 @@ async def inspect_batch(
     images: UploadFile = File(..., description="ZIP archive of thermal+RGB image pairs (max 2 GB)"),
     park_id: str = Form("unknown"),
     park_mode: str = Form("auto"),
-    altitude_m: float = Form(40.0),
+    altitude_m: float = Form(20.0),
     # Optional site metadata — used in PDF/Excel reports
     site_name: str = Form(""),
     client: str = Form(""),
@@ -296,6 +441,8 @@ async def inspect_batch(
     irradiance_wm2: str = Form(""),
     inspection_time: str = Form(""),
     drone_model: str = Form(""),
+    inspection_type: str = Form("maintenance"),
+    inspection_level: str = Form("simplified"),
 ):
     """Submit a batch inspection job (runs in background)."""
     park_id = _validate_park_id(park_id)
@@ -332,27 +479,28 @@ async def inspect_batch(
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid ZIP archive")
 
     site_meta = {
-        "site_name":       site_name or park_id,
-        "client":          client,
-        "location":        location,
-        "capacity_mw":     capacity_mw,
-        "lat":             lat,
-        "lon":             lon,
-        "irradiance_wm2":  irradiance_wm2,
-        "inspection_time": inspection_time,
-        "drone_model":     drone_model,
+        "site_name":        site_name or park_id,
+        "client":           client,
+        "location":         location,
+        "capacity_mw":      capacity_mw,
+        "lat":              lat,
+        "lon":              lon,
+        "irradiance_wm2":   irradiance_wm2,
+        "inspection_time":  inspection_time,
+        "drone_model":      drone_model,
+        "inspection_type":  inspection_type,
+        "inspection_level": inspection_level,
     }
 
     job_id = f"batch-{uuid.uuid4().hex[:8]}"
     tmp_zip = OUTPUT_DIR / f"{job_id}.zip"
     tmp_zip.write_bytes(zip_bytes)
 
-    _evict_old_jobs()
-    _set_job(job_id, {"status": "queued", "progress": 0.0, "processed": 0, "total": 0})
+    _create_job(job_id, park_id)
 
     background_tasks.add_task(_run_batch_job, job_id, tmp_zip, park_id, altitude_m, site_meta)
 
-    return {"job_id": job_id, "status": "queued",
+    return {"job_id": job_id, "state": "queued", "status": "queued",
             "message": "Batch job queued. Poll GET /status/{job_id} for progress."}
 
 
@@ -429,13 +577,7 @@ def _run_batch_job(
         zip_path.unlink(missing_ok=True)
 
         def progress_cb(processed: int, total: int) -> None:
-            _update_job(
-                job_id,
-                processed=processed,
-                total=total,
-                progress=round(processed / total, 2) if total else 0.0,
-                status="processing",
-            )
+            _update_job(job_id, processed=processed, total=total, state="running")
 
         # If the zip had a single top-level directory (e.g. sample_mission/thermal/)
         # the extracted layout is extract_dir/sample_mission/thermal/ — walk up to
@@ -450,6 +592,7 @@ def _run_batch_job(
         result = orch.inspect_folder(
             folder=mission_root, park_id=park_id,
             altitude_m=altitude_m, progress_callback=progress_cb,
+            site_meta=site_meta,
         )
         generate_json_report(result, extract_dir / "inspection_report.json")
         generate_excel_report(result, extract_dir / "inspection_report.xlsx", site_meta=site_meta)
@@ -459,14 +602,22 @@ def _run_batch_job(
         except Exception:
             logger.exception("PDF report generation failed for batch job %s", job_id)
 
-        _update_job(job_id, **result, status="completed", progress=1.0)
+        total_images = int(result.get("total_images") or 0)
+        _update_job(
+            job_id,
+            state="succeeded",
+            processed=total_images,
+            total=total_images,
+            message=None,
+            result_path=str(extract_dir / "inspection_report.json"),
+        )
     except Exception:
         logger.exception("Batch job %s failed", job_id)
         # Do NOT expose exception message to clients — log it, return generic error
         _update_job(
             job_id,
-            status="failed",
-            error="Inspection failed. Check server logs for details.",
+            state="failed",
+            message="Inspection failed. Check server logs for details.",
         )
 
 
@@ -481,10 +632,12 @@ def get_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     return {
         "job_id": job_id,
+        "state": job.get("state"),
         "status": job.get("status"),
         "progress": job.get("progress", 0.0),
         "processed": job.get("processed", 0),
         "total": job.get("total", 0),
+        "message": job.get("message"),
         # Only expose error message if present — message is already sanitised
         **({"error": job["error"]} if "error" in job else {}),
     }
@@ -522,15 +675,51 @@ def download_report(job_id: str, format: str = "json"):
     filename, media_type = entry
     # Construct path from whitelist — not from user input
     report_path = (OUTPUT_DIR / job_id / filename).resolve()
+    corrections = _corrections_for_job(job_id)
 
     # Final safety: ensure path is still inside OUTPUT_DIR
     if not str(report_path).startswith(str(OUTPUT_DIR.resolve())):
         raise HTTPException(status_code=403, detail="Access denied")
 
+    if format == "json":
+        if report_path.exists():
+            try:
+                report_data = json.loads(report_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                logger.exception("Failed to read JSON report for %s", job_id)
+                report_data = {}
+        else:
+            report_data = {
+                "inspection_id": job_id,
+                "job_id": job_id,
+                "park_id": job.get("park_id"),
+                "summary": {},
+                "detections": [],
+            }
+        report_data["corrections"] = corrections
+        return JSONResponse(content=report_data)
+
     if not report_path.exists():
         raise HTTPException(status_code=404, detail=f"Report not yet generated for format: {format}")
 
     return FileResponse(path=str(report_path), filename=filename, media_type=media_type)
+
+
+@app.get("/results/{job_id}/{filename}")
+def serve_result_image(job_id: str, filename: str):
+    """Serve an annotated image from a completed job's output directory."""
+    job_id = _validate_job_id(job_id)
+    filename = _safe_filename(filename, "")
+    if not filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    image_path = (OUTPUT_DIR / job_id / filename).resolve()
+    job_dir = (OUTPUT_DIR / job_id).resolve()
+    if not str(image_path).startswith(str(job_dir)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    mime, _ = mimetypes.guess_type(str(image_path))
+    return FileResponse(str(image_path), media_type=mime or "image/jpeg")
 
 
 # ── GET /map/{job_id} ─────────────────────────────────────────────────────────
@@ -899,6 +1088,39 @@ def list_orthos(park_id: str):
     return {"park_id": park_id, "orthos": orthos}
 
 
+@app.get("/park/{park_id}/grid/png")
+def export_park_grid_png(park_id: str, inspection_id: str | None = None):
+    """Export the park fault grid as a static PNG image."""
+    from axalon.core.map_renderer import render_grid_png
+
+    park_id = _validate_park_id(park_id)
+    try:
+        grid = get_park_grid(park_id, inspection_id)
+        panels = [
+            {
+                "panel_id": p.get("panel_id"),
+                "row": p.get("row", 0),
+                "col": p.get("col", 0),
+                "worst_severity": p.get("worst_severity"),
+                "detection_count": p.get("detection_count", 0),
+            }
+            for p in (grid.get("panels") or [])
+        ]
+    except Exception:
+        panels = []
+
+    png_bytes = render_grid_png(panels, title=park_id)
+    safe_name = park_id.replace("/", "_").replace("..", "")
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_grid.png"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @app.get("/park/{park_id}/ortho/{name}")
 def get_ortho_metadata(park_id: str, name: str):
     """Get metadata for a single ortho."""
@@ -991,6 +1213,14 @@ def get_park_summary(park_id: str):
                     "total_images": insp.total_images,
                     "total_detections": insp.total_detections,
                     "summary": json.loads(insp.summary) if insp.summary else {},
+                    "inspection_type": insp.inspection_type,
+                    "inspection_level": insp.inspection_level,
+                    "client": insp.client,
+                    "location": insp.location,
+                    "capacity_mw": insp.capacity_mw,
+                    "irradiance_wm2": insp.irradiance_wm2,
+                    "wind_speed_bft": insp.wind_speed_bft,
+                    "cloud_coverage_okta": insp.cloud_coverage_okta,
                 }
                 for insp in inspections
             ],
@@ -1060,6 +1290,79 @@ def get_park_grid(park_id: str, inspection_id: str | None = None):
             })
 
         return build_grid(detections=detections, park=park, inspection_id=insp.id)
+    finally:
+        session.close()
+
+
+@app.get("/park/{park_id}/trend")
+def get_park_trend(park_id: str):
+    """Per-inspection severity count trend for a park, oldest first."""
+    from sqlalchemy import text
+    from axalon.park.trend import build_trend
+
+    park_id = _validate_park_id(park_id)
+    session = get_session()
+    try:
+        park = session.query(Park).filter(Park.id == park_id).first()
+        if park is None:
+            raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
+        rows = session.execute(
+            text("""
+                SELECT i.id,
+                       i.flight_date,
+                       SUM(CASE WHEN d.severity = 'CRITICAL' THEN 1 ELSE 0 END) AS critical_count,
+                       SUM(CASE WHEN d.severity = 'HIGH'     THEN 1 ELSE 0 END) AS high_count,
+                       SUM(CASE WHEN d.severity = 'MEDIUM'   THEN 1 ELSE 0 END) AS medium_count,
+                       SUM(CASE WHEN d.severity = 'LOW'      THEN 1 ELSE 0 END) AS low_count
+                FROM inspections i
+                LEFT JOIN detections d ON d.inspection_id = i.id
+                WHERE i.park_id = :park_id
+                GROUP BY i.id, i.flight_date
+                ORDER BY i.flight_date ASC
+            """),
+            {"park_id": park_id},
+        ).fetchall()
+        return build_trend(rows)
+    finally:
+        session.close()
+
+
+@app.get("/park/{park_id}/recurring")
+def get_park_recurring(park_id: str, min_inspections: int = 2):
+    """Panels with anomalies in at least min_inspections inspections."""
+    from sqlalchemy import text
+    from axalon.park.recurring import build_recurring
+
+    park_id = _validate_park_id(park_id)
+    min_inspections = max(1, int(min_inspections))
+    session = get_session()
+    try:
+        park = session.query(Park).filter(Park.id == park_id).first()
+        if park is None:
+            raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
+        rows = session.execute(
+            text("""
+                SELECT d.panel_id,
+                       COUNT(DISTINCT d.inspection_id) AS inspection_count,
+                       MAX(CASE d.severity
+                           WHEN 'CRITICAL' THEN 4
+                           WHEN 'HIGH'     THEN 3
+                           WHEN 'MEDIUM'   THEN 2
+                           ELSE 1 END) AS sev_rank,
+                       GROUP_CONCAT(DISTINCT d.class) AS classes,
+                       MIN(i.flight_date) AS first_seen,
+                       MAX(i.flight_date) AS last_seen
+                FROM detections d
+                JOIN inspections i ON i.id = d.inspection_id
+                WHERE i.park_id = :park_id
+                  AND d.panel_id IS NOT NULL
+                GROUP BY d.panel_id
+                HAVING COUNT(DISTINCT d.inspection_id) >= :min_inspections
+                ORDER BY sev_rank DESC, inspection_count DESC
+            """),
+            {"park_id": park_id, "min_inspections": min_inspections},
+        ).fetchall()
+        return build_recurring(rows)
     finally:
         session.close()
 
@@ -1205,6 +1508,100 @@ def diff_park_inspections(park_id: str, inspection_a: str, inspection_b: str):
             "summary": summary,
             "panels": panels,
         }
+    finally:
+        session.close()
+
+
+# ── Corrections (annotation editor) ──────────────────────────────────────────
+
+def _serialize_correction(c: Correction) -> dict:
+    return {
+        "id": c.id,
+        "job_id": c.job_id,
+        "image_id": c.image_id,
+        "panel_id": c.panel_id,
+        "class": c.class_,
+        "class_id": c.class_id,
+        "severity": c.severity,
+        "bbox_norm": json.loads(c.bbox_norm) if c.bbox_norm else [],
+        "notes": c.notes,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+    }
+
+
+@app.get("/corrections/{job_id:path}")
+def list_corrections(job_id: str):
+    """List all user correction boxes for an inspect job."""
+    job_id = _validate_job_id(job_id)
+    session = get_session()
+    try:
+        rows = (
+            session.query(Correction)
+            .filter(Correction.job_id == job_id)
+            .order_by(Correction.created_at.asc(), Correction.id.asc())
+            .all()
+        )
+        return [_serialize_correction(r) for r in rows]
+    finally:
+        session.close()
+
+
+@app.post("/corrections/{job_id}", status_code=201)
+def create_correction(job_id: str, body: dict):
+    """Persist a user-drawn bounding box correction."""
+    job_id = _validate_job_id(job_id)
+    class_ = str(body.get("class_", ""))[:64]
+    if not class_:
+        raise HTTPException(status_code=400, detail="class_ is required")
+
+    bbox = body.get("bbox_norm")
+    if not isinstance(bbox, list) or len(bbox) != 4:
+        raise HTTPException(status_code=400, detail="bbox_norm must contain four values")
+    try:
+        bbox = [max(0.0, min(1.0, float(v))) for v in bbox]
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="bbox_norm values must be numeric")
+
+    raw_class_id = body.get("class_id")
+    class_id = int(raw_class_id) if raw_class_id is not None else None
+    severity = str(body.get("severity", "MEDIUM"))[:16]
+    notes = str(body.get("notes", ""))[:500] if body.get("notes") else None
+    session = get_session()
+    try:
+        c = Correction(
+            job_id=job_id,
+            image_id=str(body.get("image_id", ""))[:160] if body.get("image_id") else None,
+            panel_id=str(body.get("panel_id", ""))[:64] if body.get("panel_id") else None,
+            class_=class_,
+            class_id=class_id,
+            severity=severity,
+            bbox_norm=json.dumps(bbox),
+            notes=notes,
+        )
+        session.add(c)
+        session.commit()
+        session.refresh(c)
+        return JSONResponse(content=_serialize_correction(c), status_code=201)
+    finally:
+        session.close()
+
+
+@app.delete("/corrections/{job_id}/{correction_id}", status_code=204)
+def delete_correction(job_id: str, correction_id: int):
+    """Delete a user correction by ID."""
+    job_id = _validate_job_id(job_id)
+    session = get_session()
+    try:
+        c = session.query(Correction).filter(
+            Correction.id == correction_id,
+            Correction.job_id == job_id,
+        ).first()
+        if c is None:
+            raise HTTPException(status_code=404, detail="Correction not found")
+        session.delete(c)
+        session.commit()
+        return Response(status_code=204)
     finally:
         session.close()
 
@@ -1420,7 +1817,7 @@ def health():
         db_status = "error"
     return {
         "status": "ok",
-        "model": "YOLOv8s",
+        "model": "YOLO11m",
         "weights": "ml/checkpoints/best.pt",
         "version": "1.0.0",
         "db": db_status,

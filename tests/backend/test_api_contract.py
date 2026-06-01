@@ -3,7 +3,18 @@
 These tests run against a fresh temp-DB TestClient (no live server).
 The synthetic mission fixture is uploaded via `batch_fixture`.
 """
+from pathlib import Path
+
 import pytest
+
+THERMAL_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "tests/fixtures/sample_mission/thermal/img_001.jpg"
+)
+RGB_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "tests/fixtures/sample_mission/rgb/img_001.jpg"
+)
 
 
 # ── /health ───────────────────────────────────────────────────────────────────
@@ -85,6 +96,40 @@ def test_status_404_for_unknown_job(client):
     assert r.status_code == 404
 
 
+# ── /inspect ─────────────────────────────────────────────────────────────────
+
+def test_inspect_single_thermal_returns_job_id(client):
+    """Thermal-only inspect: shape check."""
+    with open(THERMAL_FIXTURE, "rb") as f:
+        r = client.post(
+            "/inspect",
+            files={"thermal_image": ("img_001.jpg", f, "image/jpeg")},
+            data={"park_id": "TEST"},
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert "job_id" in body
+    assert "detections" in body
+    assert body.get("rgb_filename", "") == ""
+
+
+def test_inspect_with_rgb_returns_rgb_filename(client):
+    """Thermal+RGB inspect: rgb_filename is non-empty."""
+    with open(THERMAL_FIXTURE, "rb") as ft, open(RGB_FIXTURE, "rb") as fr:
+        r = client.post(
+            "/inspect",
+            files={
+                "thermal_image": ("img_001.jpg", ft, "image/jpeg"),
+                "rgb_image": ("img_001.jpg", fr, "image/jpeg"),
+            },
+            data={"park_id": "TEST"},
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert "rgb_filename" in body
+    assert body["rgb_filename"].endswith("_rgb_annotated.jpg")
+
+
 # ── /map/{job_id} ─────────────────────────────────────────────────────────────
 
 def test_map_returns_anomalies_after_batch(client, batch_fixture):
@@ -161,3 +206,35 @@ def test_park_grid_default_inspection(client, batch_fixture):
     body = r.json()
     assert body["park_id"] == "GRID_DEFAULT"
     assert isinstance(body["panels"], list)
+
+
+def test_park_grid_png_returns_png(client, batch_fixture):
+    batch_fixture(park_id="PNG_TEST")
+    r = client.get("/park/PNG_TEST/grid/png")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content[:4] == b"\x89PNG"
+
+
+def test_park_grid_png_unknown_park_returns_empty_png(client):
+    r = client.get("/park/DOES_NOT_EXIST/grid/png")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content[:4] == b"\x89PNG"
+
+
+def test_batch_accepts_inspection_type(client, sample_mission_zip):
+    with open(sample_mission_zip, "rb") as f:
+        resp = client.post(
+            "/batch",
+            files={"images": ("sample_mission.zip", f, "application/zip")},
+            data={
+                "park_id": "PARK_ITTYPE",
+                "inspection_type": "commissioning",
+                "inspection_level": "standard",
+                "irradiance_wm2": "875",
+                "client": "Acme Solar",
+            },
+        )
+    assert resp.status_code == 202
+    assert resp.json()["job_id"].startswith("batch-")
