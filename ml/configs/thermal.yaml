@@ -1,34 +1,39 @@
-# ── Thermal Model Training Config ──────────────────────────────────────
-# Loaded by Notebook 02. Override any value in the CONFIG cell instead.
-
+# ── YOLO11m Thermal Solar Training Config ────────────────────────────────────
 # Dataset
-dataset_yaml: data/thermal_dataset.yaml
+dataset_yaml: ml/thermal_dataset.yaml
 imgsz: 640
 
-# Model
-model: yolov8s.pt          # COCO-pretrained backbone; swap for yolov8m.pt to scale up
+# Model — YOLO11m, auto-downloads COCO pretrained weights on first run
+model: yolo11m.pt
 
-# Training hyperparameters
-epochs: 100
-batch: 16
-device: 0                  # GPU device id; 'cpu' as fallback is handled in notebook
-lr0: 0.01
-lrf: 0.001
+# Training
+epochs: 150
+batch: 16                  # reduce to 8 if GPU OOM
+device: 0                  # GPU; 'cpu' as fallback
+lr0: 0.001                 # lower than YOLO default — YOLO11m is larger
+lrf: 0.0001                # final LR = lr0 × lrf
 cos_lr: true
-warmup_epochs: 3
-patience: 15               # early-stopping patience
+warmup_epochs: 5
+warmup_momentum: 0.8
+patience: 20               # early stopping — more generous for larger model
+optimizer: AdamW           # AdamW outperforms SGD for YOLO11m fine-tuning
+weight_decay: 0.0005
 
-# Augmentation (YOLOv8 built-in; thermal-specific overrides)
-hsv_h: 0.0                 # no hue shift — thermal images have no meaningful hue
-hsv_s: 0.0                 # no saturation — thermal is grayscale-like
-hsv_v: 0.4                 # small value/brightness jitter kept
-mosaic: 1.0
-mixup: 0.1
+# Augmentation — thermal-specific
+hsv_h: 0.0                 # no hue — thermal is not RGB
+hsv_s: 0.0                 # no saturation
+hsv_v: 0.4                 # brightness jitter simulates emissivity variation
+degrees: 5.0               # small rotation (drone roll at 20m)
+scale: 0.3                 # ±30% scale jitter → simulates 15-25m altitude range
+fliplr: 0.5                # horizontal flip — solar rows are symmetric
+flipud: 0.0                # no vertical flip
+mosaic: 1.0                # critical for creating full-scene context from crops
+mixup: 0.15
 copy_paste: 0.1
-close_mosaic: 10           # disable mosaic in last N epochs for stable convergence
+close_mosaic: 15           # disable mosaic in last 15 epochs for stable convergence
 
 # Output
-project: runs/thermal
-name: train
-save_period: 10            # save checkpoint every N epochs
-
+project: ml/runs/thermal
+name: yolo11m_solar
+save_period: 10
+plots: true                # save precision/recall/confusion matrix plots
