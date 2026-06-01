@@ -14,6 +14,7 @@ from pathlib import Path
 import cv2
 
 from axalon.core.geo import extract_gps_exif
+from axalon.core.temp_extractor import find_temp_companion
 
 # Supported naming conventions: thermal_001/rgb_001, ir_001/vis_001, 001_T/001_V
 _THERMAL_SUFFIXES = {"thermal", "ir", "t", "therm"}
@@ -72,6 +73,7 @@ def find_image_pairs(
             "id": thermal_path.stem,
             "thermal": thermal_path,
             "rgb": rgb_path,
+            "temp_raw": find_temp_companion(thermal_path),
             "thermal_gps": extract_gps_exif(thermal_path),
             "rgb_gps": extract_gps_exif(rgb_path) if rgb_path else None,
             "thermal_size": (w, h),

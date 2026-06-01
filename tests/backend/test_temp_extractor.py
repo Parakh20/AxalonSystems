@@ -91,3 +91,28 @@ def test_compute_delta_t_offscreen_bbox():
     result = compute_delta_t(matrix, [700, 600, 750, 650])
     assert result["delta_t_measured"] is None
     assert result["reference_temp"] is None
+
+
+import cv2
+from axalon.pipeline.ingest import find_image_pairs
+
+
+def test_find_image_pairs_includes_temp_raw(tmp_path):
+    thermal_dir = tmp_path / "thermal"
+    thermal_dir.mkdir()
+    img = thermal_dir / "img_001.jpg"
+    cv2.imwrite(str(img), np.ones((1, 1, 3), dtype=np.uint8) * 255)
+    raw = thermal_dir / "img_001_temp.raw"
+    raw.write_bytes(b"\x00" * (640 * 512 * 2))
+    pairs = find_image_pairs(tmp_path)
+    assert len(pairs) == 1
+    assert pairs[0]["temp_raw"] == raw
+
+
+def test_find_image_pairs_temp_raw_none_when_absent(tmp_path):
+    thermal_dir = tmp_path / "thermal"
+    thermal_dir.mkdir()
+    cv2.imwrite(str(thermal_dir / "img_001.jpg"), np.ones((1, 1, 3), dtype=np.uint8) * 255)
+    pairs = find_image_pairs(tmp_path)
+    assert len(pairs) == 1
+    assert pairs[0]["temp_raw"] is None

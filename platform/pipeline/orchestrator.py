@@ -22,6 +22,7 @@ from axalon.park.layout import ParkLayoutDetector
 from axalon.db.session import init_db, get_session
 from axalon.db.models import Park, Inspection, Detection as DbDetection
 from axalon.pipeline.ingest import find_image_pairs, load_mission_metadata, validate_pair
+from axalon.core.temp_extractor import load_temp_matrix, compute_delta_t, normalize_delta_t
 from axalon.pipeline.tracking import dedup_detections, reconcile_inspection
 
 logger = get_logger("axalon.orchestrator")
@@ -95,6 +96,8 @@ class InspectionOrchestrator:
         altitude_m: float = 40.0,
         panel_map: dict | None = None,
         inspection_id: str | None = None,
+        temp_raw_path: str | Path | None = None,
+        irradiance_wm2: float | None = None,
     ) -> dict:
         """Run full pipeline on a single thermal+RGB pair.
 
@@ -118,6 +121,24 @@ class InspectionOrchestrator:
                 det["gps"] = detection_to_gps(
                     det["bbox"], img_w, img_h, image_gps, altitude_m
                 )
+
+        # Temperature enrichment — requires _temp.raw companion from iTL612R Pro
+        if temp_raw_path is not None:
+            try:
+                temp_matrix = load_temp_matrix(temp_raw_path)
+                for det in detections:
+                    temps = compute_delta_t(temp_matrix, det["bbox"])
+                    det["min_temp"] = temps["min_temp"]
+                    det["max_temp"] = temps["max_temp"]
+                    det["avg_temp"] = temps["avg_temp"]
+                    det["delta_t_measured"] = temps["delta_t_measured"]
+                    det["irradiance_wm2"] = irradiance_wm2
+                    if temps["delta_t_measured"] is not None and irradiance_wm2:
+                        det["delta_t_normalized"] = normalize_delta_t(
+                            temps["delta_t_measured"], irradiance_wm2
+                        )
+            except Exception:
+                logger.warning("Temperature extraction failed for %s", thermal_path.name)
 
         # Assign panel IDs
         for det in detections:
@@ -192,6 +213,7 @@ class InspectionOrchestrator:
         park_id: str = "unknown",
         altitude_m: float = 40.0,
         progress_callback=None,
+        site_meta: dict | None = None,
     ) -> dict:
         """Run full pipeline on an entire flight folder.
 
@@ -206,6 +228,12 @@ class InspectionOrchestrator:
         """
         pairs = find_image_pairs(folder)
         mission_meta = load_mission_metadata(folder)
+        site_meta = site_meta or {}
+        irradiance_wm2 = site_meta.get("irradiance_wm2")
+        try:
+            irradiance_wm2 = float(irradiance_wm2) if irradiance_wm2 else None
+        except (TypeError, ValueError):
+            irradiance_wm2 = None
         total = len(pairs)
         logger.info("Starting batch: %d pairs, park=%s", total, park_id)
 
@@ -265,6 +293,8 @@ class InspectionOrchestrator:
                 altitude_m=mission_meta.get("altitude_m", altitude_m),
                 panel_map=panel_map,
                 inspection_id=batch_id,
+                temp_raw_path=pair.get("temp_raw"),
+                irradiance_wm2=irradiance_wm2,
             )
             all_results.append(result)
             all_detections.extend(result["detections"])
