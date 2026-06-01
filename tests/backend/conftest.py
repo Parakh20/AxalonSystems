@@ -48,6 +48,15 @@ def client(temp_db) -> TestClient:
 
 
 @pytest.fixture
+def db_session(temp_db):
+    """SQLAlchemy session bound to the temp test DB."""
+    from axalon.db.session import get_session
+    session = get_session()
+    yield session
+    session.close()
+
+
+@pytest.fixture
 def batch_fixture(client, sample_mission_zip):
     """Run one batch end-to-end through the API and return its job_id."""
     def _run(park_id: str = "TEST_PARK", altitude_m: float = 42.0) -> str:

@@ -30,6 +30,15 @@ class Inspection(Base):
     total_images = Column(Integer, default=0)
     total_detections = Column(Integer, default=0)
     summary = Column(Text, nullable=True)           # JSON string: {"CRITICAL":3,...}
+    # Site metadata — written at job creation from API form params
+    client = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    capacity_mw = Column(Float, nullable=True)
+    inspection_type = Column(String, default="maintenance")  # commissioning | maintenance | rapid
+    inspection_level = Column(String, default="simplified")  # simplified | standard | detailed
+    irradiance_wm2 = Column(Float, nullable=True)
+    wind_speed_bft = Column(Float, nullable=True)
+    cloud_coverage_okta = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -74,6 +83,46 @@ class PanelFault(Base):
     last_bbox = Column(Text, nullable=True)                 # JSON last bbox (for UI preview)
     last_gps = Column(Text, nullable=True)                  # JSON last GPS
     notes = Column(Text, nullable=True)                     # operator notes
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Correction(Base):
+    """User-drawn annotation box on a single-image inspect result."""
+    __tablename__ = "corrections"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String, nullable=False, index=True)
+    image_id = Column(String, nullable=True)
+    panel_id = Column(String, nullable=True)
+    class_ = Column("class", String, nullable=False)
+    class_id = Column(Integer, nullable=True)
+    severity = Column(String, nullable=True)
+    bbox_norm = Column(Text, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class FaultComment(Base):
+    """Append-only comment thread on a PanelFault — supports multi-actor workflow."""
+    __tablename__ = "fault_comments"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fault_id = Column(Integer, ForeignKey("panel_faults.id"), nullable=False, index=True)
+    author = Column(String(128), nullable=True)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Job(Base):
+    """Persisted state for an inspection job."""
+    __tablename__ = "jobs"
+    id = Column(String, primary_key=True)
+    park_id = Column(String, nullable=True, index=True)
+    state = Column(String, nullable=False, default="queued")
+    total = Column(Integer, nullable=True)
+    processed = Column(Integer, nullable=True, default=0)
+    message = Column(Text, nullable=True)
+    result_path = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
