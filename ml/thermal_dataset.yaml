@@ -1,17 +1,17 @@
-names:
-- cell
-- cell-multi
-- module
-- string
-- bypass-diode
-- offline-module
-- vegetation-shading
-- soiling
-- short-circuit
-- hot-spot-low
-- hot-spot-high
+path: ml/data/combined
+train: train/images
+val: val/images
+test: test/images
 nc: 11
-path: /home/parakh/Desktop/AxalonPIPE/solar_thermal_detection/data
-test: images/test
-train: images/train
-val: images/val
+names:
+  - cell
+  - cell-multi
+  - module
+  - string
+  - bypass-diode
+  - offline-module
+  - vegetation-shading
+  - soiling
+  - short-circuit
+  - hot-spot-low
+  - hot-spot-high
