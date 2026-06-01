@@ -79,3 +79,15 @@ def test_find_temp_companion_missing(tmp_path):
     jpg = tmp_path / "img_001.jpg"
     jpg.touch()
     assert find_temp_companion(jpg) is None
+
+
+def test_normalize_delta_t_negative_irradiance():
+    with pytest.raises(ValueError, match="non-negative"):
+        normalize_delta_t(10.0, -100.0)
+
+
+def test_compute_delta_t_offscreen_bbox():
+    matrix = np.full((512, 640), 25.0, dtype=np.float32)
+    result = compute_delta_t(matrix, [700, 600, 750, 650])
+    assert result["delta_t_measured"] is None
+    assert result["reference_temp"] is None

@@ -84,9 +84,11 @@ def normalize_delta_t(delta_t: float, irradiance_wm2: float) -> float | None:
 
     Formula: ΔT_norm = ΔT_measured × (1000 / G)
     """
-    if irradiance_wm2 and irradiance_wm2 > 0:
-        return round(delta_t * (1000.0 / irradiance_wm2), 2)
-    return None
+    if irradiance_wm2 is not None and irradiance_wm2 < 0:
+        raise ValueError(f"irradiance_wm2 must be non-negative, got {irradiance_wm2}")
+    if not irradiance_wm2 or irradiance_wm2 <= 0:
+        return None
+    return round(delta_t * (1000.0 / irradiance_wm2), 2)
 
 
 def find_temp_companion(image_path: Path) -> Path | None:
