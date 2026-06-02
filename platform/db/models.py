@@ -132,7 +132,9 @@ class Mission(Base):
     __tablename__ = "missions"
     id           = Column(Integer, primary_key=True, autoincrement=True)
     name         = Column(String, nullable=False)
-    park_id      = Column(String, ForeignKey("parks.id"), nullable=True, index=True)
+    # Plain indexed string, not a FK — a mission may be planned before its park
+    # exists in the DB (parks are created on first inspection).
+    park_id      = Column(String, nullable=True, index=True)
     mission_type = Column(String, default="grid")   # grid | perimeter | corridor
     camera_id    = Column(String, nullable=True)
     params       = Column(Text, nullable=True)       # JSON MissionParams

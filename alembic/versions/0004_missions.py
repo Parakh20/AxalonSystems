@@ -17,7 +17,7 @@ def upgrade() -> None:
         'missions',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('name', sa.String(), nullable=False),
-        sa.Column('park_id', sa.String(), sa.ForeignKey('parks.id'), nullable=True),
+        sa.Column('park_id', sa.String(), nullable=True),
         sa.Column('mission_type', sa.String(), nullable=True),
         sa.Column('camera_id', sa.String(), nullable=True),
         sa.Column('params', sa.Text(), nullable=True),

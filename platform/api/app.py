@@ -43,7 +43,7 @@ from axalon.reporting.report import (
 )
 from axalon.reporting.geojson_writer import write_geojson
 from axalon.db.session import get_session
-from axalon.db.models import Park, Inspection, PanelFault, Detection as DbDetection, FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED, Correction, Job as DbJob, FaultComment
+from axalon.db.models import Park, Inspection, PanelFault, Detection as DbDetection, FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED, Correction, Job as DbJob, FaultComment, Mission
 from axalon.park.diff import build_diff
 
 logger = logging.getLogger("axalon.api")
@@ -1826,6 +1826,98 @@ def list_fault_comments(fault_id: int):
             .all()
         )
         return [_serialize_comment(c) for c in comments]
+    finally:
+        session.close()
+
+
+def _serialize_mission_summary(m: Mission) -> dict:
+    return {
+        "id": m.id,
+        "name": m.name,
+        "park_id": m.park_id,
+        "mission_type": m.mission_type,
+        "camera_id": m.camera_id,
+        "area_ha": m.area_ha,
+        "image_count": m.image_count,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+    }
+
+
+def _serialize_mission_full(m: Mission) -> dict:
+    return {
+        **_serialize_mission_summary(m),
+        "params": json.loads(m.params) if m.params else {},
+        "polygon": json.loads(m.polygon) if m.polygon else [],
+        "waypoints": json.loads(m.waypoints) if m.waypoints else [],
+        "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+    }
+
+
+@app.post("/missions", status_code=201)
+def create_mission(payload: dict):
+    """Save a planned mission."""
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    session = get_session()
+    try:
+        m = Mission(
+            name=name[:200],
+            park_id=(payload.get("park_id") or None),
+            mission_type=payload.get("mission_type", "grid"),
+            camera_id=payload.get("camera_id"),
+            params=json.dumps(payload.get("params") or {}),
+            polygon=json.dumps(payload.get("polygon") or []),
+            waypoints=json.dumps(payload.get("waypoints") or []),
+            area_ha=payload.get("area_ha"),
+            image_count=payload.get("image_count"),
+        )
+        session.add(m)
+        session.commit()
+        session.refresh(m)
+        return JSONResponse(content=_serialize_mission_summary(m), status_code=201)
+    finally:
+        session.close()
+
+
+@app.get("/missions")
+def list_missions(park_id: str | None = None):
+    """List saved missions, optionally filtered by park_id. Excludes heavy waypoint payloads."""
+    session = get_session()
+    try:
+        q = session.query(Mission)
+        if park_id:
+            q = q.filter(Mission.park_id == park_id)
+        missions = q.order_by(Mission.created_at.desc()).all()
+        return [_serialize_mission_summary(m) for m in missions]
+    finally:
+        session.close()
+
+
+@app.get("/missions/{mission_id}")
+def get_mission(mission_id: int):
+    """Return one mission including its full waypoint path."""
+    session = get_session()
+    try:
+        m = session.query(Mission).filter_by(id=mission_id).first()
+        if m is None:
+            raise HTTPException(status_code=404, detail="Mission not found")
+        return _serialize_mission_full(m)
+    finally:
+        session.close()
+
+
+@app.delete("/missions/{mission_id}", status_code=204)
+def delete_mission(mission_id: int):
+    """Delete a saved mission."""
+    session = get_session()
+    try:
+        m = session.query(Mission).filter_by(id=mission_id).first()
+        if m is None:
+            raise HTTPException(status_code=404, detail="Mission not found")
+        session.delete(m)
+        session.commit()
+        return Response(status_code=204)
     finally:
         session.close()
 
