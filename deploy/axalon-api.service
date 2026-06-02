@@ -17,10 +17,18 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/AxalonSystems
+# WorkingDirectory MUST NOT be the repo root: the repo contains a `platform/`
+# package that shadows Python's stdlib `platform` module whenever the repo root
+# lands on sys.path (uvicorn injects cwd). That breaks `import platform` inside
+# SQLAlchemy/uvicorn/websockets. Running from /tmp + PYTHONSAFEPATH=1 mirrors
+# run.sh and avoids it. App resolves weights/config via Path(__file__), so cwd
+# does not matter for finding the model. (Set AXALON_OUTPUT_DIR to an absolute
+# path in .env if you don't want results written under /tmp.)
+WorkingDirectory=/tmp
+Environment=PYTHONSAFEPATH=1
 # EnvironmentFile holds AXALON_DB_URL, AXALON_API_KEY, etc. (see .env.example)
 EnvironmentFile=/home/ubuntu/AxalonSystems/.env
-ExecStart=/home/ubuntu/AxalonSystems/.venv/bin/uvicorn axalon.api.app:app --host 0.0.0.0 --port 8000
+ExecStart=/home/ubuntu/AxalonSystems/.venv/bin/python -m uvicorn axalon.api.app:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
 # YOLO/PyTorch can be memory-heavy; give it room before OOM-kill

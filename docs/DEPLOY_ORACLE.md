@@ -72,8 +72,12 @@ Set at minimum:
 Create the tables in Supabase (once):
 ```bash
 set -a && source .env && set +a
-alembic upgrade head
+PYTHONSAFEPATH=1 alembic upgrade head
 ```
+
+> `PYTHONSAFEPATH=1` is required: the repo's `platform/` package otherwise shadows
+> Python's stdlib `platform` module (alembic adds the repo root to `sys.path`),
+> which crashes SQLAlchemy with `module 'platform' has no attribute 'python_implementation'`.
 
 ## 5. Get the model weights onto the VM
 
@@ -143,7 +147,7 @@ ssh ubuntu@<PUBLIC_IP>
 cd AxalonSystems && git pull
 source .venv/bin/activate
 pip install -r requirements_platform.txt   # if deps changed
-alembic upgrade head                        # if migrations changed
+PYTHONSAFEPATH=1 alembic upgrade head       # if migrations changed
 sudo systemctl restart axalon-api
 ```
 
