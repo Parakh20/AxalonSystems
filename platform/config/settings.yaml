@@ -1,5 +1,7 @@
 model:
   weights: ml/checkpoints/best.pt
+  engine: ml/checkpoints/best.engine
+  use_engine: false
   confidence: 0.25
   iou_threshold: 0.45
   imgsz: 640
@@ -13,8 +15,6 @@ park:
   grid_max_panel_area: 50000
   row_cluster_tolerance_px: 30
 camera:
-  thermal_focal_length_mm: 13
-  thermal_sensor_width_mm: 17.3
   rgb_focal_length_mm: 24
   rgb_sensor_width_mm: 35.9
   offset_px:
@@ -22,7 +22,12 @@ camera:
   - 0
   alignment_mode: auto
 drone:
-  default_altitude_m: 40
+  default_altitude_m: 20
+  min_altitude_m: 10
+  max_altitude_m: 120
+  thermal_focal_length_mm: 25
+  thermal_sensor_width_mm: 7.68
+  thermal_sensor_height_mm: 6.144
 output:
   base_dir: output/
   save_annotated_thermal: true
@@ -48,4 +53,8 @@ database:
   url: sqlite:///axalon_inspections.db
 geo:
   default_crs: EPSG:4326
-  default_altitude_m: 40
+  default_altitude_m: 20
+economics:
+  cost_per_kwh_usd: 0.08
+  panel_capacity_kw: 0.4
+  peak_sun_hours_per_day: 5.0
