@@ -236,6 +236,21 @@ def _validate_job_id(job_id: str) -> str:
     return job_id
 
 
+def _check_iec_warnings(site_meta: dict) -> list[str]:
+    """Return IEC compliance warnings for the given site metadata."""
+    warnings = []
+    try:
+        irr = float(site_meta.get("irradiance_wm2") or 0)
+        if 0 < irr < 600:
+            warnings.append(
+                f"Irradiance {irr:.0f} W/m² is below the IEC 62446-3 "
+                "minimum of 600 W/m². Results may not meet standard requirements."
+            )
+    except (TypeError, ValueError):
+        pass
+    return warnings
+
+
 def _state_from_status(status: str | None) -> str:
     return {
         "queued": "queued",
@@ -419,6 +434,7 @@ async def inspect_pair(
         "summary": result["summary"],
         "detections": result["detections"],
         "rgb_filename": Path(result.get("annotated_rgb") or "").name,
+        "warnings": _check_iec_warnings(site_meta),
     })
 
 
@@ -501,7 +517,8 @@ async def inspect_batch(
     background_tasks.add_task(_run_batch_job, job_id, tmp_zip, park_id, altitude_m, site_meta)
 
     return {"job_id": job_id, "state": "queued", "status": "queued",
-            "message": "Batch job queued. Poll GET /status/{job_id} for progress."}
+            "message": "Batch job queued. Poll GET /status/{job_id} for progress.",
+            "warnings": _check_iec_warnings(site_meta)}
 
 
 def _is_unsafe_member(member: zipfile.ZipInfo) -> str | None:

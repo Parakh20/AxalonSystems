@@ -55,6 +55,23 @@ def _fault_display(class_name: str) -> str:
     return _FAULT_TYPE_DISPLAY.get(class_name, class_name.replace("-", " ").title())
 
 
+def compute_revenue_loss(detections: list[dict], economics: dict) -> float:
+    """Estimate daily revenue loss (USD) from CRITICAL and HIGH faults.
+
+    Counts unique known panels (excludes R?-C?) with CRITICAL or HIGH severity.
+    Formula: affected_panels × panel_capacity_kw × peak_sun_hours × cost_per_kwh
+    """
+    cost = float(economics.get("cost_per_kwh_usd", 0.08))
+    capacity = float(economics.get("panel_capacity_kw", 0.4))
+    hours = float(economics.get("peak_sun_hours_per_day", 5.0))
+    affected = {
+        d["panel_id"] for d in detections
+        if d.get("severity") in ("CRITICAL", "HIGH")
+        and d.get("panel_id") not in (None, "R?-C?")
+    }
+    return round(len(affected) * capacity * hours * cost, 2)
+
+
 def _severity_display(severity: str) -> str:
     return _SEVERITY_DISPLAY.get(severity, severity.title())
 
@@ -85,8 +102,14 @@ def _parse_panel_id(panel_id: str) -> dict:
     }
 
 
-def generate_json_report(batch_result: dict, output_path: str | Path) -> Path:
+def generate_json_report(
+    batch_result: dict,
+    output_path: str | Path,
+    corrections: list[dict] | None = None,
+) -> Path:
     """Write inspection result as JSON (compatible with existing report format)."""
+    if corrections is not None:
+        batch_result = {**batch_result, "corrections": corrections}
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(batch_result, indent=2, default=str))
@@ -176,6 +199,16 @@ def generate_excel_report(
     ws_sum.cell(row=total_row, column=2, value=len(all_dets)).font = hdr_font
     ws_sum.cell(row=total_row, column=2).fill = grey_fill
     ws_sum.cell(row=total_row, column=2).border = border
+
+    economics = {
+        "cost_per_kwh_usd": site_meta.get("cost_per_kwh_usd", 0.08),
+        "panel_capacity_kw": site_meta.get("panel_capacity_kw", 0.4),
+        "peak_sun_hours_per_day": site_meta.get("peak_sun_hours_per_day", 5.0),
+    }
+    rev_loss = compute_revenue_loss(all_dets, economics)
+    rev_row = total_row + 1
+    ws_sum.cell(row=rev_row, column=1, value="Est. Daily Revenue at Risk (USD)").font = hdr_font
+    ws_sum.cell(row=rev_row, column=2, value=f"${rev_loss:.2f}").font = hdr_font
 
     ws_sum.column_dimensions["A"].width = 32
     ws_sum.column_dimensions["B"].width = 22
@@ -315,6 +348,17 @@ def generate_pdf_report(
         # IEC CoA summary
         "coa_counts":         coa_counts,
         "standard_ref":       "IEC TS 62446-3:2017",
+        # Revenue loss estimation
+        "economics": {
+            "cost_per_kwh_usd": site_meta.get("cost_per_kwh_usd", 0.08),
+            "panel_capacity_kw": site_meta.get("panel_capacity_kw", 0.4),
+            "peak_sun_hours_per_day": site_meta.get("peak_sun_hours_per_day", 5.0),
+        },
+        "revenue_loss_usd": compute_revenue_loss(all_detections, {
+            "cost_per_kwh_usd": site_meta.get("cost_per_kwh_usd", 0.08),
+            "panel_capacity_kw": site_meta.get("panel_capacity_kw", 0.4),
+            "peak_sun_hours_per_day": site_meta.get("peak_sun_hours_per_day", 5.0),
+        }),
     }
 
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)))
