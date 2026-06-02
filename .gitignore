@@ -120,3 +120,7 @@ website/nextjs/.next/
 .env
 **/.env
 !.env.example
+
+# Session/debug screenshots committed by accident
+platform_map_verify.png
+platform-post-*.png
