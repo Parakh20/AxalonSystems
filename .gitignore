@@ -71,7 +71,9 @@ ml/output/annotated/
 ml/runs/thermal/train/weights/
 
 # Claude Code tooling
-.claude/
+.claude/*
+!.claude/skills/
+.claude/settings.local.json
 .remember/
 memory/
 test_reports/

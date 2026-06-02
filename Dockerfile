@@ -20,7 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements_platform.txt ml/requirements.txt ./
+# Copy each requirements file preserving its path. A multi-source `COPY a b ./`
+# flattens to basenames, so ml/requirements.txt would land at /app/requirements.txt
+# and the `-r ml/requirements.txt` install below would fail (BUILD_ERROR).
+COPY requirements_platform.txt ./requirements_platform.txt
+COPY ml/requirements.txt ./ml/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements_platform.txt -r ml/requirements.txt
 
