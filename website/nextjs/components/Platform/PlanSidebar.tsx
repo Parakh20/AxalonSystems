@@ -1,12 +1,14 @@
 // website/nextjs/components/Platform/PlanSidebar.tsx
 'use client'
 
+import { useState } from 'react'
 import { Download, Save, Trash2 } from 'lucide-react'
 import type { Camera } from '@/lib/cameras'
 import { CAMERAS } from '@/lib/cameras'
 import type { MissionParams, MissionType, MissionStats } from '@/lib/missionGeometry'
 import { computeFootprint } from '@/lib/missionGeometry'
 import type { MissionSummary } from '@/lib/api'
+import type { ExportFormat } from '@/lib/waypointExport'
 
 type Props = {
   missionName: string
@@ -23,12 +25,18 @@ type Props = {
   savedMissions: MissionSummary[]
   onLoadMission: (id: number) => void
   onDeleteMission: (id: number) => void
-  onExport: () => void
+  onExport: (format: ExportFormat) => void
   onSave: () => void
   canExport: boolean
 }
 
 const TYPES: MissionType[] = ['grid', 'perimeter', 'corridor']
+
+const EXPORT_FORMATS: { value: ExportFormat; label: string; short: string }[] = [
+  { value: 'litchi', label: 'Litchi CSV', short: 'Litchi CSV' },
+  { value: 'kml', label: 'KML (Google Earth)', short: 'KML' },
+  { value: 'plan', label: 'QGroundControl .plan', short: '.plan' },
+]
 
 export default function PlanSidebar(props: Props) {
   const {
@@ -38,7 +46,9 @@ export default function PlanSidebar(props: Props) {
     onLoadMission, onDeleteMission, onExport, onSave, canExport,
   } = props
 
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('litchi')
   const fp = computeFootprint(camera, params)
+  const exportLabel = EXPORT_FORMATS.find((f) => f.value === exportFormat)?.short ?? 'file'
 
   function setCamById(id: string) {
     const next = CAMERAS.find((c) => c.id === id)
@@ -179,8 +189,18 @@ export default function PlanSidebar(props: Props) {
       {/* Actions */}
       <section className="panel" style={{ marginTop: 'auto' }}>
         <div className="plan-param">
-          <button className="primary" style={{ width: '100%', marginBottom: 6 }} disabled={!canExport} onClick={onExport}>
-            <Download size={15} /> Export .waypoints
+          <select
+            value={exportFormat}
+            onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+            style={{ width: '100%', boxSizing: 'border-box', marginBottom: 6 }}
+            aria-label="Export format"
+          >
+            {EXPORT_FORMATS.map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+          <button className="primary" style={{ width: '100%', marginBottom: 6 }} disabled={!canExport} onClick={() => onExport(exportFormat)}>
+            <Download size={15} /> Export {exportLabel}
           </button>
           <button className="secondary" style={{ width: '100%' }} disabled={!canExport} onClick={onSave}>
             <Save size={15} /> Save Mission

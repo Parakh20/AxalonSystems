@@ -16,7 +16,7 @@ import {
   type MissionParams,
   type MissionType,
 } from '@/lib/missionGeometry'
-import { downloadWaypoints } from '@/lib/waypointExport'
+import { downloadMission, type ExportFormat } from '@/lib/waypointExport'
 import PlanSidebar from '@/components/Platform/PlanSidebar'
 
 const PlanMap = dynamic(() => import('@/components/Platform/PlanMap'), {
@@ -71,11 +71,11 @@ export function PlanTab() {
     refreshMissions()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleExport() {
+  function handleExport(format: ExportFormat) {
     if (waypoints.length < 2) return
     const fp = computeFootprint(camera, params)
     const triggerDist = Math.max(fp.h * (1 - params.frontOverlap), 0.5)
-    downloadWaypoints(waypoints, triggerDist, missionName)
+    downloadMission(waypoints, params, missionName, triggerDist, format)
   }
 
   async function handleSave() {
