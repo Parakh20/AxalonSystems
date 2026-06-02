@@ -111,3 +111,7 @@ web_temp.html
 **/test-results/
 *.local.db
 axalon_inspections.db
+
+# Next.js build output (never commit)
+website/nextjs/.next/
+**/.next/
