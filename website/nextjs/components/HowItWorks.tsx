@@ -28,7 +28,7 @@ const steps = [
     num: '03',
     icon: FileText,
     title: 'AI-powered report',
-    desc: 'YOLOv8 processes data in real-time. Receive automated inspection reports with detected anomalies, severity classification, and GPS-tagged findings.',
+    desc: 'YOLO11m processes data in real-time. Receive automated inspection reports with detected anomalies, severity classification, and GPS-tagged findings.',
   },
 ]
 

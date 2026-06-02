@@ -125,7 +125,7 @@ export default function DetectionOverlay() {
             marginBottom: '2rem',
           }}
         >
-          YOLOv8s trained on 20,000 thermal frames, fused with RGB context.
+          YOLO11m trained on 20,000 thermal frames, fused with RGB context.
           Every anomaly confirmed across both sensors before flagging.
         </motion.p>
 
@@ -302,7 +302,7 @@ export default function DetectionOverlay() {
           color: 'rgba(96,165,250,0.3)',
           letterSpacing: '0.08em',
         }}>
-          YOLOv8s · RGB+IR FUSION · 640×640px · 30Hz
+          YOLO11m · RGB+IR FUSION · 640×640px · 30Hz
         </div>
       </motion.div>
     </div>

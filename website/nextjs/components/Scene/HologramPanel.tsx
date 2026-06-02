@@ -181,7 +181,7 @@ function drawReport(ctx: CanvasRenderingContext2D, W: number, H: number, revealC
   ctx.beginPath(); ctx.moveTo(0, H - 14); ctx.lineTo(W, H - 14); ctx.stroke()
   ctx.fillStyle = 'rgba(0,240,200,0.25)'
   ctx.font = '6.5px monospace'
-  ctx.fillText('YOLOv8s v3.2  ·  CONF ≥ 0.25  ·  AXL-FLEET-3  ·  2026-04-17T09:42:11Z', 10, H - 4)
+  ctx.fillText('YOLO11m v3.2  ·  CONF ≥ 0.25  ·  AXL-FLEET-3  ·  2026-04-17T09:42:11Z', 10, H - 4)
 }
 
 // ── Outward particles ─────────────────────────────────────────────────────────

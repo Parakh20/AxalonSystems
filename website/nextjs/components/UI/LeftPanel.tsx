@@ -341,7 +341,7 @@ function ThermalSection() {
             })}
           </div>
           <div style={{ marginTop: '0.8rem', paddingTop: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.04)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.52rem', color: 'rgba(0,240,200,0.28)', letterSpacing: '0.08em' }}>
-            THERMAL·IR · 320×256px · 30Hz · YOLOv8s
+            THERMAL·IR · 320×256px · 30Hz · YOLO11m
           </div>
         </Card>
       </div>
@@ -401,7 +401,7 @@ function DetectionSection() {
           initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: false }} transition={{ delay: 0.2 }}
           style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.95rem', color: C.muted, lineHeight: 1.75, maxWidth: '380px', marginBottom: '1.5rem' }}
         >
-          YOLOv8s trained on 20,000 thermal frames, fused with RGB context.
+          YOLO11m trained on 20,000 thermal frames, fused with RGB context.
           Every anomaly confirmed across both sensors before flagging.
         </motion.p>
 
@@ -450,7 +450,7 @@ function DetectionSection() {
             right={<span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: C.blue }}>{confidence}%</span>}
           />
           <div style={{ marginTop: '0.8rem', paddingTop: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.04)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.52rem', color: 'rgba(96,165,250,0.28)', letterSpacing: '0.08em' }}>
-            YOLOv8s · RGB+IR FUSION · 640×640px · 30Hz
+            YOLO11m · RGB+IR FUSION · 640×640px · 30Hz
           </div>
         </Card>
       </div>

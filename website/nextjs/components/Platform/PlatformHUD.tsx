@@ -197,7 +197,7 @@ export default function PlatformHUD({
           INFERENCE STACK
         </div>
         <div style={{ marginTop: 10, display: 'grid', gap: 6, fontSize: 11, color: '#a3b1c5' }}>
-          <Row k="MODEL" v="YOLOv8s · best.pt" />
+          <Row k="MODEL" v="YOLO11m · best.pt" />
           <Row k="CLASSES" v="11" />
           <Row k="CONF" v="0.25" />
           <Row k="DEVICE" v="CUDA:0" />

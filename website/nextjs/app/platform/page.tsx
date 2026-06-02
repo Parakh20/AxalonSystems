@@ -131,7 +131,7 @@ function PlatformShell() {
               <span />
               Axalon Platform
             </div>
-            <div className="rail-foot-line">YOLOv8s</div>
+            <div className="rail-foot-line">YOLO11m</div>
           </div>
         </aside>
 

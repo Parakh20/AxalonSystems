@@ -292,7 +292,7 @@ export default function ThermalOverlay() {
           color: 'rgba(0,240,200,0.3)',
           letterSpacing: '0.08em',
         }}>
-          THERMAL·IR · 320×256px · 30Hz · YOLOv8s
+          THERMAL·IR · 320×256px · 30Hz · YOLO11m
         </div>
       </motion.div>
     </div>

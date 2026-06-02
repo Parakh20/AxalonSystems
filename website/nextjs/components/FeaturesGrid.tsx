@@ -14,7 +14,7 @@ const features = [
   {
     icon: Scan,
     title: 'Thermal Detection',
-    desc: 'YOLOv8s model trained on 20,000 thermal IR images. Detects 11 fault classes from hot-spot-high to vegetation shading.',
+    desc: 'YOLO11m model trained on 20,000 thermal IR images. Detects 11 fault classes from hot-spot-high to vegetation shading.',
   },
   {
     icon: Shield,

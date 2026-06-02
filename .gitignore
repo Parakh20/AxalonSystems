@@ -102,3 +102,4 @@ axalon.db
 axalon_systems.egg-info/
 logs/
 output/
+.superpowers/

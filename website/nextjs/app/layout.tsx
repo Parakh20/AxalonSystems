@@ -4,7 +4,7 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Axalon Systems',
   description:
-    'AI-powered drone inspection for solar assets. Thermal + RGB computer vision with YOLOv8 for 11-class fault detection.',
+    'AI-powered drone inspection for solar assets. Thermal + RGB computer vision with YOLO11m for 11-class fault detection.',
 }
 
 export default function RootLayout({

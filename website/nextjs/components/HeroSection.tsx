@@ -288,7 +288,7 @@ export default function HeroSection() {
               }}
             >
               AI-powered drone systems for solar asset management.
-              Thermal + RGB fusion with YOLOv8 detection across 11 fault classes.
+              Thermal + RGB fusion with YOLO11m detection across 11 fault classes.
             </motion.p>
 
             {/* CTAs */}
