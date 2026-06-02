@@ -17,15 +17,19 @@ const SAT_URL = MAPBOX_TOKEN
 const SAT_ATTR = MAPBOX_TOKEN ? '© Mapbox © OpenStreetMap' : 'Tiles © Esri'
 
 // Esri World Imagery only has tiles up to ~z19; beyond that it returns a
-// "Map data not yet available" tile. Cap the *native* zoom there and let Leaflet
-// upscale existing tiles so deeper zoom still shows imagery. Mapbox goes higher.
+// "Map data not yet available" tile. Cap native zoom there and upscale. Mapbox goes higher.
 const SAT_MAX_NATIVE_ZOOM = MAPBOX_TOKEN ? 22 : 19
+
+// Battery-leg colors (cycled).
+const LEG_COLORS = ['#06b6d4', '#f59e0b', '#a855f7', '#10b981', '#ef4444', '#3b82f6']
+const MAX_ARROWS = 24
 
 type Props = {
   missionType: MissionType
   polygon: LatLon[] | null
   waypoints: Waypoint[]
   stats: MissionStats | null
+  orbitRadiusM?: number
   onShapeDrawn: (points: LatLon[]) => void
   onClear: () => void
 }
@@ -38,8 +42,10 @@ function fmtTime(sec: number): string {
 
 export default function PlanMap({
   missionType,
+  polygon,
   waypoints,
   stats,
+  orbitRadiusM,
   onShapeDrawn,
   onClear,
 }: Props) {
@@ -56,7 +62,6 @@ export default function PlanMap({
   const [east, setEast] = useState('')
   const [coordError, setCoordError] = useState('')
 
-  // Recenter the map on a typed North (lat) / East (lon) coordinate.
   function recenter() {
     const map = mapRef.current
     const lat = parseFloat(north)
@@ -85,13 +90,18 @@ export default function PlanMap({
       drawn.clearLayers()
       const layer = e.layer
       drawn.addLayer(layer)
-      const raw = layer.getLatLngs?.()
-      const latlngs = (Array.isArray(raw?.[0]) ? raw[0] : raw ?? []) as L.LatLng[]
-      const pts: LatLon[] = (Array.isArray(latlngs) ? latlngs : []).map((ll: L.LatLng) => ({
-        lat: ll.lat,
-        lon: ll.lng,
-      }))
-      onShapeDrawnRef.current(pts)
+      if (typeof layer.getLatLngs === 'function') {
+        const raw = layer.getLatLngs()
+        const latlngs = (Array.isArray(raw?.[0]) ? raw[0] : raw ?? []) as L.LatLng[]
+        const pts: LatLon[] = (Array.isArray(latlngs) ? latlngs : []).map((ll: L.LatLng) => ({
+          lat: ll.lat,
+          lon: ll.lng,
+        }))
+        onShapeDrawnRef.current(pts)
+      } else if (typeof layer.getLatLng === 'function') {
+        const ll = layer.getLatLng() as L.LatLng
+        onShapeDrawnRef.current([{ lat: ll.lat, lon: ll.lng }])
+      }
     })
 
     map.on(L.Draw.Event.DELETED, () => {
@@ -105,19 +115,19 @@ export default function PlanMap({
     }
   }, [])
 
-  // Swap the active draw control based on mission type (polygon vs polyline)
+  // Swap the active draw control based on mission type (polygon / polyline / marker)
   useEffect(() => {
     const map = mapRef.current
     const drawn = drawnRef.current
     if (!map || !drawn) return
-    const useLine = missionType === 'corridor'
+    const tool = missionType === 'corridor' ? 'polyline' : missionType === 'orbit' ? 'marker' : 'polygon'
     const control = new L.Control.Draw({
       draw: {
-        polygon: useLine ? false : ({ shapeOptions: { color: '#0ea5e9' } } as any),
-        polyline: useLine ? ({ shapeOptions: { color: '#0ea5e9' } } as any) : false,
+        polygon: tool === 'polygon' ? ({ shapeOptions: { color: '#0ea5e9' } } as any) : false,
+        polyline: tool === 'polyline' ? ({ shapeOptions: { color: '#0ea5e9' } } as any) : false,
+        marker: tool === 'marker' ? ({} as any) : false,
         rectangle: false,
         circle: false,
-        marker: false,
         circlemarker: false,
       },
       edit: { featureGroup: drawn, remove: true } as any,
@@ -128,21 +138,61 @@ export default function PlanMap({
     }
   }, [missionType])
 
-  // Redraw waypoint path whenever waypoints change
+  // Redraw the actual flight path (leg-colored), drone-facing arrows, and orbit guide
   useEffect(() => {
     const layer = pathRef.current
     if (!layer) return
     layer.clearLayers()
+
+    // Orbit guide (center + radius) — drawn even before the ring exists
+    if (missionType === 'orbit' && polygon && polygon[0] && orbitRadiusM) {
+      L.circle([polygon[0].lat, polygon[0].lon], {
+        radius: orbitRadiusM, color: '#0ea5e9', weight: 1, fill: false, dashArray: '4',
+      }).addTo(layer)
+      L.circleMarker([polygon[0].lat, polygon[0].lon], { radius: 4, color: '#0ea5e9', fillOpacity: 1 })
+        .bindTooltip('Center')
+        .addTo(layer)
+    }
+
     if (waypoints.length < 2) return
-    const latlngs = waypoints.map((w) => [w.lat, w.lon] as [number, number])
-    L.polyline(latlngs, { color: '#06b6d4', weight: 2, opacity: 0.9 }).addTo(layer)
-    L.circleMarker(latlngs[0], { radius: 6, color: '#0ea5e9', fillOpacity: 1 })
-      .bindTooltip('Start')
-      .addTo(layer)
-    L.circleMarker(latlngs[latlngs.length - 1], { radius: 6, color: '#10b981', fillOpacity: 1 })
-      .bindTooltip('End')
-      .addTo(layer)
-  }, [waypoints])
+
+    // Path, colored per battery leg (seed each group with the previous point to connect).
+    type Group = { leg: number; pts: [number, number][] }
+    const groups: Group[] = []
+    for (const wp of waypoints) {
+      const leg = wp.leg ?? 0
+      const last = groups[groups.length - 1]
+      const ll: [number, number] = [wp.lat, wp.lon]
+      if (!last || last.leg !== leg) {
+        const seed: [number, number][] = last ? [last.pts[last.pts.length - 1]] : []
+        groups.push({ leg, pts: [...seed, ll] })
+      } else {
+        last.pts.push(ll)
+      }
+    }
+    for (const g of groups) {
+      L.polyline(g.pts, { color: LEG_COLORS[g.leg % LEG_COLORS.length], weight: 2, opacity: 0.9 }).addTo(layer)
+    }
+
+    // Drone-facing arrows (▲ points north; rotate clockwise by heading).
+    const step = Math.max(1, Math.floor(waypoints.length / MAX_ARROWS))
+    for (let i = 0; i < waypoints.length; i += step) {
+      const wp = waypoints[i]
+      const h = wp.heading ?? 0
+      const icon = L.divIcon({
+        className: 'drone-arrow',
+        html: `<div style="transform:rotate(${h}deg);color:#0ea5e9;font-size:14px;line-height:1">▲</div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      })
+      L.marker([wp.lat, wp.lon], { icon, interactive: false }).addTo(layer)
+    }
+
+    const first: [number, number] = [waypoints[0].lat, waypoints[0].lon]
+    const last: [number, number] = [waypoints[waypoints.length - 1].lat, waypoints[waypoints.length - 1].lon]
+    L.circleMarker(first, { radius: 6, color: '#0ea5e9', fillOpacity: 1 }).bindTooltip('Start').addTo(layer)
+    L.circleMarker(last, { radius: 6, color: '#10b981', fillOpacity: 1 }).bindTooltip('End').addTo(layer)
+  }, [waypoints, missionType, polygon, orbitRadiusM])
 
   return (
     <div className="plan-map">
@@ -188,6 +238,7 @@ export default function PlanMap({
           <span>Images <strong>{stats.imageCount}</strong></span>
           <span>Distance <strong>{(stats.distanceM / 1000).toFixed(2)} km</strong></span>
           <span>Time <strong>{fmtTime(stats.flightTimeSec)}</strong></span>
+          <span>Batteries <strong>{stats.batteryCount}</strong></span>
           <span>GSD <strong style={{ color: '#0ea5e9' }}>{stats.gsdCm.toFixed(2)} cm/px</strong></span>
         </div>
       )}

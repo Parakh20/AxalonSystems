@@ -10,11 +10,14 @@ import {
   generateGrid,
   generatePerimeter,
   generateCorridor,
+  generateOrbit,
+  splitByBattery,
   computeStats,
   computeFootprint,
   type LatLon,
   type MissionParams,
   type MissionType,
+  type Waypoint,
 } from '@/lib/missionGeometry'
 import { downloadMission, type ExportFormat } from '@/lib/waypointExport'
 import PlanSidebar from '@/components/Platform/PlanSidebar'
@@ -34,6 +37,10 @@ const DEFAULT_PARAMS: MissionParams = {
   sideOverlap: 0.7,
   speedMs: 8,
   headingDeg: 'auto',
+  batteryMinutes: 18,
+  batteryReservePct: 20,
+  orbitRadiusM: 30,
+  orbitPhotoCount: 16,
 }
 
 export function PlanTab() {
@@ -47,10 +54,15 @@ export function PlanTab() {
   const [savedMissions, setSavedMissions] = useState<MissionSummary[]>([])
 
   const waypoints = useMemo(() => {
-    if (!polygon || polygon.length < 2) return []
-    if (missionType === 'grid') return generateGrid(polygon, camera, params)
-    if (missionType === 'perimeter') return generatePerimeter(polygon, camera, params)
-    return generateCorridor(polygon, camera, params)
+    let base: Waypoint[] = []
+    if (missionType === 'orbit') {
+      base = polygon && polygon.length >= 1 ? generateOrbit(polygon[0], camera, params) : []
+    } else if (polygon && polygon.length >= 2) {
+      if (missionType === 'grid') base = generateGrid(polygon, camera, params)
+      else if (missionType === 'perimeter') base = generatePerimeter(polygon, camera, params)
+      else base = generateCorridor(polygon, camera, params)
+    }
+    return splitByBattery(base, params).waypoints
   }, [polygon, camera, params, missionType])
 
   const stats = useMemo(() => {
@@ -134,6 +146,7 @@ export function PlanTab() {
           polygon={polygon}
           waypoints={waypoints}
           stats={stats}
+          orbitRadiusM={params.orbitRadiusM}
           onShapeDrawn={setPolygon}
           onClear={() => setPolygon(null)}
         />

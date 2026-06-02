@@ -30,7 +30,7 @@ type Props = {
   canExport: boolean
 }
 
-const TYPES: MissionType[] = ['grid', 'perimeter', 'corridor']
+const TYPES: MissionType[] = ['grid', 'perimeter', 'corridor', 'orbit']
 
 const EXPORT_FORMATS: { value: ExportFormat; label: string; short: string }[] = [
   { value: 'litchi', label: 'Litchi CSV', short: 'Litchi CSV' },
@@ -43,13 +43,19 @@ export default function PlanSidebar(props: Props) {
   const {
     missionName, onMissionNameChange, parkId, onParkIdChange,
     missionType, onMissionTypeChange, camera, onCameraChange,
-    params, onParamsChange, savedMissions,
+    params, onParamsChange, stats, savedMissions,
     onLoadMission, onDeleteMission, onExport, onSave, canExport,
   } = props
 
   const [exportFormat, setExportFormat] = useState<ExportFormat>('litchi')
   const fp = computeFootprint(camera, params)
   const exportLabel = EXPORT_FORMATS.find((f) => f.value === exportFormat)?.short ?? 'file'
+
+  const batteryMinutes = params.batteryMinutes ?? 18
+  const reservePct = params.batteryReservePct ?? 20
+  const orbitRadiusM = params.orbitRadiusM ?? 30
+  const orbitPhotoCount = params.orbitPhotoCount ?? 16
+  const isAlphaAuto = params.headingDeg === 'auto'
 
   function setCamById(id: string) {
     const next = CAMERAS.find((c) => c.id === id)
@@ -82,18 +88,25 @@ export default function PlanSidebar(props: Props) {
             placeholder="Park ID (optional)"
             style={{ width: '100%', boxSizing: 'border-box', marginTop: 8 }}
           />
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
             {TYPES.map((t) => (
               <button
                 key={t}
                 type="button"
                 className={t === missionType ? 'primary' : 'secondary'}
-                style={{ flex: 1, textTransform: 'capitalize', padding: '5px' }}
+                style={{ flex: '1 0 40%', textTransform: 'capitalize', padding: '5px' }}
                 onClick={() => onMissionTypeChange(t)}
               >
                 {t}
               </button>
             ))}
+          </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+            {missionType === 'orbit'
+              ? 'Drop a center point; the drone circles it, camera aimed inward.'
+              : missionType === 'corridor'
+                ? 'Draw a line; the drone flies it with a parallel return pass.'
+                : 'Draw the survey area; lines run along the panel-row angle.'}
           </div>
         </div>
       </section>
@@ -162,6 +175,65 @@ export default function PlanSidebar(props: Props) {
           <label>Speed <span>{params.speedMs} m/s</span></label>
           <input type="range" min={3} max={15} value={params.speedMs}
             onChange={(e) => patchParams({ speedMs: Number(e.target.value) })} />
+
+          {/* Panel row angle α — only meaningful for the grid sweep */}
+          {missionType === 'grid' && (
+            <>
+              <label>Panel row angle α <span>{isAlphaAuto ? 'Auto' : `${params.headingDeg}°`}</span></label>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="number" min={0} max={179}
+                  disabled={isAlphaAuto}
+                  value={isAlphaAuto ? '' : (params.headingDeg as number)}
+                  placeholder="deg"
+                  onChange={(e) => patchParams({ headingDeg: Number(e.target.value) })}
+                  style={{ flex: 1, boxSizing: 'border-box' }}
+                />
+                <button
+                  type="button"
+                  className={isAlphaAuto ? 'primary' : 'secondary'}
+                  style={{ padding: '4px 8px' }}
+                  onClick={() => patchParams({ headingDeg: isAlphaAuto ? 0 : 'auto' })}
+                >
+                  Auto
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Orbit params */}
+      {missionType === 'orbit' && (
+        <section className="panel">
+          <div className="panel-head compact"><div className="panel-title">Orbit</div></div>
+          <div className="plan-param">
+            <label>Radius <span>{orbitRadiusM} m</span></label>
+            <input type="range" min={10} max={120} value={orbitRadiusM}
+              onChange={(e) => patchParams({ orbitRadiusM: Number(e.target.value) })} />
+            <label>Photos <span>{orbitPhotoCount}</span></label>
+            <input type="range" min={4} max={48} value={orbitPhotoCount}
+              onChange={(e) => patchParams({ orbitPhotoCount: Number(e.target.value) })} />
+          </div>
+        </section>
+      )}
+
+      {/* Battery */}
+      <section className="panel">
+        <div className="panel-head compact"><div className="panel-title">Battery</div></div>
+        <div className="plan-param">
+          <label>Usable flight time <span>{batteryMinutes} min</span></label>
+          <input type="range" min={5} max={40} value={batteryMinutes}
+            onChange={(e) => patchParams({ batteryMinutes: Number(e.target.value) })} />
+          <label>Reserve <span>{reservePct} %</span></label>
+          <input type="range" min={0} max={40} value={reservePct}
+            onChange={(e) => patchParams({ batteryReservePct: Number(e.target.value) })} />
+          {stats && (
+            <div className="cam-row" style={{ marginTop: 4 }}>
+              <span>Batteries needed</span>
+              <span style={{ color: '#0ea5e9' }}>{stats.batteryCount}</span>
+            </div>
+          )}
         </div>
       </section>
 
