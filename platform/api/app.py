@@ -154,6 +154,8 @@ _DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:3001",
     "http://localhost:8501",
     "http://127.0.0.1:8501",
+    "https://axalonsystems.com",
+    "https://www.axalonsystems.com",
 ]
 _CORS_ORIGINS = [
     origin.strip()

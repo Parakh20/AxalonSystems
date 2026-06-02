@@ -1,4 +1,5 @@
 """Database session management for the Axalon platform."""
+import os
 import threading
 from contextlib import contextmanager
 
@@ -15,11 +16,19 @@ _lock = threading.Lock()
 def init_db(db_url: str = "sqlite:///axalon.db") -> None:
     """Initialize engine and create all tables. Call once at startup."""
     global _engine, _SessionLocal
-    _engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    db_url = db_url or os.getenv("AXALON_DB_URL", "sqlite:///axalon.db")
+    if db_url == "sqlite:///axalon.db":
+        db_url = os.getenv("AXALON_DB_URL", db_url)
 
-    @event.listens_for(_engine, "connect")
-    def _set_sqlite_pragma(conn, _record):
-        conn.execute("PRAGMA foreign_keys=ON")
+    is_sqlite = db_url.startswith("sqlite")
+    # check_same_thread is a SQLite-only connect arg; Postgres/MySQL reject it.
+    connect_args = {"check_same_thread": False} if is_sqlite else {}
+    _engine = create_engine(db_url, connect_args=connect_args)
+
+    if is_sqlite:
+        @event.listens_for(_engine, "connect")
+        def _set_sqlite_pragma(conn, _record):
+            conn.execute("PRAGMA foreign_keys=ON")
 
     Base.metadata.create_all(_engine)
 
@@ -27,7 +36,7 @@ def init_db(db_url: str = "sqlite:///axalon.db") -> None:
     from axalon.db.migrate import run_migrations
     run_migrations(_engine)
 
-    _SessionLocal = sessionmaker(bind=_engine)
+    _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
 
 def get_engine():
