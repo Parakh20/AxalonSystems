@@ -1,7 +1,10 @@
 # Mission Planner — Design Spec
 
 **Date:** 2026-06-02
-**Goal:** Add a full drone mission planner to the Axalon platform — a new "Plan" tab that lets operators draw a survey area on a satellite map, configure flight and camera parameters, preview the generated waypoint path, export an ArduPilot `.waypoints` file, and save/reload missions.
+**Status:** Approved (reconciled 2026-06-02). Backend persistence already implemented; remaining work = frontend geometry engine + UI + multi-format export.
+**Goal:** Add a full drone mission planner to the Axalon platform — a new "Plan" tab that lets operators draw a survey area on a satellite map, configure flight and camera parameters, preview the generated waypoint path, export the mission (Litchi CSV, KML, QGroundControl `.plan`), and save/reload missions.
+
+**Architecture decision — frontend-only geometry:** all waypoint math runs in the browser (TypeScript), recomputed synchronously on every parameter change. Rationale: instant live redraw (Hammer Missions UX), and it keeps working when the backend is asleep (HF free Spaces cold-start). The backend only persists missions. This supersedes an earlier "backend Python compute" suggestion.
 
 ---
 
@@ -32,7 +35,7 @@ Hammer Missions (hammermissions.com) is the UX reference. Key properties to matc
 | `website/nextjs/components/Platform/PlanMap.tsx` | Leaflet map with Leaflet.draw polygon/polyline tools; renders waypoint path overlay and footprint preview |
 | `website/nextjs/components/Platform/PlanSidebar.tsx` | Mission type selector, camera picker, param sliders, live stats, saved missions list, export/save actions |
 | `website/nextjs/lib/missionGeometry.ts` | Pure geometry functions: `generateGrid`, `generatePerimeter`, `generateCorridor`, `computeStats`, `computeFootprint` |
-| `website/nextjs/lib/waypointExport.ts` | Serialises waypoint array to ArduPilot QGC WPL 110 `.waypoints` text; triggers browser download |
+| `website/nextjs/lib/waypointExport.ts` | Serialises a mission to Litchi CSV, KML, or QGC `.plan`; triggers browser download |
 | `website/nextjs/lib/cameras.ts` | Camera preset library (5 cameras + Custom) |
 | `alembic/versions/0004_missions.py` | DB migration: create `missions` table |
 
@@ -185,44 +188,48 @@ Selecting `custom` renders inline number inputs for `sensorWidthMm`, `sensorHeig
 
 ---
 
-## Section 3 — ArduPilot Export (`lib/waypointExport.ts`)
+## Section 3 — Export (`lib/waypointExport.ts`)
 
-### Format: QGC WPL 110
+Three export formats, all serialised client-side (no server round-trip). A format picker next to the Export button selects which file to download.
 
-Tab-separated columns: `index autocontinue frame command param1 param2 param3 param4 lat lon alt autocontinue`
+### 3a. Litchi CSV
 
-```
-QGC WPL 110
-0  1  0  16   0  0  0  0  <home_lat>  <home_lon>  <alt>  1
-1  0  3  22   0  0  0  0  <home_lat>  <home_lon>  <alt>  1
-2  0  3  206  0  <trigger_dist_m>  0  0  0  0  0  1
-3  0  3  16   0  0  0  0  <lat>  <lon>  <alt>  1
-…
-N  0  3  20   0  0  0  0  0  0  0  1
-```
+Litchi Mission Hub CSV. One row per waypoint. Columns (subset used):
+`latitude, longitude, altitude(m), heading(deg), curvesize(m), rotationdir, gimbalmode, gimbalpitchangle, actiontype1, actionparam1, …, speed(m/s), poi_latitude, poi_longitude, poi_altitude(m), photo_timeinterval, photo_distinterval`
 
-- Row 0: home point (polygon vertex[0], frame=0 global)
-- Row 1: `MAV_CMD_NAV_TAKEOFF` (22)
-- Row 2: `MAV_CMD_DO_SET_CAM_TRIGG_DIST` (206) — camera trigger distance in metres
-- Rows 3…N-1: `MAV_CMD_NAV_WAYPOINT` (16) — one per computed waypoint
-- Row N: `MAV_CMD_NAV_RETURN_TO_LAUNCH` (20)
+- `gimbalpitchangle = -90` (nadir), `actiontype1 = 1` (takePhoto), `speed = params.speedMs`.
+- `photo_distinterval = trigger_dist_m` (distance-triggered capture).
+- Header row required; filename `${slug}_litchi.csv`.
 
-### Download
+### 3b. KML
+
+OGC KML for Google Earth / generic viewers. A `<LineString>` of the full path plus one `<Placemark>` per waypoint (start/end styled). Altitude mode `relativeToGround`. Filename `${slug}.kml`.
+
+### 3c. QGroundControl `.plan`
+
+QGC/ArduPilot `.plan` JSON (`fileType: "Plan"`, `version: 1`). `mission.items[]` = `MAV_CMD_NAV_WAYPOINT` (16) per waypoint, preceded by `MAV_CMD_NAV_TAKEOFF` (22) and `MAV_CMD_DO_SET_CAM_TRIGG_DIST` (206), with `MAV_CMD_NAV_RETURN_TO_LAUNCH` (20) last. `plannedHomePosition` = polygon vertex[0]. Filename `${slug}.plan`.
+
+### Download helper
 
 ```ts
-export function downloadWaypoints(waypoints: Waypoint[], filename: string): void {
-  const text = serialiseQGCWPL110(waypoints)
-  const blob = new Blob([text], { type: 'text/plain' })
+type ExportFormat = 'litchi' | 'kml' | 'plan'
+
+export function downloadMission(
+  waypoints: Waypoint[], params: MissionParams, name: string, format: ExportFormat,
+): void {
+  const slug = name.replace(/\s+/g, '_') || 'mission'
+  const { text, ext, mime } = serialiseMission(waypoints, params, slug, format)
+  const blob = new Blob([text], { type: mime })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = filename   // e.g. "PUNE_FARM_01_grid.waypoints"
+  a.download = `${slug}.${ext}`
   a.click()
   URL.revokeObjectURL(url)
 }
 ```
 
-No server round-trip. Filename derived from `${missionName.replace(/\s+/g, '_')}.waypoints`.
+`serialiseMission` dispatches to `toLitchiCsv` / `toKml` / `toQgcPlan`. Each is a pure function, unit-tested.
 
 ---
 
@@ -286,7 +293,9 @@ Sections (top to bottom), all using existing `.panel`, `.panel-head.compact`, `.
 
 ---
 
-## Section 5 — Backend Persistence
+## Section 5 — Backend Persistence  ✅ ALREADY IMPLEMENTED
+
+> This section is **already built** in the codebase: the `Mission` model (`platform/db/models.py:130`), the `POST/GET/DELETE /missions` endpoints (`platform/api/app.py`), and migration `0004` are live (Supabase at `alembic_version=0004`). No work remains here except wiring the frontend to it. Documented below for reference.
 
 ### `Mission` model (`platform/db/models.py`)
 
@@ -372,5 +381,6 @@ User draws polygon on PlanMap
 - Wind/obstacle avoidance simulation
 - Multi-battery mission splitting (shown in stats, not enforced)
 - Live telemetry / MAVLink connection
-- DJI or Litchi export formats
-- Uploading missions directly to a drone
+- Uploading missions directly to a drone (export files only)
+- Terrain-following / AGL elevation modelling (constant altitude only)
+- Mapbox base layer (Leaflet now; provider abstracted for a later swap)
