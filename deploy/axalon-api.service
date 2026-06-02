@@ -1,0 +1,30 @@
+# systemd unit for the Axalon FastAPI backend.
+# Keeps the API running 24/7 and auto-restarts on crash/reboot.
+#
+# Install on the Oracle VM:
+#   sudo cp deploy/axalon-api.service /etc/systemd/system/axalon-api.service
+#   # edit User/WorkingDirectory/paths below to match the server
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now axalon-api
+#   systemctl status axalon-api
+#   journalctl -u axalon-api -f      # live logs
+
+[Unit]
+Description=Axalon Platform API (FastAPI + YOLO11m)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AxalonSystems
+# EnvironmentFile holds AXALON_DB_URL, AXALON_API_KEY, etc. (see .env.example)
+EnvironmentFile=/home/ubuntu/AxalonSystems/.env
+ExecStart=/home/ubuntu/AxalonSystems/.venv/bin/uvicorn axalon.api.app:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+# YOLO/PyTorch can be memory-heavy; give it room before OOM-kill
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -115,3 +115,8 @@ axalon_inspections.db
 # Next.js build output (never commit)
 website/nextjs/.next/
 **/.next/
+
+# Secrets — never commit real env files
+.env
+**/.env
+!.env.example
