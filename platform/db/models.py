@@ -127,6 +127,23 @@ class Job(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class Mission(Base):
+    """A planned drone survey mission — drawn area, flight params, computed waypoints."""
+    __tablename__ = "missions"
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    name         = Column(String, nullable=False)
+    park_id      = Column(String, ForeignKey("parks.id"), nullable=True, index=True)
+    mission_type = Column(String, default="grid")   # grid | perimeter | corridor
+    camera_id    = Column(String, nullable=True)
+    params       = Column(Text, nullable=True)       # JSON MissionParams
+    polygon      = Column(Text, nullable=True)       # JSON LatLon[] — drawn shape
+    waypoints    = Column(Text, nullable=True)       # JSON Waypoint[]
+    area_ha      = Column(Float, nullable=True)
+    image_count  = Column(Integer, nullable=True)
+    created_at   = Column(DateTime, default=datetime.utcnow)
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Composite index to make upsert lookups fast.
 Index(
     "ix_panel_faults_identity",
