@@ -15,12 +15,27 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(`${API_BASE}${path}`, init)
+    const storedKey =
+      typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem('axalon_api_key') ?? ''
+        : ''
+    const headers: HeadersInit = storedKey
+      ? {
+          ...((init?.headers as Record<string, string> | undefined) ?? {}),
+          Authorization: `Bearer ${storedKey}`,
+        }
+      : ((init?.headers as Record<string, string> | undefined) ?? {})
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers })
   } catch (err) {
     throw new ApiError(0, String(err), `Network error contacting ${API_BASE}${path}`)
   }
   const text = await res.text()
-  if (!res.ok) throw new ApiError(res.status, text)
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('axalon:unauthorized'))
+    }
+    throw new ApiError(res.status, text)
+  }
   if (!text) return undefined as T
   try {
     return JSON.parse(text) as T
@@ -59,6 +74,25 @@ export type ParkGrid = {
   cols: number
   panels: GridPanel[]
 }
+
+export type TrendPoint = {
+  inspection_id: string
+  date: string | null
+  CRITICAL: number
+  HIGH: number
+  MEDIUM: number
+  LOW: number
+}
+
+export type RecurringPanel = {
+  panel_id: string
+  inspection_count: number
+  worst_severity: Severity
+  classes: string[]
+  first_seen: string | null
+  last_seen: string | null
+}
+
 export type JobStatus = {
   job_id: string
   state: 'queued' | 'running' | 'succeeded' | 'failed' | string
@@ -72,11 +106,40 @@ export type ParkRef = { id: string; name?: string }
 export type ParkSummary = Record<string, unknown>
 export type MapData = Record<string, unknown>
 export type SettingsBlob = Record<string, unknown>
-export type InspectResult = Record<string, unknown>
-export type OrthoMeta = {
-  name: string
-  bounds?: [number, number, number, number]
+export type InspectResult = {
+  job_id: string
+  status: string
+  total_detections: number
+  summary: {
+    by_severity?: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number }
+    CRITICAL?: number
+    HIGH?: number
+    MEDIUM?: number
+    LOW?: number
+    [k: string]: unknown
+  }
+  detections: Array<{
+    class: string
+    class_id: number
+    confidence: number
+    bbox: [number, number, number, number]
+    bbox_norm?: [number, number, number, number]
+    severity: string
+    [k: string]: unknown
+  }>
+  rgb_filename?: string
   [k: string]: unknown
+}
+export type OrthoMeta = {
+  park_id: string
+  name: string
+  crs: string
+  width: number
+  height: number
+  band_count: number
+  bounds: { west: number; south: number; east: number; north: number }
+  center: { lat: number; lon: number }
+  size_bytes: number
 }
 
 export type DiffPanel = {
@@ -96,6 +159,60 @@ export type ParkDiff = {
   panels: DiffPanel[]
 }
 
+export type Correction = {
+  id: number
+  job_id: string
+  image_id: string | null
+  panel_id: string | null
+  class: string
+  class_id: number | null
+  severity: string | null
+  bbox_norm: [number, number, number, number]
+  notes: string | null
+  created_at: string | null
+  updated_at?: string | null
+}
+
+export type CorrectionCreate = {
+  class_: string
+  class_id: number
+  severity: string
+  bbox_norm: [number, number, number, number]
+  image_id?: string
+  panel_id?: string
+  notes?: string
+}
+
+export type MissionSummary = {
+  id: number
+  name: string
+  park_id: string | null
+  mission_type: 'grid' | 'perimeter' | 'corridor'
+  camera_id: string | null
+  area_ha: number | null
+  image_count: number | null
+  created_at: string | null
+}
+
+export type MissionFull = MissionSummary & {
+  params: Record<string, unknown>
+  polygon: { lat: number; lon: number }[]
+  waypoints: { lat: number; lon: number; alt: number }[]
+  updated_at: string | null
+}
+
+export type MissionCreate = {
+  name: string
+  park_id?: string | null
+  mission_type: string
+  camera_id?: string | null
+  params: Record<string, unknown>
+  polygon: { lat: number; lon: number }[]
+  waypoints: { lat: number; lon: number; alt: number }[]
+  area_ha: number
+  image_count: number
+}
+
 export const api = {
   health: () => request<Health>('/health'),
   batch: (form: FormData) =>
@@ -103,18 +220,55 @@ export const api = {
   inspect: (form: FormData) =>
     request<InspectResult>('/inspect', { method: 'POST', body: form }),
   status: (jobId: string) => request<JobStatus>(`/status/${encodeURIComponent(jobId)}`),
-  reportUrl: (jobId: string, format: 'json' | 'excel' | 'geojson' | 'pdf') =>
-    `${API_BASE}/report/${encodeURIComponent(jobId)}?format=${format}`,
+  reportUrl: (jobId: string, format: 'json' | 'excel' | 'geojson' | 'pdf') => {
+    const storedKey =
+      typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem('axalon_api_key') ?? ''
+        : ''
+    const keyParam = storedKey ? `&api_key=${encodeURIComponent(storedKey)}` : ''
+    return `${API_BASE}/report/${encodeURIComponent(jobId)}?format=${format}${keyParam}`
+  },
   mapData: (jobId: string) => request<MapData>(`/map/${encodeURIComponent(jobId)}`),
   parks: () => request<ParkRef[]>('/parks'),
+  missions: (parkId?: string) =>
+    request<MissionSummary[]>(`/missions${parkId ? `?park_id=${encodeURIComponent(parkId)}` : ''}`),
+  mission: (id: number) => request<MissionFull>(`/missions/${id}`),
+  createMission: (body: MissionCreate) =>
+    request<MissionSummary>('/missions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  deleteMission: (id: number) => request<void>(`/missions/${id}`, { method: 'DELETE' }),
   park: (parkId: string) =>
     request<ParkSummary>(`/park/${encodeURIComponent(parkId)}`),
   parkGrid: (parkId: string, inspectionId?: string) => {
     const q = inspectionId ? `?inspection_id=${encodeURIComponent(inspectionId)}` : ''
     return request<ParkGrid>(`/park/${encodeURIComponent(parkId)}/grid${q}`)
   },
+  parkGridPng: (parkId: string, inspectionId?: string) => {
+    const q = inspectionId ? `?inspection_id=${encodeURIComponent(inspectionId)}` : ''
+    const storedKey =
+      typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem('axalon_api_key') ?? ''
+        : ''
+    return fetch(`${API_BASE}/park/${encodeURIComponent(parkId)}/grid/png${q}`, {
+      headers: storedKey ? { Authorization: `Bearer ${storedKey}` } : {},
+    }).then((res) => {
+      if (!res.ok) throw new Error(`PNG export failed: ${res.status}`)
+      return res.blob()
+    })
+  },
+  parkTrend: (parkId: string) =>
+    request<TrendPoint[]>(`/park/${encodeURIComponent(parkId)}/trend`),
+  parkRecurring: (parkId: string, minInspections = 2) =>
+    request<RecurringPanel[]>(
+      `/park/${encodeURIComponent(parkId)}/recurring?min_inspections=${minInspections}`,
+    ),
   orthos: (parkId: string) =>
-    request<OrthoMeta[]>(`/park/${encodeURIComponent(parkId)}/orthos`),
+    request<OrthoMeta[] | { orthos: OrthoMeta[] }>(
+      `/park/${encodeURIComponent(parkId)}/orthos`,
+    ).then((resp) => (Array.isArray(resp) ? resp : resp.orthos ?? [])),
   uploadOrtho: (parkId: string, form: FormData) =>
     request<OrthoMeta>(`/park/${encodeURIComponent(parkId)}/ortho`, {
       method: 'POST',
@@ -131,4 +285,14 @@ export const api = {
     request<ParkDiff>(
       `/park/${encodeURIComponent(parkId)}/diff?inspection_a=${encodeURIComponent(inspectionA)}&inspection_b=${encodeURIComponent(inspectionB)}`,
     ),
+  corrections: (jobId: string) =>
+    request<Correction[]>(`/corrections/${encodeURIComponent(jobId)}`),
+  addCorrection: (jobId: string, body: CorrectionCreate) =>
+    request<Correction>(`/corrections/${encodeURIComponent(jobId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  deleteCorrection: (jobId: string, id: number) =>
+    request<void>(`/corrections/${encodeURIComponent(jobId)}/${id}`, { method: 'DELETE' }),
 }
