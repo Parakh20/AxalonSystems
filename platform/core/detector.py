@@ -1,5 +1,5 @@
 """
-detector.py — YOLOv8 inference wrapper for solar anomaly detection.
+detector.py — YOLO11m inference wrapper for solar anomaly detection.
 
 Uses the pre-trained model at:
     ml/checkpoints/best.pt
@@ -9,6 +9,7 @@ Import severity/class constants ONLY from ml/src/utils.py — never redefine the
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -33,7 +34,7 @@ DEFAULT_WEIGHTS = Path(__file__).resolve().parents[2] / "ml" / "checkpoints" / "
 
 
 class SolarDetector:
-    """YOLOv8s inference wrapper for solar panel anomaly detection.
+    """YOLO11m inference wrapper for solar panel anomaly detection.
 
     Load once, call predict() many times — model loading is expensive.
     """
@@ -57,6 +58,22 @@ class SolarDetector:
         self.weights_path = Path(weights_path)
         self.conf = conf
         self.iou = iou
+
+        # Prefer .engine file if it exists alongside the .pt and AXALON_USE_ENGINE is set
+        engine_path = self.weights_path.with_suffix(".engine")
+        if engine_path.exists() and os.environ.get("AXALON_USE_ENGINE", "").lower() == "true":
+            logger.info("TensorRT engine found — using %s", engine_path)
+            self.weights_path = engine_path
+
+        if str(device).lower() != "cpu":
+            try:
+                import torch
+                if not torch.cuda.is_available():
+                    logger.warning("CUDA device %s requested but unavailable; falling back to CPU", device)
+                    device = "cpu"
+            except Exception:
+                logger.warning("Could not inspect CUDA availability; falling back to CPU")
+                device = "cpu"
         self.device = device
 
         if not self.weights_path.exists():
