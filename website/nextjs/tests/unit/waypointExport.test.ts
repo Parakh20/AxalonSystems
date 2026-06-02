@@ -57,6 +57,14 @@ describe('serialiseMission', () => {
     expect(serialiseMission(WPS, PARAMS, 'm', 2, 'litchi').ext).toBe('csv')
     expect(serialiseMission(WPS, PARAMS, 'm', 2, 'kml').mime).toContain('kml')
     expect(serialiseMission(WPS, PARAMS, 'm', 2, 'plan').ext).toBe('plan')
+    expect(serialiseMission(WPS, PARAMS, 'm', 2, 'waypoints').ext).toBe('waypoints')
+  })
+
+  it('emits a QGC WPL 110 header for the .waypoints format', () => {
+    const out = serialiseMission(WPS, PARAMS, 'm', 5, 'waypoints')
+    expect(out.text.split('\n')[0]).toBe('QGC WPL 110')
+    // home + takeoff + cam-trigger + (n-1) survey waypoints + RTL
+    expect(out.text.trim().split('\n').length).toBe(1 + 3 + (WPS.length - 1) + 1)
   })
 })
 

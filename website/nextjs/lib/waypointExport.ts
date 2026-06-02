@@ -1,9 +1,9 @@
 // website/nextjs/lib/waypointExport.ts
 import type { Waypoint, MissionParams } from './missionGeometry'
 
-export type ExportFormat = 'litchi' | 'kml' | 'plan'
+export type ExportFormat = 'litchi' | 'kml' | 'plan' | 'waypoints'
 
-// ── MAVLink command IDs (QGroundControl .plan) ───────────────────────────────
+// ── MAVLink command IDs (QGC WPL 110 + .plan) ────────────────────────────────
 const CMD_WAYPOINT = 16
 const CMD_TAKEOFF = 22
 const CMD_RTL = 20
@@ -43,6 +43,33 @@ export function toLitchiCsv(waypoints: Waypoint[], params: MissionParams, trigge
     cells.push(0, params.speedMs, 0, 0, 0, 0, -1, triggerDistM)
     lines.push(cells.join(','))
   }
+  return lines.join('\n')
+}
+
+// ── ArduPilot / QGC WPL 110 (.waypoints) ─────────────────────────────────────
+// Tab-separated Mission Planner / QGroundControl text format. waypoints[0] is
+// the home/takeoff position; triggerDistM is the camera trigger distance (m).
+function wplRow(
+  index: number, current: number, frame: number, command: number,
+  p1: number, p2: number, p3: number, p4: number,
+  lat: number, lon: number, alt: number, autocontinue = 1,
+): string {
+  return [index, current, frame, command, p1, p2, p3, p4, lat, lon, alt, autocontinue].join('\t')
+}
+
+export function serialiseQGCWPL110(waypoints: Waypoint[], triggerDistM: number): string {
+  const lines = ['QGC WPL 110']
+  if (waypoints.length === 0) return lines.join('\n')
+  const home = waypoints[0]
+  let idx = 0
+  lines.push(wplRow(idx++, 1, 0, CMD_WAYPOINT, 0, 0, 0, 0, home.lat, home.lon, home.alt)) // home
+  lines.push(wplRow(idx++, 0, 3, CMD_TAKEOFF, 0, 0, 0, 0, home.lat, home.lon, home.alt)) // takeoff
+  lines.push(wplRow(idx++, 0, 3, CMD_SET_CAM_TRIGG_DIST, triggerDistM, 0, 0, 0, 0, 0, 0)) // cam trigger
+  for (let i = 1; i < waypoints.length; i++) {
+    const wp = waypoints[i]
+    lines.push(wplRow(idx++, 0, 3, CMD_WAYPOINT, 0, 0, 0, 0, wp.lat, wp.lon, wp.alt))
+  }
+  lines.push(wplRow(idx++, 0, 3, CMD_RTL, 0, 0, 0, 0, 0, 0, 0)) // return to launch
   return lines.join('\n')
 }
 
@@ -126,6 +153,7 @@ export function serialiseMission(
 ): Serialised {
   if (format === 'litchi') return { text: toLitchiCsv(waypoints, params, triggerDistM), ext: 'csv', mime: 'text/csv' }
   if (format === 'kml') return { text: toKml(waypoints, missionName), ext: 'kml', mime: 'application/vnd.google-earth.kml+xml' }
+  if (format === 'waypoints') return { text: serialiseQGCWPL110(waypoints, triggerDistM), ext: 'waypoints', mime: 'text/plain' }
   return { text: toQgcPlan(waypoints, triggerDistM), ext: 'plan', mime: 'application/json' }
 }
 

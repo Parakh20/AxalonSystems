@@ -36,6 +36,7 @@ const EXPORT_FORMATS: { value: ExportFormat; label: string; short: string }[] = 
   { value: 'litchi', label: 'Litchi CSV', short: 'Litchi CSV' },
   { value: 'kml', label: 'KML (Google Earth)', short: 'KML' },
   { value: 'plan', label: 'QGroundControl .plan', short: '.plan' },
+  { value: 'waypoints', label: 'ArduPilot .waypoints', short: '.waypoints' },
 ]
 
 export default function PlanSidebar(props: Props) {
