@@ -8,6 +8,7 @@ import {
   SlidersHorizontal,
   MapIcon,
   GitCompare,
+  Navigation2,
 } from 'lucide-react'
 import { ToastProvider } from '@/components/Platform/Toast'
 import { OperationsTab } from '@/components/Platform/OperationsTab'
@@ -16,8 +17,9 @@ import { HistoryTab } from '@/components/Platform/HistoryTab'
 import { ParkMapTab } from '@/components/Platform/ParkMapTab'
 import { SettingsTab } from '@/components/Platform/SettingsTab'
 import { DiffTab } from '@/components/Platform/DiffTab'
+import { PlanTab } from '@/components/Platform/PlanTab'
 
-type Tab = 'operations' | 'inspect' | 'history' | 'settings' | 'parkmap' | 'diff'
+type Tab = 'operations' | 'inspect' | 'history' | 'settings' | 'parkmap' | 'diff' | 'plan'
 
 export default function PlatformPage() {
   return (
@@ -55,7 +57,7 @@ function PlatformShell() {
           </div>
 
           {/* Navigation buttons */}
-          <nav className="rail-nav">
+          <nav className="rail-nav tab-bar">
             <button
               type="button"
               className={`rail-link ${tab === 'operations' ? 'active' : ''}`}
@@ -88,6 +90,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'parkmap' ? 'active' : ''}`}
               onClick={() => setTab('parkmap')}
               title="Park Map"
+              data-testid="tab-parkmap"
             >
               <MapIcon size={16} />
               <span>Park Map</span>
@@ -100,6 +103,16 @@ function PlatformShell() {
             >
               <GitCompare size={16} />
               <span>Diff</span>
+            </button>
+            <button
+              type="button"
+              className={`rail-link ${tab === 'plan' ? 'active' : ''}`}
+              onClick={() => setTab('plan')}
+              title="Plan"
+              data-testid="tab-plan"
+            >
+              <Navigation2 size={16} />
+              <span>Plan</span>
             </button>
             <button
               type="button"
@@ -123,13 +136,14 @@ function PlatformShell() {
         </aside>
 
         {/* Main content area */}
-        <div className="wrap">
+        <div className="wrap tab-content platform-container">
           {tab === 'operations' && <OperationsTab />}
           {tab === 'inspect' && <InspectTab />}
           {tab === 'history' && <HistoryTab />}
           {tab === 'settings' && <SettingsTab />}
           {tab === 'parkmap' && <ParkMapTab />}
           {tab === 'diff' && <DiffTab />}
+          {tab === 'plan' && <PlanTab />}
         </div>
       </div>
     </main>
