@@ -13,8 +13,14 @@ website/nextjs/playwright-report
 ml/data
 ml/runs
 ml/notebooks
+ml/Datasets
 docs
 tests/fixtures/sample_mission
+website
+deploy
+.venv
+axalon-oci-launch.sh
+axalon-oci-launch.log
 *.log
 *.db
 .env
