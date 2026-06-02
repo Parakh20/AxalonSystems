@@ -136,3 +136,24 @@ What it does:
 - **Frontend playwright** (`website/nextjs/tests/e2e/`) — drives a headless Chromium through every tab including a real batch run.
 
 The script starts the platform services itself if they're not already up, and stops them after. Pass-through exit code: zero on success, non-zero on the first failing suite.
+
+## Phase 4 additions
+
+### API key auth
+
+Set `AXALON_API_KEY` before starting services:
+
+```bash
+export AXALON_API_KEY=your-key
+./run.sh all
+```
+
+The platform UI prompts for the key after a `401`. The key is stored in `sessionStorage` and clears when the browser session ends.
+
+### Docker
+
+See `docs/DEPLOYMENT.md` for the Docker runbook.
+
+### Job state persistence
+
+Batch job status now lives in SQLite. Completed and failed jobs remain visible through `/status/{job_id}` after an API restart. Jobs that were marked `running` during a restart are reset to `queued` on startup with a message noting that they were re-queued.

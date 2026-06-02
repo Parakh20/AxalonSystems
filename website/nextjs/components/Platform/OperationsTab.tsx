@@ -180,6 +180,7 @@ export function OperationsTab() {
   const { jobs, activeJob, activeJobId, setActiveJobId, addJob } = useJob()
 
   const [parkId, setParkId] = useState('MH_SOLAR_07')
+  const [parkMode, setParkMode] = useState<'auto' | 'numbered' | 'unnumbered'>('auto')
   const [altitude, setAltitude] = useState(42)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -352,7 +353,7 @@ export function OperationsTab() {
     const form = new FormData()
     form.append('images', selectedFile)
     form.append('park_id', parkId)
-    form.append('park_mode', 'auto')
+    form.append('park_mode', parkMode)
     form.append('altitude_m', String(altitude))
 
     try {
@@ -411,7 +412,7 @@ export function OperationsTab() {
         </div>
       </header>
 
-      <div className="ops-grid">
+      <div className="ops-grid operations-split">
         {/* ───── LEFT (primary): map + findings ───── */}
         <div className="ops-main">
           <section className="panel map-panel-hero">
@@ -613,6 +614,20 @@ export function OperationsTab() {
               <label>
                 Park ID
                 <input value={parkId} onChange={(event) => setParkId(event.target.value)} />
+              </label>
+              <label>
+                Park Mode
+                <select
+                  value={parkMode}
+                  onChange={(event) =>
+                    setParkMode(event.target.value as 'auto' | 'numbered' | 'unnumbered')
+                  }
+                  title="Auto: detect from images. Numbered: OCR panel IDs from RGB. Unnumbered: synthetic R-C grid."
+                >
+                  <option value="auto">Auto-detect</option>
+                  <option value="numbered">Numbered (OCR)</option>
+                  <option value="unnumbered">Unnumbered (Grid)</option>
+                </select>
               </label>
               <label>
                 Altitude m

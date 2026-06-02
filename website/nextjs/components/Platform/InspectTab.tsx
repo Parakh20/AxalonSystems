@@ -2,8 +2,10 @@
 
 import { ImageIcon as ImageIconLucide, Play, RefreshCw, UploadCloud } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { AnnotationCanvas } from '@/components/Platform/AnnotationCanvas'
 import { useToast } from '@/components/Platform/Toast'
-import { api, ApiError } from '@/lib/api'
+import { API_BASE, api, ApiError } from '@/lib/api'
+import type { InspectResult } from '@/lib/api'
 
 type InspectDetection = {
   class: string
@@ -11,17 +13,6 @@ type InspectDetection = {
   confidence: number
   severity: string
   bbox: [number, number, number, number]
-}
-
-type InspectResult = {
-  job_id: string
-  status: string
-  total_detections: number
-  summary?: {
-    by_severity?: Record<string, number>
-    [k: string]: unknown
-  }
-  detections: InspectDetection[]
 }
 
 function Chip({
@@ -44,9 +35,11 @@ function Chip({
 function InspectPreview({
   file,
   detections,
+  onNatSize,
 }: {
   file: File
   detections: InspectDetection[]
+  onNatSize?: (w: number, h: number) => void
 }) {
   const [url, setUrl] = useState<string>('')
   const [nat, setNat] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
@@ -74,6 +67,7 @@ function InspectPreview({
           onLoad={(e) => {
             const img = e.currentTarget
             setNat({ w: img.naturalWidth, h: img.naturalHeight })
+            onNatSize?.(img.naturalWidth, img.naturalHeight)
           }}
         />
       )}
@@ -111,9 +105,11 @@ export function InspectTab() {
   const toast = useToast()
   const inspectInput = useRef<HTMLInputElement>(null)
   const [inspectFile, setInspectFile] = useState<File | null>(null)
+  const [rgbFile, setRgbFile] = useState<File | null>(null)
   const [inspectBusy, setInspectBusy] = useState(false)
   const [inspectResult, setInspectResult] = useState<InspectResult | null>(null)
   const [inspectError, setInspectError] = useState<string | null>(null)
+  const [natDims, setNatDims] = useState<{ w: number; h: number } | null>(null)
   const [altitude] = useState(42)
 
   async function runInspect() {
@@ -125,9 +121,10 @@ export function InspectTab() {
     form.append('thermal_image', inspectFile)
     form.append('park_id', 'unknown')
     form.append('altitude_m', String(altitude))
+    if (rgbFile) form.append('rgb_image', rgbFile)
     try {
       const data = await api.inspect(form)
-      setInspectResult(data as InspectResult)
+      setInspectResult(data)
     } catch (err) {
       const msg =
         err instanceof ApiError
@@ -196,7 +193,11 @@ export function InspectTab() {
             onDrop={(e) => {
               e.preventDefault()
               const f = e.dataTransfer.files[0]
-              if (f) setInspectFile(f)
+              if (f) {
+                setInspectFile(f)
+                setInspectResult(null)
+                setNatDims(null)
+              }
             }}
             onClick={() => inspectInput.current?.click()}
           >
@@ -205,7 +206,11 @@ export function InspectTab() {
               type="file"
               accept=".jpg,.jpeg,.png,.tif,.tiff"
               hidden
-              onChange={(e) => setInspectFile(e.target.files?.[0] || null)}
+              onChange={(e) => {
+                setInspectFile(e.target.files?.[0] || null)
+                setInspectResult(null)
+                setNatDims(null)
+              }}
             />
             <div>
               <UploadCloud size={34} />
@@ -221,6 +226,39 @@ export function InspectTab() {
             {inspectBusy ? <RefreshCw size={17} /> : <Play size={17} />}
             Run detection
           </button>
+          <div
+            style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}
+            onClick={() => document.getElementById('rgb-upload-input')?.click()}
+          >
+            <input
+              id="rgb-upload-input"
+              type="file"
+              hidden
+              accept=".jpg,.jpeg,.png,.tif,.tiff"
+              onChange={(e) => setRgbFile(e.target.files?.[0] ?? null)}
+            />
+            <span style={{ cursor: 'pointer', textDecoration: 'underline' }}>
+              {rgbFile ? `RGB: ${rgbFile.name}` : '+ Add RGB image (optional, enables fusion)'}
+            </span>
+            {rgbFile && (
+              <button
+                style={{
+                  marginLeft: 8,
+                  fontSize: 11,
+                  color: '#ef4444',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setRgbFile(null)
+                }}
+              >
+                x
+              </button>
+            )}
+          </div>
           {inspectError && <div className="note error">{inspectError}</div>}
         </section>
 
@@ -235,8 +273,41 @@ export function InspectTab() {
               </p>
             </div>
           </div>
-          {inspectFile && (
-            <InspectPreview file={inspectFile} detections={inspectResult?.detections ?? []} />
+          {inspectFile && !(inspectResult && natDims) && (
+            <InspectPreview
+              file={inspectFile}
+              detections={inspectResult?.detections ?? []}
+              onNatSize={(w, h) => setNatDims({ w, h })}
+            />
+          )}
+          {inspectResult && natDims && inspectFile && (
+            <AnnotationCanvas
+              jobId={inspectResult.job_id}
+              imageFile={inspectFile}
+              natW={natDims.w}
+              natH={natDims.h}
+              yoloBoxes={(inspectResult.detections ?? []).map((d) => ({
+                x1: d.bbox[0],
+                y1: d.bbox[1],
+                x2: d.bbox[2],
+                y2: d.bbox[3],
+                class_: d.class,
+                severity: d.severity,
+                confidence: d.confidence,
+              }))}
+            />
+          )}
+          {inspectResult && inspectResult.rgb_filename && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>
+                Fused RGB Overlay
+              </div>
+              <img
+                src={`${API_BASE}/results/${inspectResult.job_id}/${inspectResult.rgb_filename}`}
+                alt="Fused RGB annotated"
+                style={{ width: '100%', borderRadius: 8, display: 'block' }}
+              />
+            </div>
           )}
           {inspectResult && inspectResult.detections.length > 0 && (
             <div className="table">
@@ -257,6 +328,25 @@ export function InspectTab() {
                 </div>
               ))}
             </div>
+          )}
+          {inspectResult && (
+            <a
+              href={api.reportUrl(inspectResult.job_id, 'json')}
+              download={`inspect_${inspectResult.job_id}.json`}
+              style={{
+                display: 'inline-block',
+                marginTop: 12,
+                padding: '8px 14px',
+                background: '#0ea5e9',
+                color: '#fff',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              Download Report (JSON)
+            </a>
           )}
           {!inspectResult && !inspectFile && !inspectBusy && (
             <div className="empty">Upload an image to see annotated detections.</div>

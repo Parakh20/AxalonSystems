@@ -309,10 +309,10 @@ export function DiffTab() {
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div className="diff-columns" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                 {/* Inspection A column */}
                 <div>
-                  <p className="eyebrow" style={{ marginBottom: 10 }}>Inspection A</p>
+                  <p className="eyebrow diff-column-label" style={{ marginBottom: 10 }}>Inspection A</p>
                   {selectedPanel.detections_a.length === 0 ? (
                     <p className="muted" style={{ fontSize: 13 }}>No faults in this inspection.</p>
                   ) : (
@@ -332,7 +332,7 @@ export function DiffTab() {
 
                 {/* Inspection B column */}
                 <div>
-                  <p className="eyebrow" style={{ marginBottom: 10 }}>Inspection B</p>
+                  <p className="eyebrow diff-column-label" style={{ marginBottom: 10 }}>Inspection B</p>
                   {selectedPanel.detections_b.length === 0 ? (
                     <p className="muted" style={{ fontSize: 13 }}>No faults in this inspection.</p>
                   ) : (

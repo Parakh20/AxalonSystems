@@ -51,8 +51,8 @@ AxalonSystems/
 │   ├── design_guidelines.json       ← Brand colours, typography
 │   └── render.yaml                  ← Render.com deployment config
 │
-├── ml/                              ← YOLOv8s Solar Anomaly Detection model
-│   ├── checkpoints/best.pt          ← PRIMARY MODEL WEIGHTS (22 MB, YOLOv8s)
+├── ml/                              ← YOLO11m Solar Anomaly Detection model
+│   ├── checkpoints/best.pt          ← PRIMARY MODEL WEIGHTS (YOLO11m)
 │   ├── src/utils.py                 ← CANONICAL classes, severity map, drawing utils
 │   ├── src/dataset.py               ← Dataset utilities, class remapping
 │   ├── src/augmentation.py          ← Thermal augmentation pipeline
@@ -152,7 +152,7 @@ from ml.src.utils import (
 ### 2. Primary Model
 
 - Path: `ml/checkpoints/best.pt`
-- Framework: **Ultralytics YOLOv8s**
+- Framework: **Ultralytics YOLO11m**
 - Input size: **640×640** (resize handled by Ultralytics automatically)
 - Confidence threshold: **0.25**
 - Trained on thermal IR images — do NOT run on RGB directly
@@ -233,7 +233,7 @@ pip install -r requirements_platform.txt
 
 ## Development Context
 
-- **ML Framework:** PyTorch 2.1+ with Ultralytics YOLOv8
+- **ML Framework:** PyTorch 2.1+ with Ultralytics YOLO11
 - **Python:** 3.13 compatible
 - **GPU:** CUDA supported (device=0), CPU fallback available
 - **Dataset:** 20,000 thermal IR images (24×40px) — stored outside repo (large)
@@ -242,7 +242,7 @@ pip install -r requirements_platform.txt
 
 ## Key Design Decisions
 
-1. **Thermal-only detection:** YOLOv8s runs ONLY on thermal images.
+1. **Thermal-only detection:** YOLO11m runs ONLY on thermal images.
 2. **Two park modes:** "Numbered" parks use OCR; "Unnumbered" parks get synthetic R{row}-C{col} IDs.
 3. **Severity from utils.py:** Single source of truth — never hardcode elsewhere.
 4. **GPS-anchored localization:** Every anomaly carries GPS coordinates from EXIF or orthomosaic.

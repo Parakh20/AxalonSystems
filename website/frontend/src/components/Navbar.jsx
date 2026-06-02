@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const LOGO_URL = "/Logo.png";
+const LOGO_URL = "/LogoWithName.png";
 
 const navLinks = [
   { label: 'Product', path: '/product' },
@@ -43,7 +43,7 @@ export default function Navbar() {
             <motion.img
               src={LOGO_URL}
               alt="Axalon Systems"
-              className="h-14 invert opacity-90"
+              className="h-10 invert opacity-90"
               whileHover={{ opacity: 1 }}
             />
           </Link>

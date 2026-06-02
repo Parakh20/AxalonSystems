@@ -39,8 +39,13 @@ export function ParkPanelDetail({
   }
 
   const firstFile = panel.detections.find((d) => d.thermal_filename)?.thermal_filename
+  const apiKey =
+    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('axalon_api_key') ?? '' : ''
+  const keyParam = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ''
   const thumbUrl =
-    jobId && firstFile ? `${API_BASE}/image/${encodeURIComponent(jobId)}/${encodeURIComponent(firstFile)}` : null
+    jobId && firstFile
+      ? `${API_BASE}/results/${encodeURIComponent(jobId)}/${encodeURIComponent(firstFile)}${keyParam}`
+      : null
 
   return (
     <aside

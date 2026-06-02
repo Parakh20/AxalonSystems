@@ -103,3 +103,11 @@ axalon_systems.egg-info/
 logs/
 output/
 .superpowers/
+
+# Debug screenshots & temp artifacts
+website/*.png
+website/*.html
+web_temp.html
+**/test-results/
+*.local.db
+axalon_inspections.db

@@ -4,7 +4,8 @@ import { History as HistoryIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useToast } from '@/components/Platform/Toast'
 import { useParks } from '@/components/Platform/hooks/useParks'
-import { api, ApiError } from '@/lib/api'
+import { TrendChart } from '@/components/Platform/TrendChart'
+import { api, ApiError, type RecurringPanel, type TrendPoint } from '@/lib/api'
 
 type InspectionRow = {
   id: number
@@ -73,7 +74,7 @@ function HistoryChart({ inspections }: { inspections: InspectionRow[] }) {
         width="100%"
         viewBox={`0 0 ${w} ${h}`}
         preserveAspectRatio="none"
-        className="chart-svg"
+        className="chart-svg history-chart-svg"
       >
         <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#e2e8f0" />
         <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="#e2e8f0" />
@@ -100,6 +101,9 @@ export function HistoryTab() {
   const [historyParkId, setHistoryParkId] = useState<string>('')
   const [parkSummary, setParkSummary] = useState<ParkSummary | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [trendData, setTrendData] = useState<TrendPoint[]>([])
+  const [trendLoading, setTrendLoading] = useState(false)
+  const [recurringData, setRecurringData] = useState<RecurringPanel[]>([])
 
   // Default to first park once loaded
   useEffect(() => {
@@ -124,6 +128,48 @@ export function HistoryTab() {
       }
     })()
   }, [historyParkId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!historyParkId) {
+      setTrendData([])
+      return
+    }
+    let cancelled = false
+    setTrendLoading(true)
+    api
+      .parkTrend(historyParkId)
+      .then((data) => {
+        if (!cancelled) setTrendData(data)
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(err instanceof ApiError ? err.message : String(err))
+      })
+      .finally(() => {
+        if (!cancelled) setTrendLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [historyParkId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!historyParkId) {
+      setRecurringData([])
+      return
+    }
+    let cancelled = false
+    api
+      .parkRecurring(historyParkId)
+      .then((data) => {
+        if (!cancelled) setRecurringData(data)
+      })
+      .catch(() => {
+        if (!cancelled) setRecurringData([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [historyParkId])
 
   return (
     <section className="tab-section">
@@ -215,6 +261,46 @@ export function HistoryTab() {
                 <div className="empty">No inspections yet for this park.</div>
               )}
             </div>
+            <section style={{ marginTop: 24 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 8px' }}>Anomaly Trend</h2>
+              {trendLoading ? (
+                <div style={{ height: 180, background: '#f1f5f9', borderRadius: 8 }} />
+              ) : (
+                <TrendChart data={trendData} />
+              )}
+            </section>
+            {recurringData.length > 0 && (
+              <section style={{ marginTop: 24 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 8px' }}>Recurring Faults</h2>
+                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+                  Panels with anomalies in 2 or more inspections.
+                </p>
+                <div className="table">
+                  <div className="table-head hist-head">
+                    <span>Panel</span>
+                    <span>Flights</span>
+                    <span>Fault Types</span>
+                    <span>First</span>
+                    <span>Severity</span>
+                  </div>
+                  {recurringData.map((row) => (
+                    <div className="hist-row" key={row.panel_id}>
+                      <span>
+                        <strong>{row.panel_id}</strong>
+                      </span>
+                      <span>{row.inspection_count}</span>
+                      <span>{row.classes.join(', ')}</span>
+                      <span>{row.first_seen ?? '-'}</span>
+                      <span>
+                        <span className={`severity ${row.worst_severity.toLowerCase()}`}>
+                          {row.worst_severity}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         )}
         {!historyLoading && !parkSummary && (

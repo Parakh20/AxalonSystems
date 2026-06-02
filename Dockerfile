@@ -1,25 +1,26 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS runtime
 
-# System libs for WeasyPrint (PDF) and OpenCV
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     libpango-1.0-0 \
     libpangoft2-1.0-0 \
     libpangocairo-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
     libglib2.0-0 \
     libgomp1 \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+COPY requirements_platform.txt ml/requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements_platform.txt -r ml/requirements.txt
 
-# Install Python dependencies
-COPY ml/requirements.txt ./ml/requirements.txt
-COPY requirements_platform.txt ./requirements_platform.txt
-RUN pip install --no-cache-dir -r ml/requirements.txt \
-    && pip install --no-cache-dir -r requirements_platform.txt
-
-# Copy source (model weights mounted as volume — not baked in)
 COPY . .
 RUN pip install --no-cache-dir -e .
 
-EXPOSE 8000 8501
+EXPOSE 8000
+CMD ["uvicorn", "axalon.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

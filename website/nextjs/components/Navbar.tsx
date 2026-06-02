@@ -67,23 +67,20 @@ export default function Navbar() {
           style={{ textDecoration: 'none', minWidth: 0 }}
           whileHover={{ scale: 1.02 }}
         >
-          <span
+          <Image
+            src="/LogoWithName.png"
+            alt="Axalon Systems"
+            width={160}
+            height={48}
             style={{
-              display: 'block',
-              fontFamily: 'Syne, sans-serif',
-              fontWeight: 800,
-              fontSize: isMobile ? '0.92rem' : '1.1rem',
-              letterSpacing: isMobile ? '0.08em' : '0.12em',
-              lineHeight: 1,
-              background: 'linear-gradient(135deg, #00f0c8 0%, #6c63ff 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              whiteSpace: 'nowrap',
+              height: isMobile ? '32px' : '38px',
+              width: 'auto',
+              objectFit: 'contain',
+              filter: 'invert(1)',
+              opacity: 0.92,
             }}
-          >
-            AXALON SYSTEMS
-          </span>
+            priority
+          />
         </motion.a>
 
         <div

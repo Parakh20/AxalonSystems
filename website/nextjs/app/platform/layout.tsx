@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { AuthGate } from '@/components/Platform/AuthGate'
+import 'leaflet/dist/leaflet.css'
 import './platform.css'
 
 export const metadata: Metadata = {
@@ -70,7 +72,9 @@ export default function PlatformLayout({
         </div>
       </header>
 
-      <div style={{ paddingTop: 48, height: '100%' }}>{children}</div>
+      <div style={{ paddingTop: 48, height: '100%' }}>
+        <AuthGate>{children}</AuthGate>
+      </div>
     </div>
   )
 }

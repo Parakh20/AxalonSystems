@@ -1,59 +1,73 @@
-# Deployment Guide
+# Deployment Runbook — Axalon Inspection Platform
 
-## Phase 1: Local machine
+## Prerequisites
 
-```bash
-pip install -r ml/requirements.txt
-pip install -r requirements_platform.txt
-pip install -e .
+- `ml/checkpoints/best.pt` present for real inference.
+- Docker Engine 24+ and Docker Compose v2.
+- Ports `3000` and `8000` free.
 
-./run.sh both
-```
-
-Local URLs:
-
-- Dashboard: `http://localhost:8501`
-- API: `http://localhost:8000`
-- API docs: `http://localhost:8000/docs`
-
-## Phase 2: Docker on a VM
-
-This repo already includes `Dockerfile` and `docker-compose.yml`.
+## Local Docker Deployment
 
 ```bash
-git clone <repo-url> AxalonSystems
-cd AxalonSystems
-docker compose up -d --build
+python3 scripts/make_sample_mission.py
+cd tests/fixtures && zip -rq sample_mission.zip sample_mission/ && cd -
+
+# Optional: populate History, Park Map, and Diff with demo data.
+python3 scripts/seed_demo_data.py
+
+# Optional: require API-key auth.
+export AXALON_API_KEY=your-secret-key
+
+docker compose build
+docker compose up -d
 ```
 
-Mounted data:
+Open `http://localhost:3000/platform`.
 
-- `./ml/checkpoints` into the container for model weights
-- `./output` for generated reports
-- `axalon_db` volume for the SQLite database
+## Environment Variables
 
-Exposed services:
+| Variable | Service | Default | Description |
+|---|---|---|---|
+| `AXALON_API_KEY` | API | empty | Bearer key required on all non-health endpoints when set |
+| `AXALON_DB_URL` | API | `sqlite:////app/data/axalon.db` in Docker | SQLAlchemy database URL |
+| `AXALON_OUTPUT_DIR` | API | `/app/data/output` in Docker | Generated reports and job artifacts |
+| `NEXT_PUBLIC_AXALON_API_URL` | Next.js | `http://localhost:8000` | API base URL used by the browser |
 
-- Dashboard on port `8501`
-- API on port `8000`
+## Auth
 
-Current deployment caveats:
+When `AXALON_API_KEY` is set, `/health` stays public and every other endpoint requires:
 
-- `docker-compose.yml` still runs the API with `--reload`
-- `depends_on` does not wait for API readiness
-- HTTPS termination is not included yet
+```http
+Authorization: Bearer your-secret-key
+```
 
-Those follow-up items are tracked in `docs/improvements.md`.
+The platform UI opens an unlock dialog after a `401` and stores the key in `sessionStorage`.
 
-## Phase 3: Production hardening
+## Persistence
 
-Recommended before public exposure:
+Docker stores SQLite and generated reports in the `axalon_data` volume. Batch job state is stored in the `jobs` table, so `/status/{job_id}` survives API container restarts.
 
-1. Put NGINX or Caddy in front for HTTPS and access control.
-2. Add API authentication and rate limiting.
-3. Replace SQLite with PostgreSQL.
-4. Add object storage for generated report artifacts.
+```bash
+docker compose restart api
+```
 
-## PostgreSQL direction
+## Render.com Direction
 
-The current platform uses SQLite by default. The docs and backlog already anticipate a future `DATABASE_URL`-style production setup, but that change is not fully wired in yet, so treat PostgreSQL as planned work rather than current copy-paste deployment.
+For the API, create a Docker Web Service using the root `Dockerfile`. Attach persistent storage and set:
+
+- `AXALON_API_KEY`
+- `AXALON_DB_URL`
+- `AXALON_OUTPUT_DIR`
+
+For the frontend, deploy `website/nextjs` as a Node/Next service and set `NEXT_PUBLIC_AXALON_API_URL` to the public API URL.
+
+## Model Weights In CI
+
+The e2e GitHub Actions job needs `ml/checkpoints/best.pt` for real inference. Preferred: store weights in Git LFS and run `git lfs pull` before the e2e job. If weights are unavailable, CI creates a zero-byte placeholder and runs the Playwright flow with `PLAYWRIGHT_CI=1`, accepting a failed batch as a terminal UI smoke-test state.
+
+## Stopping
+
+```bash
+docker compose down
+docker compose down -v  # also deletes the persisted DB volume
+```
