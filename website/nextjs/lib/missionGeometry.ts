@@ -2,15 +2,26 @@
 import type { Camera } from './cameras'
 
 export type LatLon = { lat: number; lon: number }
-export type Waypoint = { lat: number; lon: number; alt: number }
-export type MissionType = 'grid' | 'perimeter' | 'corridor'
+export type Waypoint = {
+  lat: number
+  lon: number
+  alt: number
+  heading?: number // deg, 0=N clockwise — drone/camera facing (arrows, α alignment, export)
+  gimbalPitch?: number // deg, negative = down (orbit aims by atan2(alt, radius))
+  leg?: number // 0-based battery leg index
+}
+export type MissionType = 'grid' | 'perimeter' | 'corridor' | 'orbit'
 
 export type MissionParams = {
   altitudeM: number
   frontOverlap: number // 0–0.95
   sideOverlap: number // 0–0.95
   speedMs: number
-  headingDeg: number | 'auto'
+  headingDeg: number | 'auto' // α: panel-row azimuth for grid
+  batteryMinutes?: number // usable flight time per battery (default 18)
+  batteryReservePct?: number // reserve margin %, default 20
+  orbitRadiusM?: number // orbit pattern (default 30)
+  orbitPhotoCount?: number // orbit pattern (default 16)
 }
 
 export type MissionStats = {
@@ -21,9 +32,15 @@ export type MissionStats = {
   imageCount: number
   distanceM: number
   flightTimeSec: number
+  legCount: number
+  batteryCount: number
 }
 
 const M_PER_DEG_LAT = 111320
+const DEFAULT_BATTERY_MIN = 18
+const DEFAULT_RESERVE_PCT = 20
+const DEFAULT_ORBIT_RADIUS = 30
+const DEFAULT_ORBIT_PHOTOS = 16
 
 function metresPerDegLon(latDeg: number): number {
   return M_PER_DEG_LAT * Math.cos((latDeg * Math.PI) / 180)
@@ -56,6 +73,27 @@ function rotate(p: XY, angleRad: number): XY {
   const cos = Math.cos(angleRad)
   const sin = Math.sin(angleRad)
   return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos }
+}
+
+// Initial bearing a→b in degrees, 0=N clockwise.
+export function bearingDeg(a: LatLon, b: LatLon): number {
+  const phi1 = (a.lat * Math.PI) / 180
+  const phi2 = (b.lat * Math.PI) / 180
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180
+  const y = Math.sin(dLon) * Math.cos(phi2)
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon)
+  return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360
+}
+
+// Set each waypoint's heading to its travel bearing (toward the next point;
+// last point keeps the previous bearing). Already-set headings (orbit) are kept.
+function withTravelHeadings(wps: Waypoint[]): Waypoint[] {
+  if (wps.length < 2) return wps.map((w) => ({ ...w }))
+  return wps.map((w, i) => {
+    if (w.heading !== undefined) return { ...w }
+    const heading = i < wps.length - 1 ? bearingDeg(w, wps[i + 1]) : bearingDeg(wps[i - 1], w)
+    return { ...w, heading }
+  })
 }
 
 export function computeFootprint(camera: Camera, params: MissionParams): { w: number; h: number } {
@@ -103,8 +141,12 @@ export function generateGrid(polygon: LatLon[], camera: Camera, params: MissionP
   if (polygon.length < 3) return []
   const origin = centroid(polygon)
   const xyRaw = polygon.map((p) => toXY(p, origin))
-  const heading = params.headingDeg === 'auto' ? autoHeading(xyRaw) : (params.headingDeg * Math.PI) / 180
-  // Rotate polygon so flight lines are horizontal (align long axis to x)
+  // headingDeg is α (panel-row azimuth, 0=N clockwise) → convert to math angle (CCW from east).
+  const heading =
+    params.headingDeg === 'auto'
+      ? autoHeading(xyRaw)
+      : ((90 - params.headingDeg) * Math.PI) / 180
+  // Rotate polygon so flight lines are horizontal (align long axis / α to x)
   const xy = xyRaw.map((p) => rotate(p, -heading))
 
   const ys = xy.map((p) => p.y)
@@ -128,14 +170,14 @@ export function generateGrid(polygon: LatLon[], camera: Camera, params: MissionP
 
   // Rotate back and convert to lat/lon
   const survey = surveyXY.map((p) => toLatLon(rotate(p, heading), origin))
-  return assembleMission(polygon[0], survey, params.altitudeM)
+  return withTravelHeadings(assembleMission(polygon[0], survey, params.altitudeM))
 }
 
 export function generatePerimeter(polygon: LatLon[], camera: Camera, params: MissionParams): Waypoint[] {
   if (polygon.length < 3) return []
   // Trace the polygon boundary, closing the loop.
   const loop = [...polygon, polygon[0]]
-  return assembleMission(polygon[0], loop, params.altitudeM)
+  return withTravelHeadings(assembleMission(polygon[0], loop, params.altitudeM))
 }
 
 export function generateCorridor(line: LatLon[], camera: Camera, params: MissionParams): Waypoint[] {
@@ -154,7 +196,22 @@ export function generateCorridor(line: LatLon[], camera: Camera, params: Mission
   const ret = [...xy].reverse().map((p) => ({ x: p.x + nx * offset, y: p.y + ny * offset }))
 
   const path = [...xy, ...ret].map((p) => toLatLon(p, origin))
-  return assembleMission(line[0], path, params.altitudeM)
+  return withTravelHeadings(assembleMission(line[0], path, params.altitudeM))
+}
+
+// Orbit / point-of-interest: a ring of photos around `center`, camera aimed inward.
+export function generateOrbit(center: LatLon, camera: Camera, params: MissionParams): Waypoint[] {
+  const radius = Math.max(params.orbitRadiusM ?? DEFAULT_ORBIT_RADIUS, 1)
+  const count = Math.max(Math.round(params.orbitPhotoCount ?? DEFAULT_ORBIT_PHOTOS), 3)
+  const alt = params.altitudeM
+  const gimbalPitch = -((Math.atan2(alt, radius) * 180) / Math.PI) // look down toward the target
+  const wps: Waypoint[] = []
+  for (let k = 0; k < count; k++) {
+    const ang = (2 * Math.PI * k) / count
+    const p = toLatLon({ x: radius * Math.cos(ang), y: radius * Math.sin(ang) }, center)
+    wps.push({ lat: p.lat, lon: p.lon, alt, heading: bearingDeg(p, center), gimbalPitch })
+  }
+  return wps
 }
 
 // Prepend takeoff at home, set altitude on every survey point. RTL is appended by the exporter;
@@ -163,6 +220,33 @@ function assembleMission(home: LatLon, survey: LatLon[], altM: number): Waypoint
   const wps: Waypoint[] = [{ lat: home.lat, lon: home.lon, alt: altM }]
   for (const p of survey) wps.push({ lat: p.lat, lon: p.lon, alt: altM })
   return wps
+}
+
+// Tag waypoints with a 0-based battery leg index. A new leg starts when the next
+// segment would push the current leg's flight time past the usable budget.
+export function splitByBattery(
+  waypoints: Waypoint[],
+  params: MissionParams,
+): { waypoints: Waypoint[]; legCount: number } {
+  if (waypoints.length === 0) return { waypoints: [], legCount: 0 }
+  const budgetSec =
+    (params.batteryMinutes ?? DEFAULT_BATTERY_MIN) * 60 *
+    (1 - (params.batteryReservePct ?? DEFAULT_RESERVE_PCT) / 100)
+  const speed = Math.max(params.speedMs, 0.1)
+  let leg = 0
+  let legTime = 0
+  const out: Waypoint[] = [{ ...waypoints[0], leg }]
+  for (let i = 1; i < waypoints.length; i++) {
+    const segTime = haversineM(waypoints[i - 1], waypoints[i]) / speed
+    if (budgetSec > 0 && legTime + segTime > budgetSec && legTime > 0) {
+      leg++
+      legTime = segTime
+    } else {
+      legTime += segTime
+    }
+    out.push({ ...waypoints[i], leg })
+  }
+  return { waypoints: out, legCount: leg + 1 }
 }
 
 function haversineM(a: LatLon, b: LatLon): number {
@@ -204,7 +288,18 @@ export function computeStats(
   }
   const imageCount = Math.floor(distanceM / triggerDist)
   const flightTimeSec = distanceM / params.speedMs + 30
-  const areaHa = polygonAreaHa(polygon)
+  const areaHa = polygon.length >= 3 ? polygonAreaHa(polygon) : 0
+  const legCount = splitByBattery(waypoints, params).legCount
 
-  return { gsdCm, footprintWM, footprintHM, areaHa, imageCount, distanceM, flightTimeSec }
+  return {
+    gsdCm,
+    footprintWM,
+    footprintHM,
+    areaHa,
+    imageCount,
+    distanceM,
+    flightTimeSec,
+    legCount,
+    batteryCount: legCount,
+  }
 }
