@@ -7,25 +7,22 @@ on startup; when we move to a managed DB later, swap this for Alembic.
 """
 from __future__ import annotations
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 from axalon.db.models import Base
 
 
 def _has_column(engine: Engine, table: str, column: str) -> bool:
-    with engine.connect() as conn:
-        rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
-    return any(row[1] == column for row in rows)
+    # inspect() is dialect-agnostic — works on SQLite and PostgreSQL alike,
+    # unlike the SQLite-only PRAGMA table_info().
+    return any(col["name"] == column for col in inspect(engine).get_columns(table))
 
 
 def _table_exists(engine: Engine, table: str) -> bool:
-    with engine.connect() as conn:
-        row = conn.execute(
-            text("SELECT name FROM sqlite_master WHERE type='table' AND name=:n"),
-            {"n": table},
-        ).fetchone()
-    return row is not None
+    # inspect().has_table() replaces the SQLite-only sqlite_master lookup so this
+    # runs on PostgreSQL (Supabase) too.
+    return inspect(engine).has_table(table)
 
 
 def run_migrations(engine: Engine) -> list[str]:
