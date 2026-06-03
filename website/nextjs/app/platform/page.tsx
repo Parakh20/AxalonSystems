@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import {
   LayoutDashboard,
   BarChart3,
@@ -10,6 +11,7 @@ import {
   MapIcon,
   GitCompare,
   Navigation2,
+  Radio,
 } from 'lucide-react'
 import { ToastProvider } from '@/components/Platform/Toast'
 import { OperationsTab } from '@/components/Platform/OperationsTab'
@@ -21,7 +23,18 @@ import { DiffTab } from '@/components/Platform/DiffTab'
 import { PlanTab } from '@/components/Platform/PlanTab'
 import { OverviewTab } from '@/components/Platform/OverviewTab'
 
-type Tab = 'operations' | 'inspect' | 'history' | 'settings' | 'parkmap' | 'diff' | 'plan' | 'overview'
+const LiveOpsTab = dynamic(() => import('@/components/Platform/LiveOpsTab'), { ssr: false })
+
+type Tab =
+  | 'operations'
+  | 'inspect'
+  | 'history'
+  | 'settings'
+  | 'parkmap'
+  | 'diff'
+  | 'plan'
+  | 'overview'
+  | 'liveops'
 
 export default function PlatformPage() {
   return (
@@ -127,6 +140,16 @@ function PlatformShell() {
             </button>
             <button
               type="button"
+              className={`rail-link ${tab === 'liveops' ? 'active' : ''}`}
+              onClick={() => setTab('liveops')}
+              title="Live Ops"
+              data-testid="tab-liveops"
+            >
+              <Radio size={16} />
+              <span>Live Ops</span>
+            </button>
+            <button
+              type="button"
               className={`rail-link ${tab === 'settings' ? 'active' : ''}`}
               onClick={() => setTab('settings')}
               title="Settings"
@@ -156,6 +179,7 @@ function PlatformShell() {
           {tab === 'parkmap' && <ParkMapTab />}
           {tab === 'diff' && <DiffTab />}
           {tab === 'plan' && <PlanTab />}
+          {tab === 'liveops' && <LiveOpsTab />}
         </div>
       </div>
     </main>
