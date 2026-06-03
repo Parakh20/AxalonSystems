@@ -15,15 +15,8 @@ services:
       - AXALON_API_KEY=${AXALON_API_KEY:-}
       - AXALON_OUTPUT_DIR=/app/data/output
       - AXALON_RESULTS_TTL_HOURS=${AXALON_RESULTS_TTL_HOURS:-0}
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 10s
