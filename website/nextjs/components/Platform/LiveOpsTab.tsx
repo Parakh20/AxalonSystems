@@ -6,13 +6,17 @@ import {
   connectLiveOps, buildCommandEnvelope, buildControlEnvelope,
   type Telemetry, type Ack, type ControlReply, type CommandType, type LiveOpsHandle,
 } from "@/lib/liveOps";
+import { missionToWaypoints, type PlannedPoint } from "@/lib/missionToWaypoints";
 
 const RELAY_WS = process.env.NEXT_PUBLIC_RELAY_WS_URL ?? "";
 const OPS_TOKEN = process.env.NEXT_PUBLIC_OPS_TOKEN ?? "";
 
 const DESTRUCTIVE: CommandType[] = ["ARM", "TAKEOFF", "LAND"];
 
-export default function LiveOpsTab({ droneId = "sitl-01" }: { droneId?: string }) {
+export default function LiveOpsTab(
+  { droneId = "sitl-01", plannedPoints = [] }:
+  { droneId?: string; plannedPoints?: PlannedPoint[] }
+) {
   const operatorId = useMemo(
     () => "op-" + Math.random().toString(36).slice(2, 8), []);
   const [telem, setTelem] = useState<Telemetry | null>(null);
@@ -75,6 +79,12 @@ export default function LiveOpsTab({ droneId = "sitl-01" }: { droneId?: string }
         <button disabled={!cmdsEnabled} onClick={() => sendCmd("RESUME")}>Resume</button>
         <button disabled={!cmdsEnabled} onClick={() => sendCmd("RTL")}>RTL</button>
         <button disabled={!cmdsEnabled} onClick={() => sendCmd("LAND")}>Land</button>
+        <button
+          disabled={!cmdsEnabled || plannedPoints.length === 0}
+          onClick={() => sendCmd("UPLOAD_MISSION", { waypoints: missionToWaypoints(plannedPoints) })}
+        >
+          Upload mission ({plannedPoints.length})
+        </button>
       </div>
 
       {lastAck && (
