@@ -20,6 +20,7 @@ import {
   type Waypoint,
 } from '@/lib/missionGeometry'
 import { downloadMission, type ExportFormat } from '@/lib/waypointExport'
+import { parseBoundary, toGeoJson, toKml } from '@/lib/boundaryIO'
 import PlanSidebar from '@/components/Platform/PlanSidebar'
 
 const PlanMap = dynamic(() => import('@/components/Platform/PlanMap'), {
@@ -43,6 +44,18 @@ const DEFAULT_PARAMS: MissionParams = {
   orbitPhotoCount: 16,
 }
 
+function downloadText(text: string, filename: string, mime: string) {
+  const blob = new Blob([text], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export function PlanTab() {
   const toast = useToast()
   const [missionName, setMissionName] = useState('New Mission')
@@ -51,6 +64,7 @@ export function PlanTab() {
   const [camera, setCamera] = useState<Camera>(DEFAULT_CAMERA)
   const [params, setParams] = useState<MissionParams>(DEFAULT_PARAMS)
   const [polygon, setPolygon] = useState<LatLon[] | null>(null)
+  const [fitKey, setFitKey] = useState(0)
   const [savedMissions, setSavedMissions] = useState<MissionSummary[]>([])
 
   const waypoints = useMemo(() => {
@@ -90,6 +104,28 @@ export function PlanTab() {
     downloadMission(waypoints, params, missionName, triggerDist, format)
   }
 
+  async function handleImportBoundary(file: File) {
+    try {
+      const text = await file.text()
+      const pts = parseBoundary(text, file.name)
+      setPolygon(pts)
+      setFitKey((k) => k + 1)
+      toast.success(`Imported ${pts.length}-point boundary`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function handleExportBoundary(format: 'geojson' | 'kml') {
+    if (!polygon || polygon.length < 3) {
+      toast.error('Draw or import an area first')
+      return
+    }
+    const slug = missionName.trim().replace(/[^A-Za-z0-9]+/g, '_') || 'boundary'
+    if (format === 'geojson') downloadText(toGeoJson(polygon), `${slug}.geojson`, 'application/geo+json')
+    else downloadText(toKml(polygon), `${slug}.kml`, 'application/vnd.google-earth.kml+xml')
+  }
+
   async function handleSave() {
     if (waypoints.length < 2 || !polygon || !stats) {
       toast.error('Draw a survey area first')
@@ -123,6 +159,7 @@ export function PlanTab() {
       setCamera(getCamera(m.camera_id ?? DEFAULT_CAMERA.id))
       setParams({ ...DEFAULT_PARAMS, ...(m.params as Partial<MissionParams>) })
       setPolygon(m.polygon.length ? m.polygon : null)
+      setFitKey((k) => k + 1)
       toast.success(`Loaded "${m.name}"`)
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : String(err))
@@ -147,6 +184,7 @@ export function PlanTab() {
           waypoints={waypoints}
           stats={stats}
           orbitRadiusM={params.orbitRadiusM}
+          fitKey={fitKey}
           onShapeDrawn={setPolygon}
           onClear={() => setPolygon(null)}
         />
@@ -168,6 +206,9 @@ export function PlanTab() {
         onDeleteMission={handleDelete}
         onExport={handleExport}
         onSave={handleSave}
+        onImportBoundary={handleImportBoundary}
+        onExportBoundary={handleExportBoundary}
+        canExportBoundary={!!polygon && polygon.length >= 3}
         canExport={waypoints.length >= 2}
       />
     </div>

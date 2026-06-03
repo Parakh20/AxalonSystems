@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Download, Save, Trash2 } from 'lucide-react'
+import { Download, Save, Trash2, Upload } from 'lucide-react'
 import type { Camera } from '@/lib/cameras'
 import { CAMERAS } from '@/lib/cameras'
 import type { MissionParams, MissionType, MissionStats } from '@/lib/missionGeometry'
@@ -27,6 +27,9 @@ type Props = {
   onDeleteMission: (id: number) => void
   onExport: (format: ExportFormat) => void
   onSave: () => void
+  onImportBoundary: (file: File) => void
+  onExportBoundary: (format: 'geojson' | 'kml') => void
+  canExportBoundary: boolean
   canExport: boolean
 }
 
@@ -44,7 +47,8 @@ export default function PlanSidebar(props: Props) {
     missionName, onMissionNameChange, parkId, onParkIdChange,
     missionType, onMissionTypeChange, camera, onCameraChange,
     params, onParamsChange, stats, savedMissions,
-    onLoadMission, onDeleteMission, onExport, onSave, canExport,
+    onLoadMission, onDeleteMission, onExport, onSave,
+    onImportBoundary, onExportBoundary, canExportBoundary, canExport,
   } = props
 
   const [exportFormat, setExportFormat] = useState<ExportFormat>('litchi')
@@ -107,6 +111,36 @@ export default function PlanSidebar(props: Props) {
               : missionType === 'corridor'
                 ? 'Draw a line; the drone flies it with a parallel return pass.'
                 : 'Draw the survey area; lines run along the panel-row angle.'}
+          </div>
+        </div>
+      </section>
+
+      {/* Site boundary (import / export) */}
+      <section className="panel">
+        <div className="panel-head compact"><div className="panel-title">Site Boundary</div></div>
+        <div className="plan-param">
+          <label style={{ display: 'block', marginBottom: 6 }}>
+            <input
+              type="file"
+              accept=".geojson,.json,.kml"
+              style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportBoundary(f); e.currentTarget.value = '' }}
+            />
+            <span
+              className="secondary"
+              role="button"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '6px', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}
+            >
+              <Upload size={14} /> Import GeoJSON / KML
+            </span>
+          </label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="secondary" style={{ flex: 1 }} disabled={!canExportBoundary} onClick={() => onExportBoundary('geojson')}>
+              Export GeoJSON
+            </button>
+            <button className="secondary" style={{ flex: 1 }} disabled={!canExportBoundary} onClick={() => onExportBoundary('kml')}>
+              Export KML
+            </button>
           </div>
         </div>
       </section>
@@ -176,7 +210,6 @@ export default function PlanSidebar(props: Props) {
           <input type="range" min={3} max={15} value={params.speedMs}
             onChange={(e) => patchParams({ speedMs: Number(e.target.value) })} />
 
-          {/* Panel row angle α — only meaningful for the grid sweep */}
           {missionType === 'grid' && (
             <>
               <label>Panel row angle α <span>{isAlphaAuto ? 'Auto' : `${params.headingDeg}°`}</span></label>

@@ -15,12 +15,8 @@ const SAT_URL = MAPBOX_TOKEN
   : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
 const SAT_ATTR = MAPBOX_TOKEN ? '© Mapbox © OpenStreetMap' : 'Tiles © Esri'
-
-// Esri World Imagery only has tiles up to ~z19; beyond that it returns a
-// "Map data not yet available" tile. Cap native zoom there and upscale. Mapbox goes higher.
 const SAT_MAX_NATIVE_ZOOM = MAPBOX_TOKEN ? 22 : 19
 
-// Battery-leg colors (cycled).
 const LEG_COLORS = ['#06b6d4', '#f59e0b', '#a855f7', '#10b981', '#ef4444', '#3b82f6']
 const MAX_ARROWS = 24
 
@@ -30,6 +26,7 @@ type Props = {
   waypoints: Waypoint[]
   stats: MissionStats | null
   orbitRadiusM?: number
+  fitKey?: number
   onShapeDrawn: (points: LatLon[]) => void
   onClear: () => void
 }
@@ -40,12 +37,28 @@ function fmtTime(sec: number): string {
   return `${m}m ${s}s`
 }
 
+// Planar (equirectangular) ring area in m², around the first point.
+function ringAreaM2(pts: L.LatLng[]): number {
+  if (pts.length < 3) return 0
+  const lat0 = (pts[0].lat * Math.PI) / 180
+  const mPerLon = 111320 * Math.cos(lat0)
+  const mPerLat = 111320
+  const xy = pts.map((p) => ({ x: (p.lng - pts[0].lng) * mPerLon, y: (p.lat - pts[0].lat) * mPerLat }))
+  let a = 0
+  for (let i = 0; i < xy.length; i++) {
+    const j = (i + 1) % xy.length
+    a += xy[i].x * xy[j].y - xy[j].x * xy[i].y
+  }
+  return Math.abs(a / 2)
+}
+
 export default function PlanMap({
   missionType,
   polygon,
   waypoints,
   stats,
   orbitRadiusM,
+  fitKey,
   onShapeDrawn,
   onClear,
 }: Props) {
@@ -53,6 +66,9 @@ export default function PlanMap({
   const mapRef = useRef<L.Map | null>(null)
   const drawnRef = useRef<L.FeatureGroup | null>(null)
   const pathRef = useRef<L.LayerGroup | null>(null)
+  const boundaryRef = useRef<L.LayerGroup | null>(null)
+  const measureLayerRef = useRef<L.LayerGroup | null>(null)
+  const measurePtsRef = useRef<L.LatLng[]>([])
   const onShapeDrawnRef = useRef(onShapeDrawn)
   const onClearRef = useRef(onClear)
   onShapeDrawnRef.current = onShapeDrawn
@@ -61,6 +77,8 @@ export default function PlanMap({
   const [north, setNorth] = useState('')
   const [east, setEast] = useState('')
   const [coordError, setCoordError] = useState('')
+  const [measuring, setMeasuring] = useState(false)
+  const [measureInfo, setMeasureInfo] = useState({ dist: 0, area: 0, count: 0 })
 
   function recenter() {
     const map = mapRef.current
@@ -75,6 +93,23 @@ export default function PlanMap({
     map.setView([lat, lon], Math.max(map.getZoom(), 17))
   }
 
+  function redrawMeasure() {
+    const layer = measureLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    const pts = measurePtsRef.current
+    for (const p of pts) L.circleMarker(p, { radius: 3, color: '#f59e0b', fillOpacity: 1 }).addTo(layer)
+    if (pts.length >= 2) L.polyline(pts, { color: '#f59e0b', weight: 2, dashArray: '4' }).addTo(layer)
+    let dist = 0
+    for (let i = 1; i < pts.length; i++) dist += pts[i - 1].distanceTo(pts[i])
+    setMeasureInfo({ dist, area: ringAreaM2(pts), count: pts.length })
+  }
+
+  function clearMeasure() {
+    measurePtsRef.current = []
+    redrawMeasure()
+  }
+
   // Initialise map once
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return
@@ -84,7 +119,9 @@ export default function PlanMap({
     const drawn = new L.FeatureGroup()
     map.addLayer(drawn)
     drawnRef.current = drawn
+    boundaryRef.current = L.layerGroup().addTo(map)
     pathRef.current = L.layerGroup().addTo(map)
+    measureLayerRef.current = L.layerGroup().addTo(map)
 
     map.on(L.Draw.Event.CREATED, (e: any) => {
       drawn.clearLayers()
@@ -93,10 +130,7 @@ export default function PlanMap({
       if (typeof layer.getLatLngs === 'function') {
         const raw = layer.getLatLngs()
         const latlngs = (Array.isArray(raw?.[0]) ? raw[0] : raw ?? []) as L.LatLng[]
-        const pts: LatLon[] = (Array.isArray(latlngs) ? latlngs : []).map((ll: L.LatLng) => ({
-          lat: ll.lat,
-          lon: ll.lng,
-        }))
+        const pts: LatLon[] = (Array.isArray(latlngs) ? latlngs : []).map((ll: L.LatLng) => ({ lat: ll.lat, lon: ll.lng }))
         onShapeDrawnRef.current(pts)
       } else if (typeof layer.getLatLng === 'function') {
         const ll = layer.getLatLng() as L.LatLng
@@ -115,7 +149,7 @@ export default function PlanMap({
     }
   }, [])
 
-  // Swap the active draw control based on mission type (polygon / polyline / marker)
+  // Draw control by mission type (polygon / polyline / marker)
   useEffect(() => {
     const map = mapRef.current
     const drawn = drawnRef.current
@@ -138,13 +172,49 @@ export default function PlanMap({
     }
   }, [missionType])
 
-  // Redraw the actual flight path (leg-colored), drone-facing arrows, and orbit guide
+  // Boundary outline of the current survey polygon (visible before waypoints compute)
+  useEffect(() => {
+    const layer = boundaryRef.current
+    if (!layer) return
+    layer.clearLayers()
+    if (missionType !== 'orbit' && polygon && polygon.length >= 2) {
+      const ll = polygon.map((p) => [p.lat, p.lon] as [number, number])
+      L.polyline([...ll, ll[0]], { color: '#0ea5e9', weight: 1, opacity: 0.5, dashArray: '6' }).addTo(layer)
+    }
+  }, [polygon, missionType])
+
+  // Fit the map to the polygon on import / load (fitKey changes)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !polygon || polygon.length < 1) return
+    const bounds = L.latLngBounds(polygon.map((p) => [p.lat, p.lon] as [number, number]))
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 19 })
+  }, [fitKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Measure tool: collect clicks while active
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    function onClick(e: L.LeafletMouseEvent) {
+      measurePtsRef.current.push(e.latlng)
+      redrawMeasure()
+    }
+    if (measuring) {
+      map.on('click', onClick)
+    } else {
+      clearMeasure()
+    }
+    return () => {
+      map.off('click', onClick)
+    }
+  }, [measuring])
+
+  // Redraw the flight path (leg-colored), drone-facing arrows, and orbit guide
   useEffect(() => {
     const layer = pathRef.current
     if (!layer) return
     layer.clearLayers()
 
-    // Orbit guide (center + radius) — drawn even before the ring exists
     if (missionType === 'orbit' && polygon && polygon[0] && orbitRadiusM) {
       L.circle([polygon[0].lat, polygon[0].lon], {
         radius: orbitRadiusM, color: '#0ea5e9', weight: 1, fill: false, dashArray: '4',
@@ -156,7 +226,6 @@ export default function PlanMap({
 
     if (waypoints.length < 2) return
 
-    // Path, colored per battery leg (seed each group with the previous point to connect).
     type Group = { leg: number; pts: [number, number][] }
     const groups: Group[] = []
     for (const wp of waypoints) {
@@ -174,7 +243,6 @@ export default function PlanMap({
       L.polyline(g.pts, { color: LEG_COLORS[g.leg % LEG_COLORS.length], weight: 2, opacity: 0.9 }).addTo(layer)
     }
 
-    // Drone-facing arrows (▲ points north; rotate clockwise by heading).
     const step = Math.max(1, Math.floor(waypoints.length / MAX_ARROWS))
     for (let i = 0; i < waypoints.length; i += step) {
       const wp = waypoints[i]
@@ -189,16 +257,16 @@ export default function PlanMap({
     }
 
     const first: [number, number] = [waypoints[0].lat, waypoints[0].lon]
-    const last: [number, number] = [waypoints[waypoints.length - 1].lat, waypoints[waypoints.length - 1].lon]
+    const lastWp: [number, number] = [waypoints[waypoints.length - 1].lat, waypoints[waypoints.length - 1].lon]
     L.circleMarker(first, { radius: 6, color: '#0ea5e9', fillOpacity: 1 }).bindTooltip('Start').addTo(layer)
-    L.circleMarker(last, { radius: 6, color: '#10b981', fillOpacity: 1 }).bindTooltip('End').addTo(layer)
+    L.circleMarker(lastWp, { radius: 6, color: '#10b981', fillOpacity: 1 }).bindTooltip('End').addTo(layer)
   }, [waypoints, missionType, polygon, orbitRadiusM])
 
   return (
     <div className="plan-map">
       <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
-      {/* Jump-to-coordinate box (North = lat, East = lon; Enter to recenter) */}
+      {/* Jump-to-coordinate box */}
       <div
         className="plan-coord-box"
         style={{
@@ -209,27 +277,45 @@ export default function PlanMap({
         }}
       >
         <input
-          value={north}
-          onChange={(e) => setNorth(e.target.value)}
+          value={north} onChange={(e) => setNorth(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') recenter() }}
-          placeholder="North (lat)"
-          inputMode="decimal"
-          aria-label="North latitude"
+          placeholder="North (lat)" inputMode="decimal" aria-label="North latitude"
           style={{ width: 92, fontSize: 12, boxSizing: 'border-box' }}
         />
         <input
-          value={east}
-          onChange={(e) => setEast(e.target.value)}
+          value={east} onChange={(e) => setEast(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') recenter() }}
-          placeholder="East (lon)"
-          inputMode="decimal"
-          aria-label="East longitude"
+          placeholder="East (lon)" inputMode="decimal" aria-label="East longitude"
           style={{ width: 92, fontSize: 12, boxSizing: 'border-box' }}
         />
-        <button type="button" className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={recenter}>
-          Go
-        </button>
+        <button type="button" className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={recenter}>Go</button>
         {coordError && <span style={{ color: '#ef4444', fontSize: 11 }}>{coordError}</span>}
+      </div>
+
+      {/* Measure tool (bottom-left) */}
+      <div
+        style={{
+          position: 'absolute', bottom: 12, left: 12, zIndex: 800,
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'rgba(255,255,255,.92)', border: '1px solid #e2e8f0',
+          borderRadius: 6, padding: '6px 8px', boxShadow: '0 2px 8px rgba(15,23,42,.12)', fontSize: 12,
+        }}
+      >
+        <button
+          type="button"
+          className={measuring ? 'primary' : 'secondary'}
+          style={{ padding: '2px 8px', fontSize: 12 }}
+          onClick={() => setMeasuring((v) => !v)}
+        >
+          {measuring ? 'Measuring…' : 'Measure'}
+        </button>
+        {measuring && (
+          <>
+            <span>{(measureInfo.dist / 1000).toFixed(3)} km</span>
+            {measureInfo.count >= 3 && <span>{(measureInfo.area / 10000).toFixed(2)} ha</span>}
+            <button type="button" className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={clearMeasure}>Clear</button>
+          </>
+        )}
       </div>
 
       {stats && (
