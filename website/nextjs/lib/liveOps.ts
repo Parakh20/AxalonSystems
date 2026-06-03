@@ -36,19 +36,69 @@ export function parseTelemetryFrame(raw: string): Telemetry | null {
   }
 }
 
+// --- Phase 2: commands, acks, control ---
+
+export type CommandType =
+  | "ARM" | "DISARM" | "TAKEOFF" | "RTL" | "LAND"
+  | "PAUSE" | "RESUME" | "GOTO" | "SET_MODE" | "UPLOAD_MISSION";
+
+export interface Ack { cmd_id: string; success: boolean; message: string }
+export interface ControlReply { action: string; granted?: boolean; holder?: string | null }
+
+function randomId(): string {
+  // crypto.randomUUID is available in modern browsers; fall back for tests/node.
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+export function buildCommandEnvelope(type: CommandType, params: Record<string, unknown> = {}) {
+  return { type: "command", command: { cmd_id: randomId(), type, params } };
+}
+
+export function buildControlEnvelope(action: "acquire" | "release" | "status", operatorId: string) {
+  return { type: "control", control: { action, operator_id: operatorId } };
+}
+
+export function parseAckFrame(raw: string): Ack | null {
+  try {
+    const env = JSON.parse(raw);
+    return env?.type === "ack" && env.ack ? (env.ack as Ack) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseControlFrame(raw: string): ControlReply | null {
+  try {
+    const env = JSON.parse(raw);
+    return env?.type === "control" && env.control ? (env.control as ControlReply) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface LiveOpsHandlers {
   onTelemetry: (t: Telemetry) => void;
   onStatus?: (s: "connecting" | "open" | "closed") => void;
+  onAck?: (a: Ack) => void;
+  onControl?: (c: ControlReply) => void;
 }
 
-/** Opens the ops WebSocket and pumps telemetry to the handler. Returns a
- *  disposer. Auto-reconnects with backoff. */
+export interface LiveOpsHandle {
+  send: (env: object) => void;
+  dispose: () => void;
+}
+
+/** Opens the ops WebSocket and pumps telemetry/ack/control to the handlers.
+ *  Returns a send-capable handle. Auto-reconnects with backoff. */
 export function connectLiveOps(
   baseWsUrl: string,
   droneId: string,
   opsToken: string,
+  operatorId: string,
   handlers: LiveOpsHandlers
-): () => void {
+): LiveOpsHandle {
   let ws: WebSocket | null = null;
   let closed = false;
   let backoff = 1000;
@@ -56,15 +106,20 @@ export function connectLiveOps(
   const open = () => {
     if (closed) return;
     handlers.onStatus?.("connecting");
-    const url = `${baseWsUrl}/ws/ops/${droneId}?token=${encodeURIComponent(opsToken)}`;
+    const url = `${baseWsUrl}/ws/ops/${droneId}?token=${encodeURIComponent(opsToken)}&operator=${encodeURIComponent(operatorId)}`;
     ws = new WebSocket(url);
     ws.onopen = () => {
       backoff = 1000;
       handlers.onStatus?.("open");
     };
     ws.onmessage = (ev) => {
-      const t = parseTelemetryFrame(ev.data as string);
-      if (t) handlers.onTelemetry(t);
+      const data = ev.data as string;
+      const t = parseTelemetryFrame(data);
+      if (t) { handlers.onTelemetry(t); return; }
+      const ack = parseAckFrame(data);
+      if (ack) { handlers.onAck?.(ack); return; }
+      const ctl = parseControlFrame(data);
+      if (ctl) { handlers.onControl?.(ctl); return; }
     };
     ws.onclose = () => {
       handlers.onStatus?.("closed");
@@ -74,8 +129,8 @@ export function connectLiveOps(
   };
 
   open();
-  return () => {
-    closed = true;
-    ws?.close();
+  return {
+    send: (env: object) => ws?.send(JSON.stringify(env)),
+    dispose: () => { closed = true; ws?.close(); },
   };
 }
