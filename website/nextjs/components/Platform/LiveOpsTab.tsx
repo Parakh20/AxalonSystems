@@ -1,7 +1,7 @@
 // website/nextjs/components/Platform/LiveOpsTab.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { connectLiveOps, type Telemetry } from "@/lib/liveOps";
 
 const RELAY_WS = process.env.NEXT_PUBLIC_RELAY_WS_URL ?? "";

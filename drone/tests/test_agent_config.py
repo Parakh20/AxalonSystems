@@ -16,6 +16,18 @@ def test_config_reads_env(monkeypatch):
     assert cfg.period_s == 0.2
 
 
+def test_ops_url_percent_encodes_token_and_id(monkeypatch):
+    monkeypatch.setenv("DRONE_ID", "site a/01")
+    monkeypatch.setenv("DRONE_TOKEN", "a+b&c=d")
+    monkeypatch.setenv("RELAY_WS_URL", "wss://relay.example.com")
+    monkeypatch.setenv("MAVLINK_URL", "udpin:127.0.0.1:14550")
+    cfg = AgentConfig.from_env()
+    # special chars are escaped so the query param can't be truncated/mangled
+    assert cfg.ops_url() == (
+        "wss://relay.example.com/ws/drone/site%20a%2F01?token=a%2Bb%26c%3Dd"
+    )
+
+
 def test_config_defaults(monkeypatch):
     monkeypatch.delenv("TELEMETRY_HZ", raising=False)
     monkeypatch.setenv("DRONE_ID", "x")

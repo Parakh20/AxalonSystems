@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from urllib.parse import quote
 
 
 @dataclass(frozen=True)
@@ -29,4 +30,6 @@ class AgentConfig:
         return 1.0 / self.telemetry_hz
 
     def ops_url(self) -> str:
-        return f"{self.relay_ws_url}/ws/drone/{self.drone_id}?token={self.drone_token}"
+        drone_id = quote(self.drone_id, safe="")
+        token = quote(self.drone_token, safe="")
+        return f"{self.relay_ws_url}/ws/drone/{drone_id}?token={token}"
