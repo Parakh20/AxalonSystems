@@ -11,6 +11,7 @@ import {
   generatePerimeter,
   generateCorridor,
   generateOrbit,
+  generateSolar,
   resolvedHeadingDeg,
   splitByBattery,
   computeStats,
@@ -83,7 +84,10 @@ export function PlanTab() {
     } else if (polygon && polygon.length >= 2) {
       if (missionType === 'grid') base = generateGrid(polygon, camera, params)
       else if (missionType === 'perimeter') base = generatePerimeter(polygon, camera, params)
-      else base = generateCorridor(polygon, camera, params)
+      else if (missionType === 'solar') {
+        // Drawn polyline: first 2 vertices = row direction, the rest = panel-row centers.
+        base = polygon.length >= 3 ? generateSolar([polygon[0], polygon[1]], polygon.slice(2), params) : []
+      } else base = generateCorridor(polygon, camera, params)
     }
     return splitByBattery(base, params).waypoints
   }, [polygon, camera, params, missionType, reinspect])

@@ -39,7 +39,7 @@ type Props = {
   canExport: boolean
 }
 
-const TYPES: MissionType[] = ['grid', 'perimeter', 'corridor', 'orbit']
+const TYPES: MissionType[] = ['grid', 'perimeter', 'corridor', 'orbit', 'solar']
 
 const EXPORT_FORMATS: { value: ExportFormat; label: string; short: string }[] = [
   { value: 'litchi', label: 'Litchi CSV', short: 'Litchi CSV' },
@@ -121,7 +121,9 @@ export default function PlanSidebar(props: Props) {
                 ? 'Drop a center point; the drone circles it, camera aimed inward.'
                 : missionType === 'corridor'
                   ? 'Draw a line; the drone flies it with a parallel return pass.'
-                  : 'Draw the survey area; lines run along the panel-row angle.'}
+                  : missionType === 'solar'
+                    ? 'Click 2 points to set the row direction, then each panel-row center (unequal spacing OK).'
+                    : 'Draw the survey area; lines run along the panel-row angle.'}
           </div>
         </div>
       </section>

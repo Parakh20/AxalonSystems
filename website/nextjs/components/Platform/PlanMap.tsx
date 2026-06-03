@@ -154,7 +154,7 @@ export default function PlanMap({
     const map = mapRef.current
     const drawn = drawnRef.current
     if (!map || !drawn) return
-    const tool = missionType === 'corridor' ? 'polyline' : missionType === 'orbit' ? 'marker' : 'polygon'
+    const tool = missionType === 'corridor' || missionType === 'solar' ? 'polyline' : missionType === 'orbit' ? 'marker' : 'polygon'
     const control = new L.Control.Draw({
       draw: {
         polygon: tool === 'polygon' ? ({ shapeOptions: { color: '#0ea5e9' } } as any) : false,
