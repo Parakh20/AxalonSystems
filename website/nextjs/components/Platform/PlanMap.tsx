@@ -15,7 +15,11 @@ const SAT_URL = MAPBOX_TOKEN
   : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
 const SAT_ATTR = MAPBOX_TOKEN ? '© Mapbox © OpenStreetMap' : 'Tiles © Esri'
-const SAT_MAX_NATIVE_ZOOM = MAPBOX_TOKEN ? 22 : 19
+// Esri World Imagery often serves "Map data not yet available" placeholders at
+// z19+ outside dense coverage areas. Cap native fetches at 18 and let Leaflet
+// upscale so operators can still zoom closer without losing the image.
+const SAT_MAX_NATIVE_ZOOM = MAPBOX_TOKEN ? 22 : 18
+const SAT_MAX_ZOOM = 24
 
 const LEG_COLORS = ['#06b6d4', '#f59e0b', '#a855f7', '#10b981', '#ef4444', '#3b82f6']
 const MAX_ARROWS = 40
@@ -121,8 +125,8 @@ export default function PlanMap({
   // Initialise map once
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return
-    const map = L.map(mapDivRef.current, { center: [18.5204, 73.8567], zoom: 16 })
-    L.tileLayer(SAT_URL, { attribution: SAT_ATTR, maxZoom: 22, maxNativeZoom: SAT_MAX_NATIVE_ZOOM }).addTo(map)
+    const map = L.map(mapDivRef.current, { center: [18.5204, 73.8567], zoom: 16, maxZoom: SAT_MAX_ZOOM })
+    L.tileLayer(SAT_URL, { attribution: SAT_ATTR, maxZoom: SAT_MAX_ZOOM, maxNativeZoom: SAT_MAX_NATIVE_ZOOM }).addTo(map)
 
     const drawn = new L.FeatureGroup()
     map.addLayer(drawn)
