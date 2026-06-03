@@ -19,6 +19,7 @@ class Sink(Protocol):
 class RelayManager:
     def __init__(self) -> None:
         self._operators: dict[str, set[Sink]] = {}
+        self._operators_by_id: dict[str, dict[str, "Sink"]] = {}
         self._drones: dict[str, Sink] = {}
         self._tier: dict[str, LinkTier] = {}
 
@@ -31,6 +32,20 @@ class RelayManager:
 
     def operators_for(self, drone_id: str) -> set[Sink]:
         return self._operators.get(drone_id, set())
+
+    # --- addressable operators (for per-peer signaling) ---
+    def register_operator(self, drone_id: str, operator_id: str, sink: "Sink") -> None:
+        self._operators_by_id.setdefault(drone_id, {})[operator_id] = sink
+
+    def unregister_operator(self, drone_id: str, operator_id: str) -> None:
+        self._operators_by_id.get(drone_id, {}).pop(operator_id, None)
+
+    async def send_to_operator(self, drone_id: str, operator_id: str, raw: str) -> bool:
+        sink = self._operators_by_id.get(drone_id, {}).get(operator_id)
+        if sink is None:
+            return False
+        await sink.send_text(raw)
+        return True
 
     # --- drones ---
     def register_drone(self, drone_id: str, sink: Sink) -> None:
