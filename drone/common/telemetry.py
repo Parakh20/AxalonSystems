@@ -10,6 +10,8 @@ from __future__ import annotations
 from enum import Enum
 from pydantic import BaseModel, Field
 
+from drone.common.commands import Ack, Command, ControlMsg
+
 
 class LinkTier(str, Enum):
     GREEN = "GREEN"   # low latency, manual unlocked (later phases)
@@ -46,7 +48,11 @@ class Telemetry(BaseModel):
 
 
 class Envelope(BaseModel):
-    """Top-level frame on the wire. `type` discriminates message kinds so later
-    phases (commands, acks, signaling) reuse the same socket."""
+    """Top-level frame on the wire. `type` discriminates message kinds:
+    'telemetry' | 'command' | 'ack' | 'control' | 'heartbeat'."""
     type: str
     telemetry: Telemetry | None = None
+    command: Command | None = None
+    ack: Ack | None = None
+    control: ControlMsg | None = None
+    ts: float | None = None   # used by heartbeat frames for RTT measurement
