@@ -9,6 +9,7 @@ import type { MissionParams, MissionType, MissionStats } from '@/lib/missionGeom
 import { computeFootprint } from '@/lib/missionGeometry'
 import type { MissionSummary } from '@/lib/api'
 import type { ExportFormat } from '@/lib/waypointExport'
+import type { Severity } from '@/lib/analytics'
 
 type Props = {
   missionName: string
@@ -30,6 +31,10 @@ type Props = {
   onImportBoundary: (file: File) => void
   onExportBoundary: (format: 'geojson' | 'kml') => void
   canExportBoundary: boolean
+  onLoadReinspect: (jobId: string, minSeverity: Severity) => void
+  onClearReinspect: () => void
+  reinspectActive: boolean
+  reinspectTargets: number
   canExport: boolean
 }
 
@@ -48,10 +53,13 @@ export default function PlanSidebar(props: Props) {
     missionType, onMissionTypeChange, camera, onCameraChange,
     params, onParamsChange, stats, savedMissions,
     onLoadMission, onDeleteMission, onExport, onSave,
-    onImportBoundary, onExportBoundary, canExportBoundary, canExport,
+    onImportBoundary, onExportBoundary, canExportBoundary,
+    onLoadReinspect, onClearReinspect, reinspectActive, reinspectTargets, canExport,
   } = props
 
   const [exportFormat, setExportFormat] = useState<ExportFormat>('litchi')
+  const [reJobId, setReJobId] = useState('')
+  const [reSev, setReSev] = useState<Severity>('HIGH')
   const fp = computeFootprint(camera, params)
   const exportLabel = EXPORT_FORMATS.find((f) => f.value === exportFormat)?.short ?? 'file'
 
@@ -106,11 +114,46 @@ export default function PlanSidebar(props: Props) {
             ))}
           </div>
           <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-            {missionType === 'orbit'
-              ? 'Drop a center point; the drone circles it, camera aimed inward.'
-              : missionType === 'corridor'
-                ? 'Draw a line; the drone flies it with a parallel return pass.'
-                : 'Draw the survey area; lines run along the panel-row angle.'}
+            {reinspectActive
+              ? 'Re-inspection route active — drawing or importing an area replaces it.'
+              : missionType === 'orbit'
+                ? 'Drop a center point; the drone circles it, camera aimed inward.'
+                : missionType === 'corridor'
+                  ? 'Draw a line; the drone flies it with a parallel return pass.'
+                  : 'Draw the survey area; lines run along the panel-row angle.'}
+          </div>
+        </div>
+      </section>
+
+      {/* Re-inspect from a completed inspection */}
+      <section className="panel">
+        <div className="panel-head compact"><div className="panel-title">Re-inspect Faults</div></div>
+        <div className="plan-param">
+          <input
+            value={reJobId}
+            onChange={(e) => setReJobId(e.target.value)}
+            placeholder="Inspection / Job ID"
+            style={{ width: '100%', boxSizing: 'border-box' }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <select value={reSev} onChange={(e) => setReSev(e.target.value as Severity)} style={{ flex: 1 }}>
+              <option value="CRITICAL">Critical only</option>
+              <option value="HIGH">Critical + High</option>
+              <option value="MEDIUM">+ Medium</option>
+              <option value="LOW">All faults</option>
+            </select>
+            <button className="secondary" style={{ padding: '4px 10px' }} onClick={() => onLoadReinspect(reJobId, reSev)}>
+              Load
+            </button>
+          </div>
+          {reinspectActive && (
+            <div className="cam-row" style={{ marginTop: 6 }}>
+              <span style={{ color: '#0ea5e9' }}>{reinspectTargets} re-fly targets</span>
+              <button className="secondary" style={{ padding: '2px 8px' }} onClick={onClearReinspect}>Clear</button>
+            </div>
+          )}
+          <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+            Builds a targeted re-fly route from a completed inspection's detected faults.
           </div>
         </div>
       </section>
@@ -210,7 +253,7 @@ export default function PlanSidebar(props: Props) {
           <input type="range" min={3} max={15} value={params.speedMs}
             onChange={(e) => patchParams({ speedMs: Number(e.target.value) })} />
 
-          {missionType === 'grid' && (
+          {missionType === 'grid' && !reinspectActive && (
             <>
               <label>Panel row angle α <span>{isAlphaAuto ? 'Auto' : `${params.headingDeg}°`}</span></label>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -237,7 +280,7 @@ export default function PlanSidebar(props: Props) {
       </section>
 
       {/* Orbit params */}
-      {missionType === 'orbit' && (
+      {missionType === 'orbit' && !reinspectActive && (
         <section className="panel">
           <div className="panel-head compact"><div className="panel-title">Orbit</div></div>
           <div className="plan-param">

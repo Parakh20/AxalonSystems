@@ -21,6 +21,8 @@ import {
 } from '@/lib/missionGeometry'
 import { downloadMission, type ExportFormat } from '@/lib/waypointExport'
 import { parseBoundary, toGeoJson, toKml } from '@/lib/boundaryIO'
+import { planReinspection, faultsFromMapData, type FaultPoint } from '@/lib/reinspect'
+import type { Severity } from '@/lib/analytics'
 import PlanSidebar from '@/components/Platform/PlanSidebar'
 
 const PlanMap = dynamic(() => import('@/components/Platform/PlanMap'), {
@@ -56,6 +58,8 @@ function downloadText(text: string, filename: string, mime: string) {
   URL.revokeObjectURL(url)
 }
 
+type Reinspect = { faults: FaultPoint[]; minSeverity: Severity }
+
 export function PlanTab() {
   const toast = useToast()
   const [missionName, setMissionName] = useState('New Mission')
@@ -64,12 +68,15 @@ export function PlanTab() {
   const [camera, setCamera] = useState<Camera>(DEFAULT_CAMERA)
   const [params, setParams] = useState<MissionParams>(DEFAULT_PARAMS)
   const [polygon, setPolygon] = useState<LatLon[] | null>(null)
+  const [reinspect, setReinspect] = useState<Reinspect | null>(null)
   const [fitKey, setFitKey] = useState(0)
   const [savedMissions, setSavedMissions] = useState<MissionSummary[]>([])
 
   const waypoints = useMemo(() => {
     let base: Waypoint[] = []
-    if (missionType === 'orbit') {
+    if (reinspect && reinspect.faults.length) {
+      base = planReinspection(reinspect.faults, { altitudeM: params.altitudeM, minSeverity: reinspect.minSeverity })
+    } else if (missionType === 'orbit') {
       base = polygon && polygon.length >= 1 ? generateOrbit(polygon[0], camera, params) : []
     } else if (polygon && polygon.length >= 2) {
       if (missionType === 'grid') base = generateGrid(polygon, camera, params)
@@ -77,11 +84,11 @@ export function PlanTab() {
       else base = generateCorridor(polygon, camera, params)
     }
     return splitByBattery(base, params).waypoints
-  }, [polygon, camera, params, missionType])
+  }, [polygon, camera, params, missionType, reinspect])
 
   const stats = useMemo(() => {
-    if (waypoints.length < 2 || !polygon) return null
-    return computeStats(waypoints, polygon, camera, params)
+    if (waypoints.length < 2) return null
+    return computeStats(waypoints, polygon ?? [], camera, params)
   }, [waypoints, polygon, camera, params])
 
   async function refreshMissions() {
@@ -97,6 +104,11 @@ export function PlanTab() {
     refreshMissions()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  function handleShapeDrawn(pts: LatLon[]) {
+    setReinspect(null)
+    setPolygon(pts)
+  }
+
   function handleExport(format: ExportFormat) {
     if (waypoints.length < 2) return
     const fp = computeFootprint(camera, params)
@@ -108,6 +120,7 @@ export function PlanTab() {
     try {
       const text = await file.text()
       const pts = parseBoundary(text, file.name)
+      setReinspect(null)
       setPolygon(pts)
       setFitKey((k) => k + 1)
       toast.success(`Imported ${pts.length}-point boundary`)
@@ -126,9 +139,37 @@ export function PlanTab() {
     else downloadText(toKml(polygon), `${slug}.kml`, 'application/vnd.google-earth.kml+xml')
   }
 
+  async function handleLoadReinspect(jobId: string, minSeverity: Severity) {
+    const id = jobId.trim()
+    if (!id) {
+      toast.error('Enter a Job ID')
+      return
+    }
+    try {
+      const data = await api.mapData(id)
+      const faults = faultsFromMapData(data)
+      if (faults.length === 0) {
+        toast.error('No geo-located faults in that job')
+        return
+      }
+      const kept = planReinspection(faults, { altitudeM: params.altitudeM, minSeverity }).length
+      setPolygon(null)
+      setReinspect({ faults, minSeverity })
+      setFitKey((k) => k + 1)
+      toast.success(`Re-inspecting ${kept} of ${faults.length} faults`)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+
+  function handleClearReinspect() {
+    setReinspect(null)
+  }
+
   async function handleSave() {
-    if (waypoints.length < 2 || !polygon || !stats) {
-      toast.error('Draw a survey area first')
+    const savePolygon = polygon ?? (reinspect ? reinspect.faults.map((f) => ({ lat: f.lat, lon: f.lon })) : null)
+    if (waypoints.length < 2 || !savePolygon || !stats) {
+      toast.error('Draw a survey area or load faults first')
       return
     }
     try {
@@ -138,7 +179,7 @@ export function PlanTab() {
         mission_type: missionType,
         camera_id: camera.id,
         params: params as unknown as Record<string, unknown>,
-        polygon,
+        polygon: savePolygon,
         waypoints,
         area_ha: stats.areaHa,
         image_count: stats.imageCount,
@@ -153,6 +194,7 @@ export function PlanTab() {
   async function handleLoad(id: number) {
     try {
       const m = await api.mission(id)
+      setReinspect(null)
       setMissionName(m.name)
       setParkId(m.park_id ?? '')
       setMissionType(m.mission_type)
@@ -185,7 +227,7 @@ export function PlanTab() {
           stats={stats}
           orbitRadiusM={params.orbitRadiusM}
           fitKey={fitKey}
-          onShapeDrawn={setPolygon}
+          onShapeDrawn={handleShapeDrawn}
           onClear={() => setPolygon(null)}
         />
       </div>
@@ -209,6 +251,10 @@ export function PlanTab() {
         onImportBoundary={handleImportBoundary}
         onExportBoundary={handleExportBoundary}
         canExportBoundary={!!polygon && polygon.length >= 3}
+        onLoadReinspect={handleLoadReinspect}
+        onClearReinspect={handleClearReinspect}
+        reinspectActive={!!reinspect}
+        reinspectTargets={reinspect ? waypoints.length : 0}
         canExport={waypoints.length >= 2}
       />
     </div>

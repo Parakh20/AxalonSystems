@@ -183,11 +183,15 @@ export default function PlanMap({
     }
   }, [polygon, missionType])
 
-  // Fit the map to the polygon on import / load (fitKey changes)
+  // Fit the map to the generated route (or polygon) on import / load (fitKey changes)
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !polygon || polygon.length < 1) return
-    const bounds = L.latLngBounds(polygon.map((p) => [p.lat, p.lon] as [number, number]))
+    if (!map) return
+    const src: [number, number][] = waypoints.length >= 1
+      ? waypoints.map((w) => [w.lat, w.lon] as [number, number])
+      : (polygon ?? []).map((p) => [p.lat, p.lon] as [number, number])
+    if (src.length < 1) return
+    const bounds = L.latLngBounds(src)
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 19 })
   }, [fitKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
