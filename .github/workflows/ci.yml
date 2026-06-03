@@ -20,7 +20,7 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements_platform.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - run: pip install -r requirements_platform.txt -r ml/requirements.txt pytest
+      - run: python -m pip install -r requirements_platform.txt -r ml/requirements.txt -e . pytest pytest-timeout
       - run: PYTHONSAFEPATH=1 python -m pytest tests/backend/ -ra --strict-markers
 
   frontend-unit:
