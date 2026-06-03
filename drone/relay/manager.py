@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from drone.common.telemetry import LinkTier
+
 
 class Sink(Protocol):
     async def send_text(self, data: str) -> None: ...
@@ -18,6 +20,7 @@ class RelayManager:
     def __init__(self) -> None:
         self._operators: dict[str, set[Sink]] = {}
         self._drones: dict[str, Sink] = {}
+        self._tier: dict[str, LinkTier] = {}
 
     # --- operators ---
     def add_operator(self, drone_id: str, sink: Sink) -> None:
@@ -39,9 +42,23 @@ class RelayManager:
     def is_online(self, drone_id: str) -> bool:
         return drone_id in self._drones
 
-    # --- fan-out ---
-    async def broadcast_telemetry(self, drone_id: str, raw: str) -> None:
-        dead: list[Sink] = []
+    # --- link tier (authoritative, updated from telemetry) ---
+    def set_tier(self, drone_id: str, tier: LinkTier) -> None:
+        self._tier[drone_id] = tier
+
+    def tier_for(self, drone_id: str) -> LinkTier:
+        return self._tier.get(drone_id, LinkTier.RED)  # unknown link = safe default
+
+    # --- sending ---
+    async def send_to_drone(self, drone_id: str, raw: str) -> bool:
+        sink = self._drones.get(drone_id)
+        if sink is None:
+            return False
+        await sink.send_text(raw)
+        return True
+
+    async def fan_to_operators(self, drone_id: str, raw: str) -> None:
+        dead = []
         for sink in list(self.operators_for(drone_id)):
             try:
                 await sink.send_text(raw)
@@ -49,3 +66,7 @@ class RelayManager:
                 dead.append(sink)
         for sink in dead:
             self.remove_operator(drone_id, sink)
+
+    # --- fan-out ---
+    async def broadcast_telemetry(self, drone_id: str, raw: str) -> None:
+        await self.fan_to_operators(drone_id, raw)
