@@ -1,0 +1,46 @@
+name: DB migrate (Supabase)
+
+# Applies Alembic migrations to the Supabase Postgres database whenever the
+# schema or migrations change on main. The DB URL is the Supabase session-pooler
+# (IPv4) connection string, stored as the AXALON_DB_URL repository secret.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'alembic/**'
+      - 'platform/db/**'
+      - 'pyproject.toml'
+      - '.github/workflows/db-migrate.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Editable install registers the `axalon` package (mapped to platform/ in
+      # pyproject) so alembic/env.py can import the models; plus the DB toolchain.
+      - name: Install
+        run: pip install -e . sqlalchemy alembic psycopg2-binary
+
+      - name: alembic upgrade head
+        env:
+          AXALON_DB_URL: ${{ secrets.AXALON_DB_URL }}
+          # platform/ shadows the stdlib `platform` module — keep cwd off sys.path.
+          PYTHONSAFEPATH: '1'
+        run: |
+          if [ -z "$AXALON_DB_URL" ]; then
+            echo "::error::AXALON_DB_URL secret is not set"; exit 1
+          fi
+          alembic upgrade head
+          echo "Current revision:"
+          alembic current
