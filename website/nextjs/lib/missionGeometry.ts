@@ -10,7 +10,7 @@ export type Waypoint = {
   gimbalPitch?: number // deg, negative = down (orbit aims by atan2(alt, radius))
   leg?: number // 0-based battery leg index
 }
-export type MissionType = 'grid' | 'perimeter' | 'corridor' | 'orbit'
+export type MissionType = 'grid' | 'perimeter' | 'corridor' | 'orbit' | 'solar'
 
 export type MissionParams = {
   altitudeM: number
@@ -22,6 +22,7 @@ export type MissionParams = {
   batteryReservePct?: number // reserve margin %, default 20
   orbitRadiusM?: number // orbit pattern (default 30)
   orbitPhotoCount?: number // orbit pattern (default 16)
+  gimbalPitchDeg?: number // camera pitch for grid/perimeter/corridor/solar (default -90 nadir)
 }
 
 export type MissionStats = {
@@ -170,14 +171,14 @@ export function generateGrid(polygon: LatLon[], camera: Camera, params: MissionP
 
   // Rotate back and convert to lat/lon
   const survey = surveyXY.map((p) => toLatLon(rotate(p, heading), origin))
-  return withTravelHeadings(assembleMission(polygon[0], survey, params.altitudeM))
+  return withTravelHeadings(assembleMission(polygon[0], survey, params.altitudeM, params.gimbalPitchDeg))
 }
 
 export function generatePerimeter(polygon: LatLon[], camera: Camera, params: MissionParams): Waypoint[] {
   if (polygon.length < 3) return []
   // Trace the polygon boundary, closing the loop.
   const loop = [...polygon, polygon[0]]
-  return withTravelHeadings(assembleMission(polygon[0], loop, params.altitudeM))
+  return withTravelHeadings(assembleMission(polygon[0], loop, params.altitudeM, params.gimbalPitchDeg))
 }
 
 export function generateCorridor(line: LatLon[], camera: Camera, params: MissionParams): Waypoint[] {
@@ -196,7 +197,7 @@ export function generateCorridor(line: LatLon[], camera: Camera, params: Mission
   const ret = [...xy].reverse().map((p) => ({ x: p.x + nx * offset, y: p.y + ny * offset }))
 
   const path = [...xy, ...ret].map((p) => toLatLon(p, origin))
-  return withTravelHeadings(assembleMission(line[0], path, params.altitudeM))
+  return withTravelHeadings(assembleMission(line[0], path, params.altitudeM, params.gimbalPitchDeg))
 }
 
 // Orbit / point-of-interest: a ring of photos around `center`, camera aimed inward.
@@ -214,11 +215,59 @@ export function generateOrbit(center: LatLon, camera: Camera, params: MissionPar
   return wps
 }
 
+// Resolved compass bearing (deg, 0=N clockwise) of the grid sweep lines — for display.
+export function resolvedHeadingDeg(polygon: LatLon[], params: MissionParams): number {
+  if (params.headingDeg !== 'auto') return ((params.headingDeg % 360) + 360) % 360
+  if (polygon.length < 3) return 0
+  const xy = polygon.map((p) => toXY(p, centroid(polygon)))
+  const deg = (autoHeading(xy) * 180) / Math.PI // CCW from east
+  return (((90 - deg) % 360) + 360) % 360 // → compass
+}
+
+// "Solar" manual-row mode: the operator clicks 2 points to set the row DIRECTION
+// (and its length), then the center of each panel row. Each row → a flight line of
+// that length through the click, parallel to the direction; rows are ordered across
+// the array and serpentine-connected (unequal spacing falls out of the clicks).
+export function generateSolar(direction: LatLon[], rowCenters: LatLon[], params: MissionParams): Waypoint[] {
+  if (direction.length < 2 || rowCenters.length < 1) return []
+  const origin = direction[0]
+  const a = toXY(direction[0], origin)
+  const b = toXY(direction[1], origin)
+  const L = Math.hypot(b.x - a.x, b.y - a.y) || 1
+  const ux = (b.x - a.x) / L
+  const uy = (b.y - a.y) / L
+  const px = -uy // perpendicular axis (orders rows across the array)
+  const py = ux
+  const rows = rowCenters
+    .map((c) => toXY(c, origin))
+    .map((c) => ({ c, proj: c.x * px + c.y * py }))
+    .sort((m, n) => m.proj - n.proj)
+    .map((o) => o.c)
+
+  const surveyXY: XY[] = []
+  let dir = 1
+  const half = L / 2
+  for (const c of rows) {
+    const e1 = { x: c.x - ux * half, y: c.y - uy * half }
+    const e2 = { x: c.x + ux * half, y: c.y + uy * half }
+    surveyXY.push(...(dir > 0 ? [e1, e2] : [e2, e1]))
+    dir *= -1
+  }
+  const g = params.gimbalPitchDeg ?? -90
+  // First endpoint is the home/takeoff — no separate off-to-the-side home point.
+  const wps: Waypoint[] = surveyXY.map((p) => {
+    const ll = toLatLon(p, origin)
+    return { lat: ll.lat, lon: ll.lon, alt: params.altitudeM, gimbalPitch: g }
+  })
+  return withTravelHeadings(wps)
+}
+
 // Prepend takeoff at home, set altitude on every survey point. RTL is appended by the exporter;
 // here we just build the visible flight path starting from home.
-function assembleMission(home: LatLon, survey: LatLon[], altM: number): Waypoint[] {
-  const wps: Waypoint[] = [{ lat: home.lat, lon: home.lon, alt: altM }]
-  for (const p of survey) wps.push({ lat: p.lat, lon: p.lon, alt: altM })
+function assembleMission(home: LatLon, survey: LatLon[], altM: number, gimbalPitch?: number): Waypoint[] {
+  const g = gimbalPitch ?? -90
+  const wps: Waypoint[] = [{ lat: home.lat, lon: home.lon, alt: altM, gimbalPitch: g }]
+  for (const p of survey) wps.push({ lat: p.lat, lon: p.lon, alt: altM, gimbalPitch: g })
   return wps
 }
 
