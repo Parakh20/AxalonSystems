@@ -56,3 +56,15 @@
 - `/etc/systemd/system/axalon-drone-agent.service` with `DRONE_ID`, `DRONE_TOKEN`,
   `RELAY_WS_URL=wss://relay.axalonsystems.com`, `MAVLINK_URL` pointing at the real
   Cube (e.g. `serial:/dev/ttyTHS1:921600`). `Restart=always`.
+
+## Phase 2 — commands over SITL
+
+Agent gains command handling + a deadman (RTL on relay-link loss). New agent env:
+`MIN_ALT_M=5 MAX_ALT_M=120 HEARTBEAT_HZ=2 DEADMAN_TIMEOUT_S=5`.
+
+Run the command e2e (with SITL + relay + agent up):
+```bash
+RUN_SITL_E2E=1 RELAY_WS_URL=ws://127.0.0.1:8800 OPS_TOKEN=otok DRONE_ID=sitl-01 \
+  python -m pytest drone/tests/test_e2e_commands_sitl.py -v
+```
+Watch the SITL console: the vehicle should arm. Try TAKEOFF (`{"alt":40}`), then RTL.

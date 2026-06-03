@@ -14,6 +14,10 @@ class AgentConfig:
     relay_ws_url: str   # base, e.g. wss://relay.example.com
     mavlink_url: str    # e.g. udpin:127.0.0.1:14550 (SITL)
     telemetry_hz: float
+    min_alt_m: float
+    max_alt_m: float
+    heartbeat_hz: float
+    deadman_timeout_s: float
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -23,6 +27,10 @@ class AgentConfig:
             relay_ws_url=os.environ["RELAY_WS_URL"].rstrip("/"),
             mavlink_url=os.environ["MAVLINK_URL"],
             telemetry_hz=float(os.getenv("TELEMETRY_HZ", "5")),
+            min_alt_m=float(os.getenv("MIN_ALT_M", "5")),
+            max_alt_m=float(os.getenv("MAX_ALT_M", "120")),
+            heartbeat_hz=float(os.getenv("HEARTBEAT_HZ", "2")),
+            deadman_timeout_s=float(os.getenv("DEADMAN_TIMEOUT_S", "5")),
         )
 
     @property
