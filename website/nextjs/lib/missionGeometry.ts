@@ -18,6 +18,8 @@ export type MissionParams = {
   sideOverlap: number // 0–0.95
   speedMs: number
   headingDeg: number | 'auto' // α: panel-row azimuth for grid
+  rowAngleDeg?: number // α: solar row angle, CCW from east/horizontal
+  droneHeadingDeg?: number | 'auto' // solar drone/camera orientation
   batteryMinutes?: number // usable flight time per battery (default 18)
   batteryReservePct?: number // reserve margin %, default 20
   orbitRadiusM?: number // orbit pattern (default 30)
@@ -224,42 +226,45 @@ export function resolvedHeadingDeg(polygon: LatLon[], params: MissionParams): nu
   return (((90 - deg) % 360) + 360) % 360 // → compass
 }
 
-// "Solar" manual-row mode: the operator clicks 2 points to set the row DIRECTION
-// (and its length), then the center of each panel row. Each row → a flight line of
-// that length through the click, parallel to the direction; rows are ordered across
-// the array and serpentine-connected (unequal spacing falls out of the clicks).
-export function generateSolar(direction: LatLon[], rowCenters: LatLon[], params: MissionParams): Waypoint[] {
-  if (direction.length < 2 || rowCenters.length < 1) return []
-  const origin = direction[0]
-  const a = toXY(direction[0], origin)
-  const b = toXY(direction[1], origin)
-  const L = Math.hypot(b.x - a.x, b.y - a.y) || 1
-  const ux = (b.x - a.x) / L
-  const uy = (b.y - a.y) / L
-  const px = -uy // perpendicular axis (orders rows across the array)
-  const py = ux
+// Solar manual-row mode: draw the array area, set row angle α, then click one
+// center point on each row. Every clicked row becomes a line at α clipped to area.
+export function generateSolar(area: LatLon[], rowCenters: LatLon[], params: MissionParams): Waypoint[] {
+  if (area.length < 3 || rowCenters.length < 1) return []
+  const origin = centroid(area)
+  const aRad = ((params.rowAngleDeg ?? 0) * Math.PI) / 180
+  const rotArea = area.map((p) => rotate(toXY(p, origin), -aRad))
+
   const rows = rowCenters
-    .map((c) => toXY(c, origin))
-    .map((c) => ({ c, proj: c.x * px + c.y * py }))
-    .sort((m, n) => m.proj - n.proj)
-    .map((o) => o.c)
+    .map((c) => rotate(toXY(c, origin), -aRad))
+    .map((rc) => {
+      const xs = scanLineIntersections(rotArea, rc.y)
+      if (xs.length < 2) return null
+      return {
+        y: rc.y,
+        e1: { x: xs[0], y: rc.y },
+        e2: { x: xs[xs.length - 1], y: rc.y },
+      }
+    })
+    .filter((row): row is { y: number; e1: XY; e2: XY } => row !== null)
+    .sort((m, n) => m.y - n.y)
 
   const surveyXY: XY[] = []
   let dir = 1
-  const half = L / 2
-  for (const c of rows) {
-    const e1 = { x: c.x - ux * half, y: c.y - uy * half }
-    const e2 = { x: c.x + ux * half, y: c.y + uy * half }
-    surveyXY.push(...(dir > 0 ? [e1, e2] : [e2, e1]))
+  for (const row of rows) {
+    surveyXY.push(...(dir > 0 ? [row.e1, row.e2] : [row.e2, row.e1]))
     dir *= -1
   }
+
   const g = params.gimbalPitchDeg ?? -90
-  // First endpoint is the home/takeoff — no separate off-to-the-side home point.
-  const wps: Waypoint[] = surveyXY.map((p) => {
-    const ll = toLatLon(p, origin)
-    return { lat: ll.lat, lon: ll.lon, alt: params.altitudeM, gimbalPitch: g }
-  })
-  return withTravelHeadings(wps)
+  const survey = surveyXY.map((p) => toLatLon(rotate(p, aRad), origin))
+  const wps: Waypoint[] = survey.map((p) => ({
+    lat: p.lat,
+    lon: p.lon,
+    alt: params.altitudeM,
+    gimbalPitch: g,
+    heading: typeof params.droneHeadingDeg === 'number' ? params.droneHeadingDeg : undefined,
+  }))
+  return typeof params.droneHeadingDeg === 'number' ? wps : withTravelHeadings(wps)
 }
 
 // Prepend takeoff at home, set altitude on every survey point. RTL is appended by the exporter;

@@ -27,7 +27,10 @@ type Props = {
   stats: MissionStats | null
   orbitRadiusM?: number
   fitKey?: number
+  solarRows?: LatLon[]
+  selectingRows?: boolean
   onShapeDrawn: (points: LatLon[]) => void
+  onSolarRowsChange?: (rows: LatLon[]) => void
   onClear: () => void
 }
 
@@ -59,7 +62,10 @@ export default function PlanMap({
   stats,
   orbitRadiusM,
   fitKey,
+  solarRows = [],
+  selectingRows = false,
   onShapeDrawn,
+  onSolarRowsChange,
   onClear,
 }: Props) {
   const mapDivRef = useRef<HTMLDivElement>(null)
@@ -67,6 +73,8 @@ export default function PlanMap({
   const drawnRef = useRef<L.FeatureGroup | null>(null)
   const pathRef = useRef<L.LayerGroup | null>(null)
   const boundaryRef = useRef<L.LayerGroup | null>(null)
+  const rowsLayerRef = useRef<L.LayerGroup | null>(null)
+  const rowsRef = useRef<LatLon[]>([])
   const measureLayerRef = useRef<L.LayerGroup | null>(null)
   const measurePtsRef = useRef<L.LatLng[]>([])
   const onShapeDrawnRef = useRef(onShapeDrawn)
@@ -120,6 +128,7 @@ export default function PlanMap({
     map.addLayer(drawn)
     drawnRef.current = drawn
     boundaryRef.current = L.layerGroup().addTo(map)
+    rowsLayerRef.current = L.layerGroup().addTo(map)
     pathRef.current = L.layerGroup().addTo(map)
     measureLayerRef.current = L.layerGroup().addTo(map)
 
@@ -154,7 +163,7 @@ export default function PlanMap({
     const map = mapRef.current
     const drawn = drawnRef.current
     if (!map || !drawn) return
-    const tool = missionType === 'corridor' || missionType === 'solar' ? 'polyline' : missionType === 'orbit' ? 'marker' : 'polygon'
+    const tool = missionType === 'corridor' ? 'polyline' : missionType === 'orbit' ? 'marker' : 'polygon'
     const control = new L.Control.Draw({
       draw: {
         polygon: tool === 'polygon' ? ({ shapeOptions: { color: '#0ea5e9' } } as any) : false,
@@ -171,6 +180,38 @@ export default function PlanMap({
       map.removeControl(control)
     }
   }, [missionType])
+
+  useEffect(() => {
+    rowsRef.current = solarRows
+  }, [solarRows])
+
+  // Solar row picker: click one center point per row after drawing the area.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    function onClick(e: L.LeafletMouseEvent) {
+      const next = [...rowsRef.current, { lat: e.latlng.lat, lon: e.latlng.lng }]
+      rowsRef.current = next
+      onSolarRowsChange?.(next)
+    }
+    if (selectingRows && missionType === 'solar') map.on('click', onClick)
+    return () => {
+      map.off('click', onClick)
+    }
+  }, [selectingRows, missionType, onSolarRowsChange])
+
+  // Redraw clicked solar row centers.
+  useEffect(() => {
+    const layer = rowsLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    if (missionType !== 'solar') return
+    for (const row of solarRows) {
+      L.circleMarker([row.lat, row.lon], { radius: 4, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 1 })
+        .bindTooltip('Solar row')
+        .addTo(layer)
+    }
+  }, [solarRows, missionType])
 
   // Boundary outline of the current survey polygon (visible before waypoints compute)
   useEffect(() => {

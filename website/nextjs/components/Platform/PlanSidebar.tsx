@@ -32,6 +32,10 @@ type Props = {
   onImportBoundary: (file: File) => void
   onExportBoundary: (format: 'geojson' | 'kml') => void
   canExportBoundary: boolean
+  selectingRows: boolean
+  onToggleSelectRows: () => void
+  solarRowCount: number
+  onClearRows: () => void
   onLoadReinspect: (jobId: string, minSeverity: Severity) => void
   onClearReinspect: () => void
   reinspectActive: boolean
@@ -55,6 +59,7 @@ export default function PlanSidebar(props: Props) {
     params, onParamsChange, stats, resolvedAlpha, savedMissions,
     onLoadMission, onDeleteMission, onExport, onSave,
     onImportBoundary, onExportBoundary, canExportBoundary,
+    selectingRows, onToggleSelectRows, solarRowCount, onClearRows,
     onLoadReinspect, onClearReinspect, reinspectActive, reinspectTargets, canExport,
   } = props
 
@@ -69,6 +74,9 @@ export default function PlanSidebar(props: Props) {
   const orbitRadiusM = params.orbitRadiusM ?? 30
   const orbitPhotoCount = params.orbitPhotoCount ?? 16
   const isAlphaAuto = params.headingDeg === 'auto'
+  const rowAngleDeg = params.rowAngleDeg ?? 0
+  const isDroneHeadingAuto = params.droneHeadingDeg === 'auto' || params.droneHeadingDeg === undefined
+  const droneHeadingDeg = isDroneHeadingAuto ? 0 : (params.droneHeadingDeg as number)
 
   function setCamById(id: string) {
     const next = CAMERAS.find((c) => c.id === id)
@@ -122,7 +130,7 @@ export default function PlanSidebar(props: Props) {
                 : missionType === 'corridor'
                   ? 'Draw a line; the drone flies it with a parallel return pass.'
                   : missionType === 'solar'
-                    ? 'Click 2 points to set the row direction, then each panel-row center (unequal spacing OK).'
+                    ? 'Draw the area, set the row angle, then Select solar rows and click each row.'
                     : 'Draw the survey area; lines run along the panel-row angle.'}
           </div>
         </div>
@@ -256,7 +264,7 @@ export default function PlanSidebar(props: Props) {
           <input type="range" min={3} max={15} value={params.speedMs}
             onChange={(e) => patchParams({ speedMs: Number(e.target.value) })} />
 
-          {missionType !== 'orbit' && (
+          {missionType !== 'orbit' && missionType !== 'solar' && (
             <>
               <label>Gimbal pitch <span>{params.gimbalPitchDeg ?? -90}°</span></label>
               <input type="range" min={-90} max={0} value={params.gimbalPitchDeg ?? -90}
@@ -301,6 +309,56 @@ export default function PlanSidebar(props: Props) {
             <label>Photos <span>{orbitPhotoCount}</span></label>
             <input type="range" min={4} max={48} value={orbitPhotoCount}
               onChange={(e) => patchParams({ orbitPhotoCount: Number(e.target.value) })} />
+          </div>
+        </section>
+      )}
+
+      {/* Solar row params */}
+      {missionType === 'solar' && !reinspectActive && (
+        <section className="panel">
+          <div className="panel-head compact"><div className="panel-title">Solar Rows</div></div>
+          <div className="plan-param">
+            <button
+              type="button"
+              className={selectingRows ? 'primary' : 'secondary'}
+              style={{ width: '100%' }}
+              onClick={onToggleSelectRows}
+            >
+              Select solar rows
+            </button>
+            <div className="cam-row" style={{ marginTop: 6 }}>
+              <span>{solarRowCount} rows</span>
+              <button type="button" className="secondary" style={{ padding: '2px 8px' }} onClick={onClearRows}>Clear</button>
+            </div>
+
+            <label>Row Angle α <span>{rowAngleDeg}°</span></label>
+            <input type="range" min={0} max={180} value={rowAngleDeg}
+              onChange={(e) => patchParams({ rowAngleDeg: Number(e.target.value) })} />
+
+            <label>Drone Orientation <span>{isDroneHeadingAuto ? 'Auto' : `${droneHeadingDeg}°`}</span></label>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                type="range"
+                min={0}
+                max={359}
+                disabled={isDroneHeadingAuto}
+                value={droneHeadingDeg}
+                onChange={(e) => patchParams({ droneHeadingDeg: Number(e.target.value) })}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className={isDroneHeadingAuto ? 'primary' : 'secondary'}
+                style={{ padding: '4px 8px' }}
+                onClick={() => patchParams({ droneHeadingDeg: isDroneHeadingAuto ? 0 : 'auto' })}
+              >
+                Auto
+              </button>
+            </div>
+
+            <label>Gimbal Tilt <span>{params.gimbalPitchDeg ?? -90}°</span></label>
+            <input type="range" min={-90} max={0} value={params.gimbalPitchDeg ?? -90}
+              onChange={(e) => patchParams({ gimbalPitchDeg: Number(e.target.value) })} />
           </div>
         </section>
       )}

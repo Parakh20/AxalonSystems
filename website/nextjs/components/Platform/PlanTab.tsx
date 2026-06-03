@@ -47,6 +47,8 @@ const DEFAULT_PARAMS: MissionParams = {
   orbitRadiusM: 30,
   orbitPhotoCount: 16,
   gimbalPitchDeg: -90,
+  rowAngleDeg: 0,
+  droneHeadingDeg: 'auto',
 }
 
 function downloadText(text: string, filename: string, mime: string) {
@@ -71,6 +73,8 @@ export function PlanTab() {
   const [camera, setCamera] = useState<Camera>(DEFAULT_CAMERA)
   const [params, setParams] = useState<MissionParams>(DEFAULT_PARAMS)
   const [polygon, setPolygon] = useState<LatLon[] | null>(null)
+  const [solarRows, setSolarRows] = useState<LatLon[]>([])
+  const [selectingRows, setSelectingRows] = useState(false)
   const [reinspect, setReinspect] = useState<Reinspect | null>(null)
   const [fitKey, setFitKey] = useState(0)
   const [savedMissions, setSavedMissions] = useState<MissionSummary[]>([])
@@ -85,12 +89,11 @@ export function PlanTab() {
       if (missionType === 'grid') base = generateGrid(polygon, camera, params)
       else if (missionType === 'perimeter') base = generatePerimeter(polygon, camera, params)
       else if (missionType === 'solar') {
-        // Drawn polyline: first 2 vertices = row direction, the rest = panel-row centers.
-        base = polygon.length >= 3 ? generateSolar([polygon[0], polygon[1]], polygon.slice(2), params) : []
+        base = polygon.length >= 3 && solarRows.length >= 1 ? generateSolar(polygon, solarRows, params) : []
       } else base = generateCorridor(polygon, camera, params)
     }
     return splitByBattery(base, params).waypoints
-  }, [polygon, camera, params, missionType, reinspect])
+  }, [polygon, solarRows, camera, params, missionType, reinspect])
 
   const stats = useMemo(() => {
     if (waypoints.length < 2) return null
@@ -119,6 +122,7 @@ export function PlanTab() {
   function handleShapeDrawn(pts: LatLon[]) {
     setReinspect(null)
     setPolygon(pts)
+    if (missionType === 'solar') setSolarRows([])
   }
 
   function handleExport(format: ExportFormat) {
@@ -134,6 +138,7 @@ export function PlanTab() {
       const pts = parseBoundary(text, file.name)
       setReinspect(null)
       setPolygon(pts)
+      setSolarRows([])
       setFitKey((k) => k + 1)
       toast.success(`Imported ${pts.length}-point boundary`)
     } catch (err) {
@@ -166,6 +171,7 @@ export function PlanTab() {
       }
       const kept = planReinspection(faults, { altitudeM: params.altitudeM, minSeverity }).length
       setPolygon(null)
+      setSolarRows([])
       setReinspect({ faults, minSeverity })
       setFitKey((k) => k + 1)
       toast.success(`Re-inspecting ${kept} of ${faults.length} faults`)
@@ -176,6 +182,12 @@ export function PlanTab() {
 
   function handleClearReinspect() {
     setReinspect(null)
+  }
+
+  function handleClearShape() {
+    setPolygon(null)
+    setSolarRows([])
+    setSelectingRows(false)
   }
 
   async function handleSave() {
@@ -213,6 +225,8 @@ export function PlanTab() {
       setCamera(getCamera(m.camera_id ?? DEFAULT_CAMERA.id))
       setParams({ ...DEFAULT_PARAMS, ...(m.params as Partial<MissionParams>) })
       setPolygon(m.polygon.length ? m.polygon : null)
+      setSolarRows([])
+      setSelectingRows(false)
       setFitKey((k) => k + 1)
       toast.success(`Loaded "${m.name}"`)
     } catch (err) {
@@ -239,8 +253,11 @@ export function PlanTab() {
           stats={stats}
           orbitRadiusM={params.orbitRadiusM}
           fitKey={fitKey}
+          solarRows={solarRows}
+          selectingRows={selectingRows}
           onShapeDrawn={handleShapeDrawn}
-          onClear={() => setPolygon(null)}
+          onSolarRowsChange={setSolarRows}
+          onClear={handleClearShape}
         />
       </div>
       <PlanSidebar
@@ -264,6 +281,10 @@ export function PlanTab() {
         onImportBoundary={handleImportBoundary}
         onExportBoundary={handleExportBoundary}
         canExportBoundary={!!polygon && polygon.length >= 3}
+        selectingRows={selectingRows}
+        onToggleSelectRows={() => setSelectingRows((v) => !v)}
+        solarRowCount={solarRows.length}
+        onClearRows={() => setSolarRows([])}
         onLoadReinspect={handleLoadReinspect}
         onClearReinspect={handleClearReinspect}
         reinspectActive={!!reinspect}
