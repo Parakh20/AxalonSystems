@@ -11,6 +11,7 @@ import {
   generatePerimeter,
   generateCorridor,
   generateOrbit,
+  resolvedHeadingDeg,
   splitByBattery,
   computeStats,
   computeFootprint,
@@ -44,6 +45,7 @@ const DEFAULT_PARAMS: MissionParams = {
   batteryReservePct: 20,
   orbitRadiusM: 30,
   orbitPhotoCount: 16,
+  gimbalPitchDeg: -90,
 }
 
 function downloadText(text: string, filename: string, mime: string) {
@@ -90,6 +92,12 @@ export function PlanTab() {
     if (waypoints.length < 2) return null
     return computeStats(waypoints, polygon ?? [], camera, params)
   }, [waypoints, polygon, camera, params])
+
+  const resolvedAlpha = useMemo(() => {
+    if (missionType !== 'grid') return null
+    if (typeof params.headingDeg === 'number') return params.headingDeg
+    return polygon && polygon.length >= 3 ? Math.round(resolvedHeadingDeg(polygon, params)) : null
+  }, [missionType, params, polygon])
 
   async function refreshMissions() {
     try {
@@ -243,6 +251,7 @@ export function PlanTab() {
         params={params}
         onParamsChange={setParams}
         stats={stats}
+        resolvedAlpha={resolvedAlpha}
         savedMissions={savedMissions}
         onLoadMission={handleLoad}
         onDeleteMission={handleDelete}

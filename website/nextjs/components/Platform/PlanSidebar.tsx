@@ -23,6 +23,7 @@ type Props = {
   params: MissionParams
   onParamsChange: (p: MissionParams) => void
   stats: MissionStats | null
+  resolvedAlpha: number | null
   savedMissions: MissionSummary[]
   onLoadMission: (id: number) => void
   onDeleteMission: (id: number) => void
@@ -51,7 +52,7 @@ export default function PlanSidebar(props: Props) {
   const {
     missionName, onMissionNameChange, parkId, onParkIdChange,
     missionType, onMissionTypeChange, camera, onCameraChange,
-    params, onParamsChange, stats, savedMissions,
+    params, onParamsChange, stats, resolvedAlpha, savedMissions,
     onLoadMission, onDeleteMission, onExport, onSave,
     onImportBoundary, onExportBoundary, canExportBoundary,
     onLoadReinspect, onClearReinspect, reinspectActive, reinspectTargets, canExport,
@@ -253,9 +254,17 @@ export default function PlanSidebar(props: Props) {
           <input type="range" min={3} max={15} value={params.speedMs}
             onChange={(e) => patchParams({ speedMs: Number(e.target.value) })} />
 
+          {missionType !== 'orbit' && (
+            <>
+              <label>Gimbal pitch <span>{params.gimbalPitchDeg ?? -90}°</span></label>
+              <input type="range" min={-90} max={0} value={params.gimbalPitchDeg ?? -90}
+                onChange={(e) => patchParams({ gimbalPitchDeg: Number(e.target.value) })} />
+            </>
+          )}
+
           {missionType === 'grid' && !reinspectActive && (
             <>
-              <label>Panel row angle α <span>{isAlphaAuto ? 'Auto' : `${params.headingDeg}°`}</span></label>
+              <label>Panel row angle α <span>{isAlphaAuto ? `Auto · ${resolvedAlpha ?? '–'}°` : `${params.headingDeg}°`}</span></label>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input
                   type="number" min={0} max={179}

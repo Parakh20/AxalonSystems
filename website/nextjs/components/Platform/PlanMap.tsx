@@ -18,7 +18,7 @@ const SAT_ATTR = MAPBOX_TOKEN ? '© Mapbox © OpenStreetMap' : 'Tiles © Esri'
 const SAT_MAX_NATIVE_ZOOM = MAPBOX_TOKEN ? 22 : 19
 
 const LEG_COLORS = ['#06b6d4', '#f59e0b', '#a855f7', '#10b981', '#ef4444', '#3b82f6']
-const MAX_ARROWS = 24
+const MAX_ARROWS = 40
 
 type Props = {
   missionType: MissionType
