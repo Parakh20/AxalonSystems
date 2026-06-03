@@ -26,6 +26,24 @@ def _telemetry_frame(tier="AMBER"):
     })
 
 
+def test_empty_operator_id_is_rejected(client):
+    with pytest.raises(Exception):
+        with client.websocket_connect("/ws/ops/sitl-01?token=otok&operator="):
+            pass
+
+
+def test_lock_released_when_holder_disconnects(client):
+    app = client.app
+    lock = app.state.lock
+    with client.websocket_connect("/ws/ops/sitl-01?token=otok&operator=op-a") as ops:
+        ops.send_text(json.dumps({"type": "control",
+                                  "control": {"action": "acquire", "operator_id": "op-a"}}))
+        ops.receive_text()
+        assert lock.holder("sitl-01") == "op-a"
+    # after the context manager exits (disconnect), the lock is freed
+    assert lock.holder("sitl-01") is None
+
+
 def test_operator_acquires_control(client):
     with client.websocket_connect("/ws/ops/sitl-01?token=otok&operator=op-a") as ops:
         ops.send_text(json.dumps({"type": "control",

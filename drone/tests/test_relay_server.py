@@ -20,7 +20,7 @@ def test_health_ok(client):
 
 def test_drone_frame_reaches_operator(client):
     # operator subscribes first
-    with client.websocket_connect("/ws/ops/sitl-01?token=otok") as ops:
+    with client.websocket_connect("/ws/ops/sitl-01?token=otok&operator=op-a") as ops:
         with client.websocket_connect("/ws/drone/sitl-01?token=dtok") as drone:
             frame = {"type": "telemetry", "telemetry": None}
             drone.send_text(json.dumps(frame))

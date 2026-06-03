@@ -63,6 +63,10 @@ def create_app() -> FastAPI:
         except AuthError:
             await ws.close(code=status.WS_1008_POLICY_VIOLATION)
             return
+        if not operator:
+            # an empty operator id could grab the control lock and block others
+            await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
         await ws.accept()
         mgr.add_operator(drone_id, ws)
         try:
@@ -77,6 +81,9 @@ def create_app() -> FastAPI:
             pass
         finally:
             mgr.remove_operator(drone_id, ws)
+            # release the control lock if this operator held it, so a dropped
+            # tab/crash doesn't block control for everyone else
+            lock.release(drone_id, operator)
 
     async def _handle_control(ws, lock, drone_id, ctl: ControlMsg):
         if ctl.action is ControlAction.ACQUIRE:
