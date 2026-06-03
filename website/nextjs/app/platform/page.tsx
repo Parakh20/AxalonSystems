@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import {
   LayoutDashboard,
+  BarChart3,
   Image as ImageIcon,
   History as HistoryIcon,
   SlidersHorizontal,
@@ -18,8 +19,9 @@ import { ParkMapTab } from '@/components/Platform/ParkMapTab'
 import { SettingsTab } from '@/components/Platform/SettingsTab'
 import { DiffTab } from '@/components/Platform/DiffTab'
 import { PlanTab } from '@/components/Platform/PlanTab'
+import { OverviewTab } from '@/components/Platform/OverviewTab'
 
-type Tab = 'operations' | 'inspect' | 'history' | 'settings' | 'parkmap' | 'diff' | 'plan'
+type Tab = 'operations' | 'inspect' | 'history' | 'settings' | 'parkmap' | 'diff' | 'plan' | 'overview'
 
 export default function PlatformPage() {
   return (
@@ -58,6 +60,15 @@ function PlatformShell() {
 
           {/* Navigation buttons */}
           <nav className="rail-nav tab-bar">
+            <button
+              type="button"
+              className={`rail-link ${tab === 'overview' ? 'active' : ''}`}
+              onClick={() => setTab('overview')}
+              title="Overview"
+            >
+              <BarChart3 size={16} />
+              <span>Overview</span>
+            </button>
             <button
               type="button"
               className={`rail-link ${tab === 'operations' ? 'active' : ''}`}
@@ -137,6 +148,7 @@ function PlatformShell() {
 
         {/* Main content area */}
         <div className="wrap tab-content platform-container">
+          {tab === 'overview' && <OverviewTab />}
           {tab === 'operations' && <OperationsTab />}
           {tab === 'inspect' && <InspectTab />}
           {tab === 'history' && <HistoryTab />}
