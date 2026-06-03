@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { AuthGate } from '@/components/Platform/AuthGate'
-import 'leaflet/dist/leaflet.css'
 import './platform.css'
 
 export const metadata: Metadata = {

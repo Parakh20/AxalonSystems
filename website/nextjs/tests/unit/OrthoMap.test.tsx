@@ -1,21 +1,6 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { describe, expect, test, vi } from 'vitest'
-
-vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children: ReactNode }) => (
-    <div data-testid="map-container">{children}</div>
-  ),
-  TileLayer: () => <div data-testid="tile-layer" />,
-  CircleMarker: ({ children }: { children: ReactNode }) => (
-    <div data-testid="circle-marker">{children}</div>
-  ),
-  Popup: ({ children }: { children: ReactNode }) => <div data-testid="popup">{children}</div>,
-  useMap: () => ({ fitBounds: vi.fn() }),
-}))
-
-vi.mock('leaflet', () => ({ default: {}, latLngBounds: vi.fn() }))
+import { render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { OrthoMap } from '@/components/Platform/OrthoMap'
 
@@ -42,7 +27,57 @@ const PANELS = [
   },
 ]
 
+const fitBounds = vi.fn()
+const overlayPush = vi.fn()
+const markerSetMap = vi.fn()
+const markerAddListener = vi.fn(() => ({ remove: vi.fn() }))
+
+function installGoogleMapsMock() {
+  const overlayMapTypes = {
+    getLength: vi.fn(() => 0),
+    removeAt: vi.fn(),
+    push: overlayPush,
+  }
+
+  const google = {
+    maps: {
+      Map: vi.fn(function MockMap() {
+        return { fitBounds, overlayMapTypes }
+      }),
+      LatLngBounds: vi.fn(function MockLatLngBounds() {}),
+      ImageMapType: vi.fn(function MockImageMapType(options) {
+        return options
+      }),
+      Size: vi.fn(function MockSize() {}),
+      Marker: vi.fn(function MockMarker() {
+        return { addListener: markerAddListener, setMap: markerSetMap }
+      }),
+      InfoWindow: vi.fn(function MockInfoWindow() {
+        return { open: vi.fn() }
+      }),
+      SymbolPath: { CIRCLE: 'circle' },
+    },
+  }
+
+  ;(window as unknown as { google: typeof google }).google = google
+  return google
+}
+
 describe('OrthoMap', () => {
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY', 'test-key')
+    fitBounds.mockClear()
+    overlayPush.mockClear()
+    markerSetMap.mockClear()
+    markerAddListener.mockClear()
+    installGoogleMapsMock()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    delete (window as unknown as { google?: unknown }).google
+  })
+
   test('renders map container', () => {
     render(
       <OrthoMap
@@ -54,10 +89,10 @@ describe('OrthoMap', () => {
       />,
     )
 
-    expect(screen.getByTestId('map-container')).toBeInTheDocument()
+    expect(screen.getByTestId('google-map')).toBeInTheDocument()
   })
 
-  test('renders one tile layer', () => {
+  test('adds the orthomosaic as a Google Maps tile overlay', async () => {
     render(
       <OrthoMap
         parkId="DEMO"
@@ -68,10 +103,15 @@ describe('OrthoMap', () => {
       />,
     )
 
-    expect(screen.getByTestId('tile-layer')).toBeInTheDocument()
+    await waitFor(() => expect(overlayPush).toHaveBeenCalledTimes(1))
+    expect(overlayPush.mock.calls[0][0].getTileUrl({ x: 3, y: 4 }, 16)).toContain(
+      '/park/DEMO/ortho/ortho.tif/tiles/16/3/4.png',
+    )
   })
 
-  test('renders circle markers only for panels with GPS', () => {
+  test('renders markers only for panels with GPS', async () => {
+    const google = installGoogleMapsMock()
+
     render(
       <OrthoMap
         parkId="DEMO"
@@ -82,6 +122,22 @@ describe('OrthoMap', () => {
       />,
     )
 
-    expect(screen.getAllByTestId('circle-marker')).toHaveLength(1)
+    await waitFor(() => expect(google.maps.Marker).toHaveBeenCalledTimes(1))
+  })
+
+  test('shows a configuration message without a Google Maps API key', async () => {
+    vi.stubEnv('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY', '')
+
+    render(
+      <OrthoMap
+        parkId="DEMO"
+        orthoName="ortho.tif"
+        bounds={BOUNDS}
+        center={{ lat: 27.52, lon: 71.92 }}
+        panels={PANELS}
+      />,
+    )
+
+    expect(await screen.findByRole('status')).toHaveTextContent('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY')
   })
 })
