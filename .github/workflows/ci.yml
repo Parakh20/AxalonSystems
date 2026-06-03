@@ -54,6 +54,9 @@ jobs:
             touch ml/checkpoints/best.pt
           fi
 
+      - name: Install fixture generator dependencies
+        run: python3 -m pip install opencv-python-headless numpy Pillow piexif
+
       - name: Set up sample mission fixture
         run: |
           python3 scripts/make_sample_mission.py
