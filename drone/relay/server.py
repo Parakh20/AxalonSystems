@@ -16,7 +16,7 @@ from drone.common.telemetry import Envelope
 from drone.relay.auth import AuthError, verify_drone_token, verify_operator_token
 from drone.relay.control_lock import ControlLock
 from drone.relay.manager import RelayManager
-from drone.relay.tier_policy import authorize_command
+from drone.relay.tier_policy import authorize_command, authorize_manual
 from drone.relay.turn import ice_servers
 
 
@@ -95,6 +95,14 @@ def create_app() -> FastAPI:
                 elif env.type == "signal" and env.signal is not None:
                     # operator → drone: forward verbatim (carries operator_id)
                     await mgr.send_to_drone(drone_id, raw)
+                elif env.type == "manual" and env.manual is not None:
+                    ok, _reason = authorize_manual(
+                        holds_lock=lock.holds(drone_id, operator),
+                        tier=mgr.tier_for(drone_id),
+                    )
+                    if ok:
+                        await mgr.send_to_drone(drone_id, raw)
+                    # unauthorized manual frames are dropped silently (no ack flood)
         except WebSocketDisconnect:
             pass
         finally:
