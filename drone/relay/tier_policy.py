@@ -32,3 +32,12 @@ def authorize_command(
     if not is_allowed(tier, cmd_type):
         return False, f"{cmd_type.value} not allowed at link tier {tier.value}"
     return True, ""
+
+
+def authorize_manual(*, holds_lock: bool, tier: LinkTier) -> tuple[bool, str]:
+    """Manual stick input is GREEN-only (low-latency link) and holder-only."""
+    if not holds_lock:
+        return False, "you do not hold the control lock"
+    if tier is not LinkTier.GREEN:
+        return False, f"manual control requires a GREEN link (current: {tier.value})"
+    return True, ""
