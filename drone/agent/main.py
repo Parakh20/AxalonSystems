@@ -55,6 +55,11 @@ async def run(cfg: AgentConfig) -> None:
 
             publisher = WebRTCPublisher(cfg, send_signal)
 
+        from drone.agent.manual_control import ManualController, ManualDeadman
+        manual = ManualController(commander)
+        manual_dm = ManualDeadman(cfg.manual_deadman_s)
+        manual_active = {"on": False}
+
         async def telemetry_loop():
             while True:
                 while True:
@@ -85,6 +90,10 @@ async def run(cfg: AgentConfig) -> None:
                         await publisher.handle_ice(env.signal)
                     elif env.signal.kind is SignalKind.BYE:
                         await publisher.handle_bye(env.signal)
+                elif env.type == "manual" and env.manual is not None:
+                    manual_active["on"] = True
+                    manual_dm.beat(time.time())
+                    manual.apply(env.manual)
 
         async def heartbeat_loop():
             period = 1.0 / cfg.heartbeat_hz
@@ -92,6 +101,9 @@ async def run(cfg: AgentConfig) -> None:
                 await ws.send(Envelope(type="heartbeat", ts=time.time()).model_dump_json())
                 if deadman.expired(time.time()):
                     commander.rtl()  # link presumed lost -> fail safe
+                if manual_active["on"] and manual_dm.expired(time.time()):
+                    manual.hover()  # manual input went stale -> hold position
+                    manual_active["on"] = False
                 await asyncio.sleep(period)
 
         await asyncio.gather(telemetry_loop(), recv_loop(), heartbeat_loop())

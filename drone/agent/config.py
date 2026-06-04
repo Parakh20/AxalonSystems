@@ -23,6 +23,7 @@ class AgentConfig:
     thermal_device: str
     video_test_pattern: bool
     video_bitrate_bps: int
+    manual_deadman_s: float
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -41,6 +42,7 @@ class AgentConfig:
             thermal_device=os.getenv("THERMAL_DEVICE", "/dev/video1"),
             video_test_pattern=os.getenv("VIDEO_TEST_PATTERN", "0") == "1",
             video_bitrate_bps=int(os.getenv("VIDEO_BITRATE_BPS", "4000000")),
+            manual_deadman_s=float(os.getenv("MANUAL_DEADMAN_S", "0.4")),
         )
 
     @property
