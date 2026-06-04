@@ -18,3 +18,11 @@ def drone_tokens() -> dict[str, str]:
 
 def ops_token() -> str:
     return os.getenv("OPS_TOKEN", "")
+
+
+def turn_host() -> str:
+    return os.getenv("TURN_HOST", "")
+
+
+def turn_secret() -> str:
+    return os.getenv("TURN_SECRET", "")

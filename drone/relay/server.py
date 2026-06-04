@@ -17,6 +17,7 @@ from drone.relay.auth import AuthError, verify_drone_token, verify_operator_toke
 from drone.relay.control_lock import ControlLock
 from drone.relay.manager import RelayManager
 from drone.relay.tier_policy import authorize_command
+from drone.relay.turn import ice_servers
 
 
 def create_app() -> FastAPI:
@@ -29,6 +30,15 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.get("/turn-credentials")
+    def turn_credentials(token: str = "", name: str = "anon"):
+        from fastapi import HTTPException
+        try:
+            verify_operator_token(token)
+        except AuthError:
+            raise HTTPException(status_code=403, detail="invalid operator token")
+        return {"iceServers": ice_servers(name=name)}
 
     @app.websocket("/ws/drone/{drone_id}")
     async def drone_ws(ws: WebSocket, drone_id: str, token: str = ""):
