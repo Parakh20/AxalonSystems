@@ -110,3 +110,45 @@ Relay env must match coturn:
 For production TLS, terminate `turns:` via Cloudflare Spectrum or a cert on coturn
 (`cert`/`pkey` + remove `no-tls`/`no-dtls`). Phase 3 ships plain STUN/TURN; harden
 in the Phase 3.1 pass.
+
+## Phase 6 — real hardware bring-up
+
+### Wiring & serial
+- Connect the Cube's TELEM2 (or a spare UART) to the Jetson UART (e.g. `/dev/ttyTHS1`)
+  or via USB (`/dev/ttyACM0`). Set the Cube's `SERIALx_PROTOCOL=2` (MAVLink2),
+  `SERIALx_BAUD=921`.
+- Agent env for hardware:
+  `MAVLINK_URL=serial:/dev/ttyTHS1:921600` (replace the SITL `udpin:` URL).
+
+### udev (stable device name)
+```bash
+# /etc/udev/rules.d/99-axalon.rules
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2dae", SYMLINK+="cube"   # example Cube VID
+```
+Then use `MAVLINK_URL=serial:/dev/cube:921600`.
+
+### ArduPilot pre-flight params (set once, via Mission Planner / MAVProxy)
+- `FENCE_ENABLE=1`, `FENCE_ALT_MAX`, `FENCE_RADIUS` — geofence is the hard boundary.
+- `FS_GCS_ENABLE` + a sensible `FS_OPTIONS` so the autopilot also fails safe if it
+  loses the companion link (defense in depth alongside the agent deadman).
+- Battery failsafe (`BATT_LOW_VOLT`, `BATT_FS_LOW_ACT=2` RTL).
+- Calibrate: accel, compass, RC, ESC — standard ArduCopter first-flight checklist.
+
+### systemd on the Jetson
+Reuse the `axalon-drone-agent.service` from Phase 1 with the hardware env:
+`MAVLINK_URL=serial:/dev/cube:921600`, `VIDEO_ENABLED=1`, `RECORDING_ENABLED=1`,
+`CAPTURE_DIR=/data/captures`, `PARK_ID=<park>`, `PLATFORM_API_URL=<HF backend>`,
+`PLATFORM_TOKEN=<token>`. `Restart=always`.
+
+> The capture handoff POSTs a ZIP of `CAPTURE_DIR` (frames + per-frame GPS sidecars)
+> to the platform's `POST /batch` (multipart: `images` ZIP + `park_id` + `altitude_m`,
+> `Authorization: Bearer PLATFORM_TOKEN`). `PLATFORM_TOKEN` must equal the backend's
+> `AXALON_API_KEY`.
+
+### First-flight safety checklist
+1. Props OFF: confirm telemetry on `/platform` Live Ops, confirm ARM/DISARM acks.
+2. Props OFF: confirm RTL/LAND mode changes reflect in the HUD.
+3. Tethered/low hover: confirm GREEN tier on-site, manual pad translates + hovers on release.
+4. Confirm geofence + battery failsafe trigger as configured.
+5. Full mission: upload from planner, fly AUTO, watch telemetry + video, land →
+   confirm a batch job appears in the platform.
