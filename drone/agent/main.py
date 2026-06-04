@@ -60,6 +60,35 @@ async def run(cfg: AgentConfig) -> None:
         manual_dm = ManualDeadman(cfg.manual_deadman_s)
         manual_active = {"on": False}
 
+        from drone.agent.gps_inject import TelemetryFix, nearest_fix
+        from drone.agent.landing import LandingDetector
+        from drone.agent.recorder import write_sidecar, build_manifest
+        from drone.agent.handoff import zip_capture, post_handoff
+
+        telem_log: list[TelemetryFix] = []   # rolling fix log for post-flight GPS inject
+        landing = LandingDetector()
+
+        async def _do_handoff():
+            # On landing: stamp each captured frame with the nearest-in-time GPS fix
+            # (thermal core has no EXIF GPS), then POST the capture to the platform.
+            import os as _os
+            frames = [f for f in _os.listdir(cfg.capture_dir)
+                      if f.endswith((".jpg", ".raw"))]
+            for fname in frames:
+                # capture ts is encoded in the filename suffix _<unixms>; fall back to mtime
+                try:
+                    stem = fname.rsplit("_", 1)[1].split(".")[0]
+                    frame_ts = int(stem) / 1000.0
+                except Exception:
+                    frame_ts = _os.path.getmtime(_os.path.join(cfg.capture_dir, fname))
+                fix = nearest_fix(telem_log, frame_ts, cfg.gps_tolerance_s)
+                write_sidecar(cfg.capture_dir, fname, frame_ts, fix)
+            build_manifest(cfg.park_id, frames)
+            if cfg.platform_api_url and cfg.park_id:
+                zip_bytes = zip_capture(cfg.capture_dir)
+                await post_handoff(base_url=cfg.platform_api_url, token=cfg.platform_token,
+                                   park_id=cfg.park_id, zip_bytes=zip_bytes)
+
         async def telemetry_loop():
             while True:
                 while True:
@@ -72,6 +101,12 @@ async def run(cfg: AgentConfig) -> None:
                     telem = telem.model_copy(update={"link_tier": tier_from_rtt(state.tier_rtt_s)})
                     await ws.send(Envelope(type="telemetry", telemetry=telem).model_dump_json())
                     state.seq += 1
+                    telem_log.append(TelemetryFix(
+                        ts=telem.ts, lat=telem.lat, lon=telem.lon, alt_rel_m=telem.alt_rel_m))
+                    if len(telem_log) > 24000:   # ~20 min @ 20Hz: bound memory
+                        del telem_log[: len(telem_log) - 24000]
+                    if cfg.recording_enabled and landing.update(telem.armed):
+                        asyncio.create_task(_do_handoff())
                 await asyncio.sleep(cfg.period_s)
 
         async def recv_loop():

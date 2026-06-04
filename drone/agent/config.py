@@ -24,6 +24,12 @@ class AgentConfig:
     video_test_pattern: bool
     video_bitrate_bps: int
     manual_deadman_s: float
+    recording_enabled: bool
+    capture_dir: str
+    park_id: str
+    platform_api_url: str
+    platform_token: str
+    gps_tolerance_s: float
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -43,6 +49,12 @@ class AgentConfig:
             video_test_pattern=os.getenv("VIDEO_TEST_PATTERN", "0") == "1",
             video_bitrate_bps=int(os.getenv("VIDEO_BITRATE_BPS", "4000000")),
             manual_deadman_s=float(os.getenv("MANUAL_DEADMAN_S", "0.4")),
+            recording_enabled=os.getenv("RECORDING_ENABLED", "0") == "1",
+            capture_dir=os.getenv("CAPTURE_DIR", "/data/captures"),
+            park_id=os.getenv("PARK_ID", ""),
+            platform_api_url=os.getenv("PLATFORM_API_URL", ""),
+            platform_token=os.getenv("PLATFORM_TOKEN", ""),
+            gps_tolerance_s=float(os.getenv("GPS_TOLERANCE_S", "0.5")),
         )
 
     @property
