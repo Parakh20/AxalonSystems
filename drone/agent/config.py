@@ -18,6 +18,11 @@ class AgentConfig:
     max_alt_m: float
     heartbeat_hz: float
     deadman_timeout_s: float
+    video_enabled: bool
+    webcam_device: str
+    thermal_device: str
+    video_test_pattern: bool
+    video_bitrate_bps: int
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -31,6 +36,11 @@ class AgentConfig:
             max_alt_m=float(os.getenv("MAX_ALT_M", "120")),
             heartbeat_hz=float(os.getenv("HEARTBEAT_HZ", "2")),
             deadman_timeout_s=float(os.getenv("DEADMAN_TIMEOUT_S", "5")),
+            video_enabled=os.getenv("VIDEO_ENABLED", "1") == "1",
+            webcam_device=os.getenv("WEBCAM_DEVICE", "/dev/video0"),
+            thermal_device=os.getenv("THERMAL_DEVICE", "/dev/video1"),
+            video_test_pattern=os.getenv("VIDEO_TEST_PATTERN", "0") == "1",
+            video_bitrate_bps=int(os.getenv("VIDEO_BITRATE_BPS", "4000000")),
         )
 
     @property

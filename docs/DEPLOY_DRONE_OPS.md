@@ -68,3 +68,45 @@ RUN_SITL_E2E=1 RELAY_WS_URL=ws://127.0.0.1:8800 OPS_TOKEN=otok DRONE_ID=sitl-01 
   python -m pytest drone/tests/test_e2e_commands_sitl.py -v
 ```
 Watch the SITL console: the vehicle should arm. Try TAKEOFF (`{"alt":40}`), then RTL.
+
+## Phase 3 — video (Jetson GStreamer + relay coturn)
+
+### Jetson packages (NOT pip)
+```bash
+sudo apt-get install -y \
+  gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-nice \
+  python3-gi gir1.2-gst-plugins-bad-1.0
+# webrtcbin lives in gstreamer1.0-plugins-bad; nvv4l2h264enc ships with JetPack.
+```
+
+### Agent video env
+`VIDEO_ENABLED=1 WEBCAM_DEVICE=/dev/video0 THERMAL_DEVICE=/dev/video1 VIDEO_BITRATE_BPS=4000000`
+For a no-camera demo: `VIDEO_TEST_PATTERN=1`.
+
+### coturn on the Oracle A1 VM
+```bash
+sudo apt-get install -y coturn
+sudo tee /etc/turnserver.conf >/dev/null <<'EOF'
+listening-port=3478
+fingerprint
+use-auth-secret
+static-auth-secret=CHANGE_ME_LONG_RANDOM
+realm=relay.axalonsystems.com
+total-quota=100
+no-tls
+no-dtls
+EOF
+sudo systemctl enable --now coturn
+```
+
+Open UDP/TCP 3478 (and the relay port) in the Oracle security list + the VM firewall.
+
+Relay env must match coturn:
+`TURN_HOST=relay.axalonsystems.com TURN_SECRET=CHANGE_ME_LONG_RANDOM`
+(same value as `static-auth-secret`). Browser fetches creds from
+`GET /turn-credentials`; the agent uses the same endpoint or its own env.
+
+For production TLS, terminate `turns:` via Cloudflare Spectrum or a cert on coturn
+(`cert`/`pkey` + remove `no-tls`/`no-dtls`). Phase 3 ships plain STUN/TURN; harden
+in the Phase 3.1 pass.

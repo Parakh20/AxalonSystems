@@ -43,6 +43,18 @@ async def run(cfg: AgentConfig) -> None:
     async with websockets.connect(cfg.ops_url()) as ws:
         deadman.beat(time.time())
 
+        from drone.common.signaling import SignalKind, SignalMsg
+
+        publisher = None
+        if cfg.video_enabled:
+            # Jetson-only import: keeps CI (no GStreamer) able to import main.py
+            from drone.agent.webrtc_publisher import WebRTCPublisher
+
+            async def send_signal(sig: SignalMsg) -> None:
+                await ws.send(Envelope(type="signal", signal=sig).model_dump_json())
+
+            publisher = WebRTCPublisher(cfg, send_signal)
+
         async def telemetry_loop():
             while True:
                 while True:
@@ -66,6 +78,13 @@ async def run(cfg: AgentConfig) -> None:
                     await ws.send(Envelope(type="ack", ack=ack).model_dump_json())
                 elif env.type == "heartbeat" and env.ts is not None:
                     state.tier_rtt_s = time.time() - env.ts
+                elif env.type == "signal" and env.signal is not None and publisher is not None:
+                    if env.signal.kind is SignalKind.OFFER:
+                        await publisher.handle_offer(env.signal)
+                    elif env.signal.kind is SignalKind.ICE:
+                        await publisher.handle_ice(env.signal)
+                    elif env.signal.kind is SignalKind.BYE:
+                        await publisher.handle_bye(env.signal)
 
         async def heartbeat_loop():
             period = 1.0 / cfg.heartbeat_hz
