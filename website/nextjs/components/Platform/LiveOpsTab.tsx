@@ -10,6 +10,7 @@ import {
 import { missionToWaypoints, type PlannedPoint } from "@/lib/missionToWaypoints";
 import { appendTrackPoint, type LatLon } from "@/lib/track";
 import VideoPanel from "@/components/Platform/VideoPanel";
+import ManualPad from "@/components/Platform/ManualPad";
 
 const LiveMap = dynamic(() => import("@/components/Platform/LiveMap"), { ssr: false });
 
@@ -111,6 +112,12 @@ export default function LiveOpsTab(
             {lastAck.success ? "✓" : "✗"} {lastAck.cmd_id.slice(0, 6)}: {lastAck.message}
           </p>
         )}
+
+        <ManualPad
+          operatorId={operatorId}
+          enabled={hasControl && tier === "GREEN"}
+          send={send}
+        />
 
         <VideoPanel
           operatorId={operatorId}
