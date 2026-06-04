@@ -21,6 +21,7 @@ class MavCommander(Protocol):
     def land(self) -> None: ...
     def goto(self, lat: float, lon: float, alt_m: float) -> None: ...
     def upload_mission(self, waypoints: list[dict]) -> None: ...
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float) -> None: ...
 
 
 class PymavlinkCommander:
@@ -69,6 +70,17 @@ class PymavlinkCommander:
             0b0000111111111000,
             int(lat * 1e7), int(lon * 1e7), alt_m,
             0, 0, 0, 0, 0, 0, 0, 0)
+
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float) -> None:
+        # body-frame velocity in GUIDED; type_mask enables vx/vy/vz + yaw_rate only
+        self._c.mav.set_position_target_local_ned_send(
+            0, self._c.target_system, self._c.target_component,
+            mavutil.mavlink.MAV_FRAME_BODY_NED,
+            0b0000011111000111,  # use velocity + yaw_rate
+            0, 0, 0,
+            vx, vy, vz,
+            0, 0, 0,
+            0, yaw_rate)
 
     def upload_mission(self, waypoints: list[dict]) -> None:
         """waypoints: list of {seq, lat, lon, alt_m}. Standard MISSION_COUNT +
