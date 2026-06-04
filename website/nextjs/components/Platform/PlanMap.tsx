@@ -6,9 +6,13 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
 import 'leaflet-draw/dist/leaflet.draw.css'
+import * as esri from 'esri-leaflet'
 import type { LatLon, Waypoint, MissionStats, MissionType } from '@/lib/missionGeometry'
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
+// Mapbox temporarily disabled — fall back to the previous Esri World Imagery
+// tiles. Set USE_MAPBOX back to true (with NEXT_PUBLIC_MAPBOX_TOKEN set) to re-enable.
+const USE_MAPBOX = false
+const MAPBOX_TOKEN = USE_MAPBOX ? (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '') : ''
 
 const SAT_URL = MAPBOX_TOKEN
   ? `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`
@@ -126,7 +130,12 @@ export default function PlanMap({
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return
     const map = L.map(mapDivRef.current, { center: [18.5204, 73.8567], zoom: 16, maxZoom: SAT_MAX_ZOOM })
-    L.tileLayer(SAT_URL, { attribution: SAT_ATTR, maxZoom: SAT_MAX_ZOOM, maxNativeZoom: SAT_MAX_NATIVE_ZOOM }).addTo(map)
+    if (USE_MAPBOX) {
+      L.tileLayer(SAT_URL, { attribution: SAT_ATTR, maxZoom: SAT_MAX_ZOOM, maxNativeZoom: SAT_MAX_NATIVE_ZOOM }).addTo(map)
+    } else {
+      // Esri World Imagery via the official esri-leaflet basemap layer
+      esri.basemapLayer('Imagery', { maxZoom: SAT_MAX_ZOOM, maxNativeZoom: SAT_MAX_NATIVE_ZOOM } as any).addTo(map)
+    }
 
     const drawn = new L.FeatureGroup()
     map.addLayer(drawn)
