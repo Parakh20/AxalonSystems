@@ -49,6 +49,9 @@ def create_app() -> FastAPI:
                     await mgr.fan_to_operators(drone_id, raw)
                 elif env.type == "ack":
                     await mgr.fan_to_operators(drone_id, raw)
+                elif env.type == "signal" and env.signal is not None:
+                    # signaling is per-peer: route to the targeted operator only
+                    await mgr.send_to_operator(drone_id, env.signal.operator_id, raw)
                 elif env.type == "heartbeat":
                     await ws.send_text(raw)  # echo for RTT measurement
         except WebSocketDisconnect:
@@ -69,6 +72,8 @@ def create_app() -> FastAPI:
             return
         await ws.accept()
         mgr.add_operator(drone_id, ws)
+        # register by operator id so the drone can target this peer for signaling
+        mgr.register_operator(drone_id, operator, ws)
         try:
             while True:
                 raw = await ws.receive_text()
@@ -77,10 +82,14 @@ def create_app() -> FastAPI:
                     await _handle_control(ws, lock, drone_id, env.control)
                 elif env.type == "command" and env.command is not None:
                     await _handle_command(ws, mgr, lock, drone_id, operator, raw, env)
+                elif env.type == "signal" and env.signal is not None:
+                    # operator → drone: forward verbatim (carries operator_id)
+                    await mgr.send_to_drone(drone_id, raw)
         except WebSocketDisconnect:
             pass
         finally:
             mgr.remove_operator(drone_id, ws)
+            mgr.unregister_operator(drone_id, operator)
             # release the control lock if this operator held it, so a dropped
             # tab/crash doesn't block control for everyone else
             lock.release(drone_id, operator)
