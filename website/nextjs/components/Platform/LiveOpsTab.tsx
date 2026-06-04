@@ -2,17 +2,22 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   connectLiveOps, buildCommandEnvelope, buildControlEnvelope,
   type Telemetry, type Ack, type ControlReply, type CommandType, type LiveOpsHandle,
 } from "@/lib/liveOps";
 import { missionToWaypoints, type PlannedPoint } from "@/lib/missionToWaypoints";
+import { appendTrackPoint, type LatLon } from "@/lib/track";
 import VideoPanel from "@/components/Platform/VideoPanel";
+
+const LiveMap = dynamic(() => import("@/components/Platform/LiveMap"), { ssr: false });
 
 const RELAY_WS = process.env.NEXT_PUBLIC_RELAY_WS_URL ?? "";
 const OPS_TOKEN = process.env.NEXT_PUBLIC_OPS_TOKEN ?? "";
 
 const DESTRUCTIVE: CommandType[] = ["ARM", "TAKEOFF", "LAND"];
+const MAX_TRACK = 500;
 
 export default function LiveOpsTab(
   { droneId = "sitl-01", plannedPoints = [] }:
@@ -24,13 +29,17 @@ export default function LiveOpsTab(
   const [status, setStatus] = useState("idle");
   const [hasControl, setHasControl] = useState(false);
   const [lastAck, setLastAck] = useState<Ack | null>(null);
+  const [track, setTrack] = useState<LatLon[]>([]);
   const handleRef = useRef<LiveOpsHandle | null>(null);
   const signalHandlerRef = useRef<((raw: string) => void) | null>(null);
 
   useEffect(() => {
     if (!RELAY_WS) { setStatus("no relay configured"); return; }
     const h = connectLiveOps(RELAY_WS, droneId, OPS_TOKEN, operatorId, {
-      onTelemetry: setTelem,
+      onTelemetry: (t) => {
+        setTelem(t);
+        setTrack((cur) => appendTrackPoint(cur, { lat: t.lat, lon: t.lon }, MAX_TRACK));
+      },
       onStatus: setStatus,
       onAck: setLastAck,
       onControl: (c: ControlReply) =>
@@ -68,46 +77,47 @@ export default function LiveOpsTab(
         </>}
       </div>
 
-      <VideoPanel
-        operatorId={operatorId}
-        send={send}
-        registerSignalHandler={(fn) => { signalHandlerRef.current = fn; }}
+      <LiveMap
+        position={telem ? { lat: telem.lat, lon: telem.lon } : null}
+        headingDeg={telem?.heading_deg ?? 0}
+        track={track}
       />
 
-      <div className="liveops-control">
-        {hasControl
-          ? <button onClick={release}>Release control</button>
-          : <button onClick={acquire}>Acquire control</button>}
-        <span>{hasControl ? "You have control" : "View-only"}</span>
+      <div className="liveops-side">
+        <div className="liveops-control">
+          {hasControl
+            ? <button onClick={release}>Release control</button>
+            : <button onClick={acquire}>Acquire control</button>}
+          <span>{hasControl ? "You have control" : "View-only"}</span>
+        </div>
+
+        <div className="liveops-commands">
+          <button disabled={!cmdsEnabled} onClick={() => sendCmd("ARM")}>Arm</button>
+          <button disabled={!cmdsEnabled} onClick={() => sendCmd("TAKEOFF", { alt: 40 })}>Takeoff 40m</button>
+          <button disabled={!cmdsEnabled} onClick={() => sendCmd("PAUSE")}>Pause</button>
+          <button disabled={!cmdsEnabled} onClick={() => sendCmd("RESUME")}>Resume</button>
+          <button disabled={!cmdsEnabled} onClick={() => sendCmd("RTL")}>RTL</button>
+          <button disabled={!cmdsEnabled} onClick={() => sendCmd("LAND")}>Land</button>
+          <button
+            disabled={!cmdsEnabled || plannedPoints.length === 0}
+            onClick={() => sendCmd("UPLOAD_MISSION", { waypoints: missionToWaypoints(plannedPoints) })}
+          >
+            Upload mission ({plannedPoints.length})
+          </button>
+        </div>
+
+        {lastAck && (
+          <p className={lastAck.success ? "ack-ok" : "ack-fail"}>
+            {lastAck.success ? "✓" : "✗"} {lastAck.cmd_id.slice(0, 6)}: {lastAck.message}
+          </p>
+        )}
+
+        <VideoPanel
+          operatorId={operatorId}
+          send={send}
+          registerSignalHandler={(fn) => { signalHandlerRef.current = fn; }}
+        />
       </div>
-
-      <div className="liveops-commands">
-        <button disabled={!cmdsEnabled} onClick={() => sendCmd("ARM")}>Arm</button>
-        <button disabled={!cmdsEnabled} onClick={() => sendCmd("TAKEOFF", { alt: 40 })}>Takeoff 40m</button>
-        <button disabled={!cmdsEnabled} onClick={() => sendCmd("PAUSE")}>Pause</button>
-        <button disabled={!cmdsEnabled} onClick={() => sendCmd("RESUME")}>Resume</button>
-        <button disabled={!cmdsEnabled} onClick={() => sendCmd("RTL")}>RTL</button>
-        <button disabled={!cmdsEnabled} onClick={() => sendCmd("LAND")}>Land</button>
-        <button
-          disabled={!cmdsEnabled || plannedPoints.length === 0}
-          onClick={() => sendCmd("UPLOAD_MISSION", { waypoints: missionToWaypoints(plannedPoints) })}
-        >
-          Upload mission ({plannedPoints.length})
-        </button>
-      </div>
-
-      {lastAck && (
-        <p className={lastAck.success ? "ack-ok" : "ack-fail"}>
-          {lastAck.success ? "✓" : "✗"} {lastAck.cmd_id.slice(0, 6)}: {lastAck.message}
-        </p>
-      )}
-
-      {/* Map marker + breadcrumb: same as Phase 1 (reuse PlanMap.tsx Leaflet pattern). */}
-      {telem && (
-        <p className="liveops-pos">
-          {telem.lat.toFixed(5)}, {telem.lon.toFixed(5)} @ {telem.heading_deg.toFixed(0)}°
-        </p>
-      )}
     </div>
   );
 }

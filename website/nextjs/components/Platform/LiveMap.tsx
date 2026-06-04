@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import "leaflet/dist/leaflet.css";
 import type { LatLon } from "@/lib/track";
 
 // Leaflet is loaded client-side only (same approach as PlanMap.tsx).
@@ -23,7 +24,6 @@ export default function LiveMap({ position, headingDeg, track, follow = true }: 
     let cancelled = false;
     (async () => {
       const L = (await import("leaflet")).default;
-      await import("leaflet/dist/leaflet.css");
       if (cancelled || !containerRef.current || mapRef.current) return;
       const map = L.map(containerRef.current).setView([20, 0], 2);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
