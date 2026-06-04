@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from drone.common.commands import Ack, Command, ControlMsg
 from drone.common.signaling import SignalMsg
+from drone.common.manual import ManualInput
 
 
 class LinkTier(str, Enum):
@@ -50,11 +51,12 @@ class Telemetry(BaseModel):
 
 class Envelope(BaseModel):
     """Top-level frame on the wire. `type` discriminates message kinds:
-    'telemetry' | 'command' | 'ack' | 'control' | 'signal' | 'heartbeat'."""
+    'telemetry' | 'command' | 'ack' | 'control' | 'signal' | 'manual' | 'heartbeat'."""
     type: str
     telemetry: Telemetry | None = None
     command: Command | None = None
     ack: Ack | None = None
     control: ControlMsg | None = None
     signal: SignalMsg | None = None
+    manual: ManualInput | None = None
     ts: float | None = None   # used by heartbeat frames for RTT measurement
