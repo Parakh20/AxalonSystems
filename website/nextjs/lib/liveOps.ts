@@ -83,6 +83,7 @@ export interface LiveOpsHandlers {
   onStatus?: (s: "connecting" | "open" | "closed") => void;
   onAck?: (a: Ack) => void;
   onControl?: (c: ControlReply) => void;
+  onSignal?: (raw: string) => void;
 }
 
 export interface LiveOpsHandle {
@@ -120,6 +121,7 @@ export function connectLiveOps(
       if (ack) { handlers.onAck?.(ack); return; }
       const ctl = parseControlFrame(data);
       if (ctl) { handlers.onControl?.(ctl); return; }
+      if (data.includes('"type":"signal"')) { handlers.onSignal?.(data); return; }
     };
     ws.onclose = () => {
       handlers.onStatus?.("closed");

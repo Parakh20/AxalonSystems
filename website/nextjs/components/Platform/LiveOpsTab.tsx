@@ -7,6 +7,7 @@ import {
   type Telemetry, type Ack, type ControlReply, type CommandType, type LiveOpsHandle,
 } from "@/lib/liveOps";
 import { missionToWaypoints, type PlannedPoint } from "@/lib/missionToWaypoints";
+import VideoPanel from "@/components/Platform/VideoPanel";
 
 const RELAY_WS = process.env.NEXT_PUBLIC_RELAY_WS_URL ?? "";
 const OPS_TOKEN = process.env.NEXT_PUBLIC_OPS_TOKEN ?? "";
@@ -24,6 +25,7 @@ export default function LiveOpsTab(
   const [hasControl, setHasControl] = useState(false);
   const [lastAck, setLastAck] = useState<Ack | null>(null);
   const handleRef = useRef<LiveOpsHandle | null>(null);
+  const signalHandlerRef = useRef<((raw: string) => void) | null>(null);
 
   useEffect(() => {
     if (!RELAY_WS) { setStatus("no relay configured"); return; }
@@ -33,6 +35,7 @@ export default function LiveOpsTab(
       onAck: setLastAck,
       onControl: (c: ControlReply) =>
         setHasControl(c.granted === true && c.holder === operatorId),
+      onSignal: (raw: string) => signalHandlerRef.current?.(raw),
     });
     handleRef.current = h;
     return () => h.dispose();
@@ -64,6 +67,12 @@ export default function LiveOpsTab(
           <span>Bat: {telem.battery_pct.toFixed(0)}%</span>
         </>}
       </div>
+
+      <VideoPanel
+        operatorId={operatorId}
+        send={send}
+        registerSignalHandler={(fn) => { signalHandlerRef.current = fn; }}
+      />
 
       <div className="liveops-control">
         {hasControl
