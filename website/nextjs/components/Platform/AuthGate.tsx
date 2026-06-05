@@ -25,7 +25,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    setApiKeyState(sessionStorage.getItem(KEY_STORAGE) ?? '')
+    const stored = sessionStorage.getItem(KEY_STORAGE)
+    const envKey = process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''
+    const key = stored ?? envKey
+    if (key) {
+      sessionStorage.setItem(KEY_STORAGE, key)
+      setApiKeyState(key)
+    } else {
+      setLocked(true)
+    }
   }, [])
 
   useEffect(() => {

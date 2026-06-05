@@ -17,8 +17,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     const storedKey =
       typeof sessionStorage !== 'undefined'
-        ? sessionStorage.getItem('axalon_api_key') ?? ''
-        : ''
+        ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
+        : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
     const headers: HeadersInit = storedKey
       ? {
           ...((init?.headers as Record<string, string> | undefined) ?? {}),
@@ -223,8 +223,8 @@ export const api = {
   reportUrl: (jobId: string, format: 'json' | 'excel' | 'geojson' | 'pdf') => {
     const storedKey =
       typeof sessionStorage !== 'undefined'
-        ? sessionStorage.getItem('axalon_api_key') ?? ''
-        : ''
+        ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
+        : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
     const keyParam = storedKey ? `&api_key=${encodeURIComponent(storedKey)}` : ''
     return `${API_BASE}/report/${encodeURIComponent(jobId)}?format=${format}${keyParam}`
   },
@@ -250,8 +250,8 @@ export const api = {
     const q = inspectionId ? `?inspection_id=${encodeURIComponent(inspectionId)}` : ''
     const storedKey =
       typeof sessionStorage !== 'undefined'
-        ? sessionStorage.getItem('axalon_api_key') ?? ''
-        : ''
+        ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
+        : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
     return fetch(`${API_BASE}/park/${encodeURIComponent(parkId)}/grid/png${q}`, {
       headers: storedKey ? { Authorization: `Bearer ${storedKey}` } : {},
     }).then((res) => {

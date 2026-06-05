@@ -29,6 +29,10 @@ packages = [
     "axalon.reporting",
     "ml",
     "ml.src",
+    "drone",
+    "drone.relay",
+    "drone.common",
+    "drone.agent",
 ]
 
 [tool.pytest.ini_options]
