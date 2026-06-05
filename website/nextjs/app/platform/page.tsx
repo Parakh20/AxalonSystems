@@ -179,7 +179,7 @@ function PlatformShell() {
           {tab === 'parkmap' && <ParkMapTab />}
           {tab === 'diff' && <DiffTab />}
           {tab === 'plan' && <PlanTab />}
-          {tab === 'liveops' && <LiveOpsTab />}
+          {tab === 'liveops' && <LiveOpsTab droneId="drone-01" />}
         </div>
       </div>
     </main>
