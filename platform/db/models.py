@@ -146,6 +146,79 @@ class Mission(Base):
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+# ── Inventory & prototype tracking (spec: 2026-06-12-inventory-page-design) ──
+
+# Allowed values for InventoryComponent.category
+COMPONENT_CATEGORIES = (
+    "flight-controller", "motor", "esc", "battery", "propeller", "frame",
+    "camera", "sensor", "companion-computer", "radio", "gps", "wiring", "other",
+)
+
+# Allowed values for Prototype.status
+PROTOTYPE_STATUSES = ("planning", "building", "active", "retired")
+
+# Allowed values for ComponentOrder.status
+ORDER_STATUSES = ("planned", "ordered", "received", "cancelled")
+
+
+class InventoryComponent(Base):
+    """A hardware part type we own — qty_total counts every unit (in stock + installed)."""
+    __tablename__ = "inventory_components"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    category = Column(String, default="other")       # one of COMPONENT_CATEGORIES
+    part_number = Column(String, nullable=True)
+    vendor = Column(String, nullable=True)
+    link = Column(String, nullable=True)              # product URL
+    unit_cost = Column(Float, nullable=True)
+    currency = Column(String, default="INR")
+    qty_total = Column(Integer, default=0)            # >= 0
+    specs = Column(Text, nullable=True)               # free JSON/text
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Prototype(Base):
+    """A drone build (or any hardware prototype) that components get installed into."""
+    __tablename__ = "prototypes"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    status = Column(String, default="planning")       # one of PROTOTYPE_STATUSES
+    description = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ComponentAssignment(Base):
+    """BOM line: qty units of a component installed in a prototype."""
+    __tablename__ = "component_assignments"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    component_id = Column(Integer, ForeignKey("inventory_components.id"), nullable=False, index=True)
+    prototype_id = Column(Integer, ForeignKey("prototypes.id"), nullable=False, index=True)
+    qty = Column(Integer, default=1)                  # >= 1, <= component availability
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ComponentOrder(Base):
+    """A planned/placed purchase — receiving a linked order stocks-in qty_total."""
+    __tablename__ = "component_orders"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    component_id = Column(Integer, ForeignKey("inventory_components.id"), nullable=True, index=True)
+    name = Column(String, nullable=False)             # item name (defaults from component)
+    qty = Column(Integer, default=1)                  # >= 1
+    est_unit_cost = Column(Float, nullable=True)
+    vendor = Column(String, nullable=True)
+    link = Column(String, nullable=True)
+    status = Column(String, default="planned")        # one of ORDER_STATUSES
+    needed_by = Column(String, nullable=True)         # ISO date string
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Composite index to make upsert lookups fast.
 Index(
     "ix_panel_faults_identity",
