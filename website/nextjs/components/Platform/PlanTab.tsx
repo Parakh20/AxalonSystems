@@ -24,6 +24,7 @@ import {
 import { downloadMission, type ExportFormat } from '@/lib/waypointExport'
 import { parseBoundary, toGeoJson, toKml } from '@/lib/boundaryIO'
 import { planReinspection, faultsFromMapData, type FaultPoint } from '@/lib/reinspect'
+import { applyTerrainOffsets, fetchElevations, terrainDeltaRange } from '@/lib/terrain'
 import type { Severity } from '@/lib/analytics'
 import PlanSidebar from '@/components/Platform/PlanSidebar'
 
@@ -79,7 +80,7 @@ export function PlanTab() {
   const [fitKey, setFitKey] = useState(0)
   const [savedMissions, setSavedMissions] = useState<MissionSummary[]>([])
 
-  const waypoints = useMemo(() => {
+  const flatWaypoints = useMemo(() => {
     let base: Waypoint[] = []
     if (reinspect && reinspect.faults.length) {
       base = planReinspection(reinspect.faults, { altitudeM: params.altitudeM, minSeverity: reinspect.minSeverity })
@@ -94,6 +95,47 @@ export function PlanTab() {
     }
     return splitByBattery(base, params).waypoints
   }, [polygon, solarRows, camera, params, missionType, reinspect])
+
+  // Terrain follow: elevations fetched for the CURRENT flat plan; any change to
+  // the plan invalidates them (length check is the cheap guard below).
+  const [terrainElevations, setTerrainElevations] = useState<number[] | null>(null)
+  const [terrainBusy, setTerrainBusy] = useState(false)
+
+  useEffect(() => {
+    setTerrainElevations(null)
+  }, [flatWaypoints])
+
+  const terrainActive = !!terrainElevations && terrainElevations.length === flatWaypoints.length && flatWaypoints.length > 0
+
+  const waypoints = useMemo(
+    () => (terrainActive && terrainElevations ? applyTerrainOffsets(flatWaypoints, terrainElevations) : flatWaypoints),
+    [flatWaypoints, terrainElevations, terrainActive],
+  )
+
+  const terrainDelta = useMemo(() => {
+    if (!terrainActive) return null
+    const range = terrainDeltaRange(flatWaypoints, waypoints)
+    return range ? `${range.min >= 0 ? '+' : ''}${range.min} … +${range.max} m` : null
+  }, [terrainActive, flatWaypoints, waypoints])
+
+  async function handleApplyTerrain() {
+    if (flatWaypoints.length < 2) {
+      toast.error('Generate a flight path first')
+      return
+    }
+    setTerrainBusy(true)
+    try {
+      const elevations = await fetchElevations(flatWaypoints.map((w) => ({ lat: w.lat, lon: w.lon })))
+      if (!elevations) {
+        toast.error('Elevation service unavailable — keeping constant altitude')
+        return
+      }
+      setTerrainElevations(elevations)
+      toast.success('Terrain follow applied')
+    } finally {
+      setTerrainBusy(false)
+    }
+  }
 
   const stats = useMemo(() => {
     if (waypoints.length < 2) return null
@@ -290,6 +332,11 @@ export function PlanTab() {
         reinspectActive={!!reinspect}
         reinspectTargets={reinspect ? waypoints.length : 0}
         canExport={waypoints.length >= 2}
+        terrainActive={terrainActive}
+        terrainBusy={terrainBusy}
+        terrainDelta={terrainDelta}
+        onApplyTerrain={handleApplyTerrain}
+        onClearTerrain={() => setTerrainElevations(null)}
       />
     </div>
   )
