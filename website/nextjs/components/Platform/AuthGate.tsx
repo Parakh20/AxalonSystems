@@ -31,9 +31,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (key) {
       sessionStorage.setItem(KEY_STORAGE, key)
       setApiKeyState(key)
-    } else {
-      setLocked(true)
     }
+    // No key: stay unlocked — backends without AXALON_API_KEY (dev/CI) work
+    // keyless, and a protected backend triggers the 'axalon:unauthorized'
+    // event on the first 401, which raises the lock screen below.
   }, [])
 
   useEffect(() => {

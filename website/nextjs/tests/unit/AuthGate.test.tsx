@@ -10,11 +10,11 @@ afterEach(() => {
 })
 
 describe('AuthGate', () => {
-  test('locks on mount when no key is stored and no env key exists', () => {
-    // Since 3e43eab the gate locks immediately unless a key can be seeded.
+  test('renders children without dialog when no key exists (keyless backend)', () => {
+    // Locks only on a real 401 (axalon:unauthorized) — not preemptively.
     render(<AuthGate><div>content</div></AuthGate>)
     expect(screen.getByText('content')).toBeInTheDocument()
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   test('seeds key from env var and renders without dialog', () => {

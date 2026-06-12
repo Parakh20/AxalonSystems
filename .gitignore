@@ -127,3 +127,6 @@ website/nextjs/.next/
 # Session/debug screenshots committed by accident
 platform_map_verify.png
 platform-post-*.png
+
+# Large datasets live outside the repo (stale submodule gitlink removed)
+ml/Datasets/
