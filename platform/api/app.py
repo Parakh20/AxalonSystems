@@ -32,7 +32,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile, BackgroundTasks, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from axalon.pipeline.orchestrator import InspectionOrchestrator
@@ -59,6 +59,7 @@ from axalon.db.models import (
     PROTOTYPE_STATUSES,
 )
 from axalon.park.diff import build_diff
+from axalon.core.object_store import get_track_store
 
 logger = logging.getLogger("axalon.api")
 
@@ -2794,6 +2795,19 @@ def upload_track_file(file: UploadFile = File(...), label: str = Form(None)):
         logger.error("track file write failed: %s", exc)
         raise HTTPException(status_code=500, detail="Could not store file")
 
+    # Durable storage: push to Supabase Storage when configured (HF disk is
+    # ephemeral); the local copy is only a staging buffer in that case.
+    store = get_track_store()
+    if store is not None:
+        try:
+            with open(dest, "rb") as staged:
+                store.upload(stored_name, staged, file.content_type or "application/octet-stream")
+        except RuntimeError as exc:
+            dest.unlink(missing_ok=True)
+            logger.error("track file object-store upload failed: %s", exc)
+            raise HTTPException(status_code=502, detail="Object storage upload failed")
+        dest.unlink(missing_ok=True)
+
     session = get_session()
     try:
         rec = TrackFile(
@@ -2818,10 +2832,19 @@ def download_track_file(file_id: int):
         rec = session.query(TrackFile).filter_by(id=file_id).first()
         if rec is None:
             raise HTTPException(status_code=404, detail="File not found")
+        media_type = rec.content_type or mimetypes.guess_type(rec.original_name)[0] or "application/octet-stream"
+        disposition = {"Content-Disposition": f'attachment; filename="{rec.original_name}"'}
+
+        store = get_track_store()
+        if store is not None:
+            chunks = store.download(rec.stored_name)
+            if chunks is not None:
+                return StreamingResponse(chunks, media_type=media_type, headers=disposition)
+            # fall through: object may predate the storage move and live on disk
+
         path = TRACK_FILES_DIR / rec.stored_name
         if not path.exists():
-            raise HTTPException(status_code=404, detail="File missing on disk")
-        media_type = rec.content_type or mimetypes.guess_type(rec.original_name)[0] or "application/octet-stream"
+            raise HTTPException(status_code=404, detail="File missing from storage")
         return FileResponse(path, media_type=media_type, filename=rec.original_name)
     finally:
         session.close()
@@ -2834,6 +2857,13 @@ def delete_track_file(file_id: int):
         rec = session.query(TrackFile).filter_by(id=file_id).first()
         if rec is None:
             raise HTTPException(status_code=404, detail="File not found")
+        store = get_track_store()
+        if store is not None:
+            try:
+                store.delete(rec.stored_name)
+            except RuntimeError as exc:
+                logger.error("track file object-store delete failed: %s", exc)
+                raise HTTPException(status_code=502, detail="Object storage delete failed")
         (TRACK_FILES_DIR / rec.stored_name).unlink(missing_ok=True)
         session.delete(rec)
         session.commit()
