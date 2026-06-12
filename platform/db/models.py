@@ -11,6 +11,22 @@ FAULT_STALE = "stale"        # was open, not seen in the most recent inspection 
 FAULT_RESOLVED = "resolved"  # user-confirmed fix or auto-resolved after N missed inspections
 
 
+# Allowed values for Project.status
+PROJECT_STATUSES = ("active", "archived")
+
+
+class Project(Base):
+    """Top of the asset hierarchy: Project → Sites (parks) → Missions/Inspections."""
+    __tablename__ = "projects"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    client = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    status = Column(String, default="active")       # one of PROJECT_STATUSES
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Park(Base):
     __tablename__ = "parks"
     id = Column(String, primary_key=True)          # e.g. "PARK_01"
@@ -19,6 +35,7 @@ class Park(Base):
     total_panels = Column(Integer, default=0)
     rows = Column(Integer, default=0)
     cols = Column(Integer, default=0)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

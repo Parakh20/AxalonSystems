@@ -12,6 +12,7 @@ import {
   GitCompare,
   Navigation2,
   Radio,
+  FolderKanban,
 } from 'lucide-react'
 import { ToastProvider } from '@/components/Platform/Toast'
 import { OperationsTab } from '@/components/Platform/OperationsTab'
@@ -22,6 +23,7 @@ import { SettingsTab } from '@/components/Platform/SettingsTab'
 import { DiffTab } from '@/components/Platform/DiffTab'
 import { PlanTab } from '@/components/Platform/PlanTab'
 import { OverviewTab } from '@/components/Platform/OverviewTab'
+import { AssetsTab } from '@/components/Platform/AssetsTab'
 
 const LiveOpsTab = dynamic(() => import('@/components/Platform/LiveOpsTab'), { ssr: false })
 
@@ -35,6 +37,7 @@ type Tab =
   | 'plan'
   | 'overview'
   | 'liveops'
+  | 'assets'
 
 export default function PlatformPage() {
   return (
@@ -140,6 +143,16 @@ function PlatformShell() {
             </button>
             <button
               type="button"
+              className={`rail-link ${tab === 'assets' ? 'active' : ''}`}
+              onClick={() => setTab('assets')}
+              title="Assets"
+              data-testid="tab-assets"
+            >
+              <FolderKanban size={16} />
+              <span>Assets</span>
+            </button>
+            <button
+              type="button"
               className={`rail-link ${tab === 'liveops' ? 'active' : ''}`}
               onClick={() => setTab('liveops')}
               title="Live Ops"
@@ -180,6 +193,7 @@ function PlatformShell() {
           {tab === 'diff' && <DiffTab />}
           {tab === 'plan' && <PlanTab />}
           {tab === 'liveops' && <LiveOpsTab droneId="drone-01" />}
+          {tab === 'assets' && <AssetsTab />}
         </div>
       </div>
     </main>

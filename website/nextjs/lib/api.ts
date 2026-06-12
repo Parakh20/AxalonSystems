@@ -308,6 +308,32 @@ export type OrderCreate = Partial<
   Omit<ComponentOrder, 'id' | 'created_at' | 'updated_at'>
 >
 
+// ── Area C: Projects → Sites → Missions/Inspections ──────────────────────────
+
+export type ProjectStatus = 'active' | 'archived'
+
+export type Project = {
+  id: number
+  name: string
+  client: string | null
+  description: string | null
+  status: ProjectStatus
+  site_count?: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type ProjectSite = {
+  id: string
+  name: string
+  total_panels: number
+  inspection_count: number
+  mission_count: number
+  last_inspection_date: string | null
+}
+
+export type ProjectDetail = Project & { sites: ProjectSite[] }
+
 // ── /track workspace ──────────────────────────────────────────────────────────
 
 export type NoteKind = 'research' | 'log' | 'doc' | 'link' | 'idea' | 'other'
@@ -427,6 +453,19 @@ export const api = {
     }),
   deleteCorrection: (jobId: string, id: number) =>
     request<void>(`/corrections/${encodeURIComponent(jobId)}/${id}`, { method: 'DELETE' }),
+
+  projects: () => request<Project[]>('/projects'),
+  project: (id: number) => request<ProjectDetail>(`/projects/${id}`),
+  createProject: (body: { name: string; client?: string | null; description?: string | null }) =>
+    request<Project>('/projects', jsonInit('POST', body)),
+  updateProject: (id: number, body: Partial<Pick<Project, 'name' | 'client' | 'description' | 'status'>>) =>
+    request<Project>(`/projects/${id}`, jsonInit('PATCH', body)),
+  deleteProject: (id: number) => request<void>(`/projects/${id}`, { method: 'DELETE' }),
+  updatePark: (parkId: string, body: { project_id?: number | null; name?: string }) =>
+    request<{ id: string; name: string; project_id: number | null }>(
+      `/park/${encodeURIComponent(parkId)}`,
+      jsonInit('PATCH', body),
+    ),
 
   analyticsOverview: () =>
     request<{ park: ParkRef; trend: TrendPoint[] }[]>('/analytics/overview'),

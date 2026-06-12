@@ -49,11 +49,13 @@ from axalon.db.models import (
     ComponentOrder,
     InventoryComponent,
     Prototype,
+    Project,
     TrackFile,
     TrackNote,
     COMPONENT_CATEGORIES,
     NOTE_KINDS,
     ORDER_STATUSES,
+    PROJECT_STATUSES,
     PROTOTYPE_STATUSES,
 )
 from axalon.park.diff import build_diff
@@ -2405,6 +2407,173 @@ def inventory_summary():
             "open_order_count": open_orders,
             "stock_value": stock_value,
             "low_stock": low_stock,
+        }
+    finally:
+        session.close()
+
+
+# ── Area C: Projects → Sites (parks) → Missions/Inspections ──────────────────
+
+def _serialize_project(p: Project) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "client": p.client,
+        "description": p.description,
+        "status": p.status,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+def _project_sites(session, project_id: int) -> list[dict]:
+    sites = []
+    parks = session.query(Park).filter(Park.project_id == project_id).order_by(Park.id.asc()).all()
+    for park in parks:
+        inspections = (
+            session.query(Inspection)
+            .filter(Inspection.park_id == park.id)
+            .order_by(Inspection.flight_date.desc())
+            .all()
+        )
+        mission_count = session.query(Mission).filter(Mission.park_id == park.id).count()
+        sites.append({
+            "id": park.id,
+            "name": park.name,
+            "total_panels": park.total_panels,
+            "inspection_count": len(inspections),
+            "mission_count": mission_count,
+            "last_inspection_date": inspections[0].flight_date if inspections else None,
+        })
+    return sites
+
+
+@app.get("/projects")
+def list_projects():
+    session = get_session()
+    try:
+        projects = session.query(Project).order_by(Project.created_at.desc()).all()
+        out = []
+        for p in projects:
+            row = _serialize_project(p)
+            row["site_count"] = session.query(Park).filter(Park.project_id == p.id).count()
+            out.append(row)
+        return out
+    finally:
+        session.close()
+
+
+@app.post("/projects", status_code=201)
+def create_project(payload: dict):
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    status = str(payload.get("status") or "active")
+    if status not in PROJECT_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {PROJECT_STATUSES}")
+    session = get_session()
+    try:
+        p = Project(
+            name=name[:200],
+            client=payload.get("client"),
+            description=payload.get("description"),
+            status=status,
+        )
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        return JSONResponse(content=_serialize_project(p), status_code=201)
+    finally:
+        session.close()
+
+
+@app.get("/projects/{project_id}")
+def get_project(project_id: int):
+    """Project detail with its sites (parks) and per-site mission/inspection counts."""
+    session = get_session()
+    try:
+        p = session.query(Project).filter_by(id=project_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        detail = _serialize_project(p)
+        detail["sites"] = _project_sites(session, p.id)
+        return detail
+    finally:
+        session.close()
+
+
+@app.patch("/projects/{project_id}")
+def update_project(project_id: int, payload: dict):
+    session = get_session()
+    try:
+        p = session.query(Project).filter_by(id=project_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if "name" in payload:
+            name = str(payload.get("name") or "").strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="name is required")
+            p.name = name[:200]
+        if "status" in payload:
+            status = str(payload.get("status") or "")
+            if status not in PROJECT_STATUSES:
+                raise HTTPException(status_code=400, detail=f"status must be one of {PROJECT_STATUSES}")
+            p.status = status
+        for field in ("client", "description"):
+            if field in payload:
+                setattr(p, field, payload[field])
+        session.commit()
+        session.refresh(p)
+        return _serialize_project(p)
+    finally:
+        session.close()
+
+
+@app.delete("/projects/{project_id}", status_code=204)
+def delete_project(project_id: int):
+    """Delete a project; its parks remain but are unassigned."""
+    session = get_session()
+    try:
+        p = session.query(Project).filter_by(id=project_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        session.query(Park).filter(Park.project_id == project_id).update(
+            {Park.project_id: None}, synchronize_session=False
+        )
+        session.delete(p)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+@app.patch("/park/{park_id}")
+def update_park(park_id: str, payload: dict):
+    """Assign/unassign a park to a project (and rename)."""
+    park_id = _validate_park_id(park_id)
+    session = get_session()
+    try:
+        park = session.query(Park).filter_by(id=park_id).first()
+        if park is None:
+            raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
+        if "project_id" in payload:
+            project_id = payload.get("project_id")
+            if project_id is not None:
+                proj = session.query(Project).filter_by(id=int(project_id)).first()
+                if proj is None:
+                    raise HTTPException(status_code=404, detail="Project not found")
+            park.project_id = project_id
+        if "name" in payload:
+            name = str(payload.get("name") or "").strip()
+            if name:
+                park.name = name[:200]
+        session.commit()
+        session.refresh(park)
+        return {
+            "id": park.id,
+            "name": park.name,
+            "project_id": park.project_id,
+            "total_panels": park.total_panels,
         }
     finally:
         session.close()
