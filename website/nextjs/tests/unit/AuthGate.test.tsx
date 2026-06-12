@@ -10,10 +10,23 @@ afterEach(() => {
 })
 
 describe('AuthGate', () => {
-  test('renders children and no dialog by default', () => {
+  test('locks on mount when no key is stored and no env key exists', () => {
+    // Since 3e43eab the gate locks immediately unless a key can be seeded.
     render(<AuthGate><div>content</div></AuthGate>)
     expect(screen.getByText('content')).toBeInTheDocument()
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  test('seeds key from env var and renders without dialog', () => {
+    process.env.NEXT_PUBLIC_AXALON_API_KEY = 'env-key'
+    try {
+      render(<AuthGate><div>content</div></AuthGate>)
+      expect(screen.getByText('content')).toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBe('env-key')
+    } finally {
+      delete process.env.NEXT_PUBLIC_AXALON_API_KEY
+    }
   })
 
   test('shows lock screen when unauthorized event fires', () => {

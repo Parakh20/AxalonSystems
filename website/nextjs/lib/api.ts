@@ -213,6 +213,138 @@ export type MissionCreate = {
   image_count: number
 }
 
+// ── Inventory & prototype tracking ───────────────────────────────────────────
+
+export type ComponentCategory =
+  | 'flight-controller'
+  | 'motor'
+  | 'esc'
+  | 'battery'
+  | 'propeller'
+  | 'frame'
+  | 'camera'
+  | 'sensor'
+  | 'companion-computer'
+  | 'radio'
+  | 'gps'
+  | 'wiring'
+  | 'other'
+
+export type PrototypeStatus = 'planning' | 'building' | 'active' | 'retired'
+export type OrderStatus = 'planned' | 'ordered' | 'received' | 'cancelled'
+
+export type InventoryComponent = {
+  id: number
+  name: string
+  category: ComponentCategory
+  part_number: string | null
+  vendor: string | null
+  link: string | null
+  unit_cost: number | null
+  currency: string
+  qty_total: number
+  qty_assigned: number
+  qty_available: number
+  specs: string | null
+  notes: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type ComponentAssignment = {
+  id: number
+  component_id: number
+  prototype_id: number
+  component_name: string | null
+  component_category: string | null
+  qty: number
+  notes: string | null
+  created_at: string | null
+}
+
+export type Prototype = {
+  id: number
+  name: string
+  status: PrototypeStatus
+  description: string | null
+  notes: string | null
+  assignments: ComponentAssignment[]
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type ComponentOrder = {
+  id: number
+  component_id: number | null
+  name: string
+  qty: number
+  est_unit_cost: number | null
+  vendor: string | null
+  link: string | null
+  status: OrderStatus
+  needed_by: string | null
+  notes: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type InventorySummary = {
+  component_count: number
+  prototype_count: number
+  open_order_count: number
+  stock_value: number
+  low_stock: InventoryComponent[]
+}
+
+export type ComponentCreate = Partial<
+  Omit<InventoryComponent, 'id' | 'qty_assigned' | 'qty_available' | 'created_at' | 'updated_at'>
+> & { name: string }
+
+export type PrototypeCreate = Partial<Pick<Prototype, 'status' | 'description' | 'notes'>> & {
+  name: string
+}
+
+export type OrderCreate = Partial<
+  Omit<ComponentOrder, 'id' | 'created_at' | 'updated_at'>
+>
+
+// ── /track workspace ──────────────────────────────────────────────────────────
+
+export type NoteKind = 'research' | 'log' | 'doc' | 'link' | 'idea' | 'other'
+
+export type TrackNote = {
+  id: number
+  title: string
+  kind: NoteKind
+  body: string | null
+  url: string | null
+  tags: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type TrackFileMeta = {
+  id: number
+  original_name: string
+  stored_name: string
+  label: string | null
+  content_type: string | null
+  size_bytes: number
+  created_at: string | null
+}
+
+export type NoteCreate = Partial<Omit<TrackNote, 'id' | 'created_at' | 'updated_at'>> & {
+  title: string
+}
+
+function jsonInit(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }
+}
+
 export const api = {
   health: () => request<Health>('/health'),
   batch: (form: FormData) =>
@@ -295,4 +427,56 @@ export const api = {
     }),
   deleteCorrection: (jobId: string, id: number) =>
     request<void>(`/corrections/${encodeURIComponent(jobId)}/${id}`, { method: 'DELETE' }),
+
+  // Inventory & prototype tracking
+  inventorySummary: () => request<InventorySummary>('/inventory/summary'),
+  inventoryComponents: () => request<InventoryComponent[]>('/inventory/components'),
+  createComponent: (body: ComponentCreate) =>
+    request<InventoryComponent>('/inventory/components', jsonInit('POST', body)),
+  updateComponent: (id: number, body: Partial<ComponentCreate>) =>
+    request<InventoryComponent>(`/inventory/components/${id}`, jsonInit('PATCH', body)),
+  deleteComponent: (id: number) =>
+    request<void>(`/inventory/components/${id}`, { method: 'DELETE' }),
+  prototypes: () => request<Prototype[]>('/inventory/prototypes'),
+  createPrototype: (body: PrototypeCreate) =>
+    request<Prototype>('/inventory/prototypes', jsonInit('POST', body)),
+  updatePrototype: (id: number, body: Partial<PrototypeCreate>) =>
+    request<Prototype>(`/inventory/prototypes/${id}`, jsonInit('PATCH', body)),
+  deletePrototype: (id: number) =>
+    request<void>(`/inventory/prototypes/${id}`, { method: 'DELETE' }),
+  createAssignment: (body: { component_id: number; prototype_id: number; qty: number; notes?: string }) =>
+    request<ComponentAssignment>('/inventory/assignments', jsonInit('POST', body)),
+  updateAssignment: (id: number, body: { qty?: number; notes?: string }) =>
+    request<ComponentAssignment>(`/inventory/assignments/${id}`, jsonInit('PATCH', body)),
+  deleteAssignment: (id: number) =>
+    request<void>(`/inventory/assignments/${id}`, { method: 'DELETE' }),
+  orders: () => request<ComponentOrder[]>('/inventory/orders'),
+  createOrder: (body: OrderCreate) =>
+    request<ComponentOrder>('/inventory/orders', jsonInit('POST', body)),
+  updateOrder: (id: number, body: Partial<OrderCreate>) =>
+    request<ComponentOrder>(`/inventory/orders/${id}`, jsonInit('PATCH', body)),
+  deleteOrder: (id: number) =>
+    request<void>(`/inventory/orders/${id}`, { method: 'DELETE' }),
+
+  // /track workspace
+  trackLogin: (password: string) =>
+    request<{ ok: boolean }>('/track/login', jsonInit('POST', { password })),
+  trackNotes: (kind?: string) =>
+    request<TrackNote[]>(`/track/notes${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`),
+  createNote: (body: NoteCreate) => request<TrackNote>('/track/notes', jsonInit('POST', body)),
+  updateNote: (id: number, body: Partial<NoteCreate>) =>
+    request<TrackNote>(`/track/notes/${id}`, jsonInit('PATCH', body)),
+  deleteNote: (id: number) => request<void>(`/track/notes/${id}`, { method: 'DELETE' }),
+  trackFiles: () => request<TrackFileMeta[]>('/track/files'),
+  uploadTrackFile: (form: FormData) =>
+    request<TrackFileMeta>('/track/files', { method: 'POST', body: form }),
+  deleteTrackFile: (id: number) => request<void>(`/track/files/${id}`, { method: 'DELETE' }),
+  trackFileUrl: (id: number) => {
+    const storedKey =
+      typeof sessionStorage !== 'undefined'
+        ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
+        : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
+    const keyParam = storedKey ? `?api_key=${encodeURIComponent(storedKey)}` : ''
+    return `${API_BASE}/track/files/${id}${keyParam}`
+  },
 }

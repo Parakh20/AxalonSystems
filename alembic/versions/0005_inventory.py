@@ -73,9 +73,34 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['component_id'], ['inventory_components.id']),
     )
     op.create_index('ix_component_orders_component_id', 'component_orders', ['component_id'])
+    op.create_table(
+        'track_notes',
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('title', sa.String(), nullable=False),
+        sa.Column('kind', sa.String(), nullable=True),
+        sa.Column('body', sa.Text(), nullable=True),
+        sa.Column('url', sa.String(), nullable=True),
+        sa.Column('tags', sa.String(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.Column('updated_at', sa.DateTime(), nullable=True),
+        sa.PrimaryKeyConstraint('id'),
+    )
+    op.create_table(
+        'track_files',
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('original_name', sa.String(), nullable=False),
+        sa.Column('stored_name', sa.String(), nullable=False),
+        sa.Column('label', sa.String(), nullable=True),
+        sa.Column('content_type', sa.String(), nullable=True),
+        sa.Column('size_bytes', sa.Integer(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.PrimaryKeyConstraint('id'),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table('track_files')
+    op.drop_table('track_notes')
     op.drop_index('ix_component_orders_component_id', 'component_orders')
     op.drop_table('component_orders')
     op.drop_index('ix_component_assignments_prototype_id', 'component_assignments')

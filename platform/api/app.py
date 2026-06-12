@@ -49,7 +49,10 @@ from axalon.db.models import (
     ComponentOrder,
     InventoryComponent,
     Prototype,
+    TrackFile,
+    TrackNote,
     COMPONENT_CATEGORIES,
+    NOTE_KINDS,
     ORDER_STATUSES,
     PROTOTYPE_STATUSES,
 )
@@ -2403,6 +2406,229 @@ def inventory_summary():
             "stock_value": stock_value,
             "low_stock": low_stock,
         }
+    finally:
+        session.close()
+
+
+# ── /track workspace: login, notes, file library ─────────────────────────────
+
+TRACK_FILES_DIR = OUTPUT_DIR / "track_files"
+TRACK_FILES_DIR.mkdir(parents=True, exist_ok=True)
+
+# Reference docs and CAD only — no executables/scripts.
+_TRACK_ALLOWED_EXTENSIONS = {
+    ".stl", ".step", ".stp", ".obj", ".3mf", ".dxf", ".f3d", ".fcstd",
+    ".pdf", ".md", ".txt", ".csv", ".xlsx", ".docx",
+    ".png", ".jpg", ".jpeg", ".webp", ".svg",
+    ".zip", ".json", ".yaml", ".yml",
+}
+_MAX_TRACK_FILE_BYTES = 200 * 1024 * 1024  # 200 MB — STL meshes can be large
+
+
+@app.post("/track/login")
+def track_login(payload: dict):
+    """Verify the /track workspace password. The password lives ONLY in the
+    backend env (AXALON_TRACK_PASSWORD) — never shipped to the frontend bundle."""
+    import hmac
+
+    expected = os.environ.get("AXALON_TRACK_PASSWORD", "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="Track workspace password not configured")
+    supplied = str(payload.get("password") or "")
+    if not hmac.compare_digest(supplied.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Wrong password")
+    return {"ok": True}
+
+
+def _serialize_note(n: TrackNote) -> dict:
+    return {
+        "id": n.id,
+        "title": n.title,
+        "kind": n.kind,
+        "body": n.body,
+        "url": n.url,
+        "tags": n.tags,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+        "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+    }
+
+
+@app.get("/track/notes")
+def list_track_notes(kind: str | None = None):
+    session = get_session()
+    try:
+        q = session.query(TrackNote)
+        if kind:
+            q = q.filter(TrackNote.kind == kind)
+        return [_serialize_note(n) for n in q.order_by(TrackNote.created_at.desc()).all()]
+    finally:
+        session.close()
+
+
+@app.post("/track/notes", status_code=201)
+def create_track_note(payload: dict):
+    title = str(payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    kind = str(payload.get("kind") or "other")
+    if kind not in NOTE_KINDS:
+        raise HTTPException(status_code=400, detail=f"kind must be one of {NOTE_KINDS}")
+    session = get_session()
+    try:
+        n = TrackNote(
+            title=title[:200],
+            kind=kind,
+            body=payload.get("body"),
+            url=payload.get("url"),
+            tags=payload.get("tags"),
+        )
+        session.add(n)
+        session.commit()
+        session.refresh(n)
+        return JSONResponse(content=_serialize_note(n), status_code=201)
+    finally:
+        session.close()
+
+
+@app.patch("/track/notes/{note_id}")
+def update_track_note(note_id: int, payload: dict):
+    session = get_session()
+    try:
+        n = session.query(TrackNote).filter_by(id=note_id).first()
+        if n is None:
+            raise HTTPException(status_code=404, detail="Note not found")
+        if "title" in payload:
+            title = str(payload.get("title") or "").strip()
+            if not title:
+                raise HTTPException(status_code=400, detail="title is required")
+            n.title = title[:200]
+        if "kind" in payload:
+            kind = str(payload.get("kind") or "")
+            if kind not in NOTE_KINDS:
+                raise HTTPException(status_code=400, detail=f"kind must be one of {NOTE_KINDS}")
+            n.kind = kind
+        for field in ("body", "url", "tags"):
+            if field in payload:
+                setattr(n, field, payload[field])
+        session.commit()
+        session.refresh(n)
+        return _serialize_note(n)
+    finally:
+        session.close()
+
+
+@app.delete("/track/notes/{note_id}", status_code=204)
+def delete_track_note(note_id: int):
+    session = get_session()
+    try:
+        n = session.query(TrackNote).filter_by(id=note_id).first()
+        if n is None:
+            raise HTTPException(status_code=404, detail="Note not found")
+        session.delete(n)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+def _serialize_track_file(f: TrackFile) -> dict:
+    return {
+        "id": f.id,
+        "original_name": f.original_name,
+        "stored_name": f.stored_name,
+        "label": f.label,
+        "content_type": f.content_type,
+        "size_bytes": f.size_bytes,
+        "created_at": f.created_at.isoformat() if f.created_at else None,
+    }
+
+
+@app.get("/track/files")
+def list_track_files():
+    session = get_session()
+    try:
+        files = session.query(TrackFile).order_by(TrackFile.created_at.desc()).all()
+        return [_serialize_track_file(f) for f in files]
+    finally:
+        session.close()
+
+
+@app.post("/track/files", status_code=201)
+def upload_track_file(file: UploadFile = File(...), label: str = Form(None)):
+    """Store a reference file (.stl, .pdf, datasheet, …) in the track library."""
+    original = _safe_filename(file.filename, fallback="upload")
+    ext = Path(original).suffix.lower()
+    if ext not in _TRACK_ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext or 'unknown'}' not allowed",
+        )
+    stored_name = f"{uuid.uuid4().hex[:12]}_{original}"
+    dest = TRACK_FILES_DIR / stored_name
+
+    size = 0
+    try:
+        with open(dest, "wb") as out:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > _MAX_TRACK_FILE_BYTES:
+                    raise HTTPException(status_code=413, detail="File exceeds 200 MB limit")
+                out.write(chunk)
+    except HTTPException:
+        dest.unlink(missing_ok=True)
+        raise
+    except OSError as exc:
+        dest.unlink(missing_ok=True)
+        logger.error("track file write failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not store file")
+
+    session = get_session()
+    try:
+        rec = TrackFile(
+            original_name=original,
+            stored_name=stored_name,
+            label=(label or "").strip() or None,
+            content_type=file.content_type,
+            size_bytes=size,
+        )
+        session.add(rec)
+        session.commit()
+        session.refresh(rec)
+        return JSONResponse(content=_serialize_track_file(rec), status_code=201)
+    finally:
+        session.close()
+
+
+@app.get("/track/files/{file_id}")
+def download_track_file(file_id: int):
+    session = get_session()
+    try:
+        rec = session.query(TrackFile).filter_by(id=file_id).first()
+        if rec is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        path = TRACK_FILES_DIR / rec.stored_name
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="File missing on disk")
+        media_type = rec.content_type or mimetypes.guess_type(rec.original_name)[0] or "application/octet-stream"
+        return FileResponse(path, media_type=media_type, filename=rec.original_name)
+    finally:
+        session.close()
+
+
+@app.delete("/track/files/{file_id}", status_code=204)
+def delete_track_file(file_id: int):
+    session = get_session()
+    try:
+        rec = session.query(TrackFile).filter_by(id=file_id).first()
+        if rec is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        (TRACK_FILES_DIR / rec.stored_name).unlink(missing_ok=True)
+        session.delete(rec)
+        session.commit()
+        return Response(status_code=204)
     finally:
         session.close()
 

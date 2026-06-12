@@ -219,6 +219,35 @@ class ComponentOrder(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+# Allowed values for TrackNote.kind
+NOTE_KINDS = ("research", "log", "doc", "link", "idea", "other")
+
+
+class TrackNote(Base):
+    """Research note / hardware log / reference link on the /track workspace."""
+    __tablename__ = "track_notes"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String, nullable=False)
+    kind = Column(String, default="other")            # one of NOTE_KINDS
+    body = Column(Text, nullable=True)
+    url = Column(String, nullable=True)
+    tags = Column(String, nullable=True)              # comma-separated
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrackFile(Base):
+    """Uploaded reference file (.stl, .pdf, datasheets, …) stored on disk."""
+    __tablename__ = "track_files"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    original_name = Column(String, nullable=False)    # sanitized upload filename
+    stored_name = Column(String, nullable=False)      # uuid-prefixed name on disk
+    label = Column(String, nullable=True)             # human description
+    content_type = Column(String, nullable=True)
+    size_bytes = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # Composite index to make upsert lookups fast.
 Index(
     "ix_panel_faults_identity",
