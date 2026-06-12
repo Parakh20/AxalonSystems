@@ -8,7 +8,11 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8000
 WORKDIR /app
 
+# gcc/g++: some transitive deps (e.g. stringzilla) ship no prebuilt wheel for
+# this platform and must compile from source at pip-install time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
     curl \
     libpango-1.0-0 \
     libpangoft2-1.0-0 \
