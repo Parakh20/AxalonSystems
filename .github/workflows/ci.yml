@@ -3,8 +3,19 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+# A new push supersedes any still-running CI for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend-tests:
@@ -62,8 +73,22 @@ jobs:
           python3 scripts/make_sample_mission.py
           cd tests/fixtures && zip -rq sample_mission.zip sample_mission/
 
-      - name: Build docker-compose stack
-        run: docker compose build
+      - uses: docker/setup-buildx-action@v3
+
+      # GHA layer cache: the api image's ML deps (torch, ultralytics, easyocr)
+      # take ~10 min to build cold; cached rebuilds only re-run layers whose
+      # inputs changed (requirements files for the heavy ones).
+      - name: Build docker-compose stack (cached)
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: docker-compose.yml
+          load: true
+          set: |
+            api.cache-from=type=gha,scope=api
+            api.cache-to=type=gha,scope=api,mode=max
+            nextjs.cache-from=type=gha,scope=nextjs
+            nextjs.cache-to=type=gha,scope=nextjs,mode=max
 
       - name: Start docker-compose stack
         run: |
