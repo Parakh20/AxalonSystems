@@ -44,6 +44,20 @@ from axalon.reporting.report import (
 from axalon.reporting.geojson_writer import write_geojson
 from axalon.db.session import get_session
 from axalon.db.models import Park, Inspection, PanelFault, Detection as DbDetection, FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED, Correction, Job as DbJob, FaultComment, Mission
+from axalon.db.models import (
+    ComponentAssignment,
+    ComponentOrder,
+    InventoryComponent,
+    Prototype,
+    Project,
+    TrackFile,
+    TrackNote,
+    COMPONENT_CATEGORIES,
+    NOTE_KINDS,
+    ORDER_STATUSES,
+    PROJECT_STATUSES,
+    PROTOTYPE_STATUSES,
+)
 from axalon.park.diff import build_diff
 
 logger = logging.getLogger("axalon.api")
@@ -1918,6 +1932,910 @@ def delete_mission(mission_id: int):
         if m is None:
             raise HTTPException(status_code=404, detail="Mission not found")
         session.delete(m)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+# ── Inventory & prototype tracking (spec: 2026-06-12-inventory-page-design) ──
+
+def _assigned_qty(session, component_id: int, exclude_assignment_id: int | None = None) -> int:
+    q = session.query(ComponentAssignment).filter(
+        ComponentAssignment.component_id == component_id
+    )
+    if exclude_assignment_id is not None:
+        q = q.filter(ComponentAssignment.id != exclude_assignment_id)
+    return sum(a.qty or 0 for a in q.all())
+
+
+def _serialize_component(c: InventoryComponent, assigned: int) -> dict:
+    return {
+        "id": c.id,
+        "name": c.name,
+        "category": c.category,
+        "part_number": c.part_number,
+        "vendor": c.vendor,
+        "link": c.link,
+        "unit_cost": c.unit_cost,
+        "currency": c.currency,
+        "qty_total": c.qty_total or 0,
+        "qty_assigned": assigned,
+        "qty_available": (c.qty_total or 0) - assigned,
+        "specs": c.specs,
+        "notes": c.notes,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+    }
+
+
+def _serialize_assignment(a: ComponentAssignment, component: InventoryComponent | None = None) -> dict:
+    return {
+        "id": a.id,
+        "component_id": a.component_id,
+        "prototype_id": a.prototype_id,
+        "component_name": component.name if component else None,
+        "component_category": component.category if component else None,
+        "qty": a.qty or 0,
+        "notes": a.notes,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+    }
+
+
+def _serialize_prototype(p: Prototype, assignments: list[dict]) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "status": p.status,
+        "description": p.description,
+        "notes": p.notes,
+        "assignments": assignments,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+def _serialize_order(o: ComponentOrder) -> dict:
+    return {
+        "id": o.id,
+        "component_id": o.component_id,
+        "name": o.name,
+        "qty": o.qty or 0,
+        "est_unit_cost": o.est_unit_cost,
+        "vendor": o.vendor,
+        "link": o.link,
+        "status": o.status,
+        "needed_by": o.needed_by,
+        "notes": o.notes,
+        "created_at": o.created_at.isoformat() if o.created_at else None,
+        "updated_at": o.updated_at.isoformat() if o.updated_at else None,
+    }
+
+
+def _clean_name(payload: dict, required: bool = True) -> str | None:
+    name = str(payload.get("name") or "").strip()
+    if not name and required:
+        raise HTTPException(status_code=400, detail="name is required")
+    return name[:200] or None
+
+
+def _non_negative_int(payload: dict, key: str, default: int, minimum: int = 0) -> int:
+    raw = payload.get(key, default)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{key} must be an integer")
+    if value < minimum:
+        raise HTTPException(status_code=400, detail=f"{key} must be >= {minimum}")
+    return value
+
+
+@app.get("/inventory/components")
+def list_inventory_components():
+    """List all components with derived assigned/available quantities."""
+    session = get_session()
+    try:
+        components = (
+            session.query(InventoryComponent)
+            .order_by(InventoryComponent.category.asc(), InventoryComponent.name.asc())
+            .all()
+        )
+        return [_serialize_component(c, _assigned_qty(session, c.id)) for c in components]
+    finally:
+        session.close()
+
+
+@app.post("/inventory/components", status_code=201)
+def create_inventory_component(payload: dict):
+    name = _clean_name(payload)
+    category = str(payload.get("category") or "other")
+    if category not in COMPONENT_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"category must be one of {COMPONENT_CATEGORIES}")
+    qty_total = _non_negative_int(payload, "qty_total", 0)
+    session = get_session()
+    try:
+        c = InventoryComponent(
+            name=name,
+            category=category,
+            part_number=payload.get("part_number"),
+            vendor=payload.get("vendor"),
+            link=payload.get("link"),
+            unit_cost=payload.get("unit_cost"),
+            currency=str(payload.get("currency") or "INR"),
+            qty_total=qty_total,
+            specs=payload.get("specs"),
+            notes=payload.get("notes"),
+        )
+        session.add(c)
+        session.commit()
+        session.refresh(c)
+        return JSONResponse(content=_serialize_component(c, 0), status_code=201)
+    finally:
+        session.close()
+
+
+@app.patch("/inventory/components/{component_id}")
+def update_inventory_component(component_id: int, payload: dict):
+    session = get_session()
+    try:
+        c = session.query(InventoryComponent).filter_by(id=component_id).first()
+        if c is None:
+            raise HTTPException(status_code=404, detail="Component not found")
+        if "name" in payload:
+            c.name = _clean_name(payload)
+        if "category" in payload:
+            category = str(payload.get("category") or "other")
+            if category not in COMPONENT_CATEGORIES:
+                raise HTTPException(status_code=400, detail=f"category must be one of {COMPONENT_CATEGORIES}")
+            c.category = category
+        if "qty_total" in payload:
+            c.qty_total = _non_negative_int(payload, "qty_total", 0)
+        for field in ("part_number", "vendor", "link", "unit_cost", "currency", "specs", "notes"):
+            if field in payload:
+                setattr(c, field, payload[field])
+        session.commit()
+        session.refresh(c)
+        return _serialize_component(c, _assigned_qty(session, c.id))
+    finally:
+        session.close()
+
+
+@app.delete("/inventory/components/{component_id}", status_code=204)
+def delete_inventory_component(component_id: int):
+    session = get_session()
+    try:
+        c = session.query(InventoryComponent).filter_by(id=component_id).first()
+        if c is None:
+            raise HTTPException(status_code=404, detail="Component not found")
+        in_use = (
+            session.query(ComponentAssignment)
+            .filter(ComponentAssignment.component_id == component_id)
+            .count()
+        )
+        if in_use:
+            raise HTTPException(
+                status_code=409,
+                detail="Component is assigned to a prototype — unassign it first",
+            )
+        session.delete(c)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+@app.get("/inventory/prototypes")
+def list_prototypes():
+    """List prototypes, each embedding its BOM (assignments + component names)."""
+    session = get_session()
+    try:
+        protos = session.query(Prototype).order_by(Prototype.created_at.desc()).all()
+        out = []
+        for p in protos:
+            rows = (
+                session.query(ComponentAssignment, InventoryComponent)
+                .join(InventoryComponent, ComponentAssignment.component_id == InventoryComponent.id)
+                .filter(ComponentAssignment.prototype_id == p.id)
+                .order_by(ComponentAssignment.created_at.asc())
+                .all()
+            )
+            out.append(_serialize_prototype(p, [_serialize_assignment(a, c) for a, c in rows]))
+        return out
+    finally:
+        session.close()
+
+
+@app.post("/inventory/prototypes", status_code=201)
+def create_prototype(payload: dict):
+    name = _clean_name(payload)
+    status = str(payload.get("status") or "planning")
+    if status not in PROTOTYPE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {PROTOTYPE_STATUSES}")
+    session = get_session()
+    try:
+        p = Prototype(
+            name=name,
+            status=status,
+            description=payload.get("description"),
+            notes=payload.get("notes"),
+        )
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        return JSONResponse(content=_serialize_prototype(p, []), status_code=201)
+    finally:
+        session.close()
+
+
+@app.patch("/inventory/prototypes/{prototype_id}")
+def update_prototype(prototype_id: int, payload: dict):
+    session = get_session()
+    try:
+        p = session.query(Prototype).filter_by(id=prototype_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Prototype not found")
+        if "name" in payload:
+            p.name = _clean_name(payload)
+        if "status" in payload:
+            status = str(payload.get("status") or "")
+            if status not in PROTOTYPE_STATUSES:
+                raise HTTPException(status_code=400, detail=f"status must be one of {PROTOTYPE_STATUSES}")
+            p.status = status
+        for field in ("description", "notes"):
+            if field in payload:
+                setattr(p, field, payload[field])
+        session.commit()
+        session.refresh(p)
+        rows = (
+            session.query(ComponentAssignment, InventoryComponent)
+            .join(InventoryComponent, ComponentAssignment.component_id == InventoryComponent.id)
+            .filter(ComponentAssignment.prototype_id == p.id)
+            .all()
+        )
+        return _serialize_prototype(p, [_serialize_assignment(a, c) for a, c in rows])
+    finally:
+        session.close()
+
+
+@app.delete("/inventory/prototypes/{prototype_id}", status_code=204)
+def delete_prototype(prototype_id: int):
+    """Delete a prototype and its assignments (frees the assigned stock)."""
+    session = get_session()
+    try:
+        p = session.query(Prototype).filter_by(id=prototype_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Prototype not found")
+        session.query(ComponentAssignment).filter(
+            ComponentAssignment.prototype_id == prototype_id
+        ).delete(synchronize_session=False)
+        session.delete(p)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+@app.post("/inventory/assignments", status_code=201)
+def create_assignment(payload: dict):
+    """Install qty units of a component into a prototype — bounded by availability."""
+    component_id = _non_negative_int(payload, "component_id", 0, minimum=1)
+    prototype_id = _non_negative_int(payload, "prototype_id", 0, minimum=1)
+    qty = _non_negative_int(payload, "qty", 1, minimum=1)
+    session = get_session()
+    try:
+        c = session.query(InventoryComponent).filter_by(id=component_id).first()
+        if c is None:
+            raise HTTPException(status_code=404, detail="Component not found")
+        p = session.query(Prototype).filter_by(id=prototype_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Prototype not found")
+        available = (c.qty_total or 0) - _assigned_qty(session, component_id)
+        if qty > available:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only {available} unit(s) of '{c.name}' available",
+            )
+        a = ComponentAssignment(
+            component_id=component_id,
+            prototype_id=prototype_id,
+            qty=qty,
+            notes=payload.get("notes"),
+        )
+        session.add(a)
+        session.commit()
+        session.refresh(a)
+        return JSONResponse(content=_serialize_assignment(a, c), status_code=201)
+    finally:
+        session.close()
+
+
+@app.patch("/inventory/assignments/{assignment_id}")
+def update_assignment(assignment_id: int, payload: dict):
+    session = get_session()
+    try:
+        a = session.query(ComponentAssignment).filter_by(id=assignment_id).first()
+        if a is None:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        c = session.query(InventoryComponent).filter_by(id=a.component_id).first()
+        if "qty" in payload:
+            qty = _non_negative_int(payload, "qty", 1, minimum=1)
+            available = (c.qty_total or 0) - _assigned_qty(
+                session, a.component_id, exclude_assignment_id=a.id
+            )
+            if qty > available:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Only {available} unit(s) of '{c.name}' available",
+                )
+            a.qty = qty
+        if "notes" in payload:
+            a.notes = payload["notes"]
+        session.commit()
+        session.refresh(a)
+        return _serialize_assignment(a, c)
+    finally:
+        session.close()
+
+
+@app.delete("/inventory/assignments/{assignment_id}", status_code=204)
+def delete_assignment(assignment_id: int):
+    session = get_session()
+    try:
+        a = session.query(ComponentAssignment).filter_by(id=assignment_id).first()
+        if a is None:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        session.delete(a)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+@app.get("/inventory/orders")
+def list_orders():
+    session = get_session()
+    try:
+        orders = session.query(ComponentOrder).order_by(ComponentOrder.created_at.desc()).all()
+        return [_serialize_order(o) for o in orders]
+    finally:
+        session.close()
+
+
+@app.post("/inventory/orders", status_code=201)
+def create_order(payload: dict):
+    status = str(payload.get("status") or "planned")
+    if status not in ORDER_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {ORDER_STATUSES}")
+    qty = _non_negative_int(payload, "qty", 1, minimum=1)
+    session = get_session()
+    try:
+        component_id = payload.get("component_id")
+        name = _clean_name(payload, required=False)
+        if component_id is not None:
+            c = session.query(InventoryComponent).filter_by(id=int(component_id)).first()
+            if c is None:
+                raise HTTPException(status_code=404, detail="Component not found")
+            name = name or c.name
+        if not name:
+            raise HTTPException(status_code=400, detail="name or component_id is required")
+        o = ComponentOrder(
+            component_id=component_id,
+            name=name,
+            qty=qty,
+            est_unit_cost=payload.get("est_unit_cost"),
+            vendor=payload.get("vendor"),
+            link=payload.get("link"),
+            status=status,
+            needed_by=payload.get("needed_by"),
+            notes=payload.get("notes"),
+        )
+        session.add(o)
+        session.commit()
+        session.refresh(o)
+        return JSONResponse(content=_serialize_order(o), status_code=201)
+    finally:
+        session.close()
+
+
+@app.patch("/inventory/orders/{order_id}")
+def update_order(order_id: int, payload: dict):
+    """Update an order. Transitioning to 'received' on a linked order stocks-in qty."""
+    session = get_session()
+    try:
+        o = session.query(ComponentOrder).filter_by(id=order_id).first()
+        if o is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if "status" in payload:
+            status = str(payload.get("status") or "")
+            if status not in ORDER_STATUSES:
+                raise HTTPException(status_code=400, detail=f"status must be one of {ORDER_STATUSES}")
+            if status == "received" and o.status != "received" and o.component_id:
+                c = session.query(InventoryComponent).filter_by(id=o.component_id).first()
+                if c is not None:
+                    c.qty_total = (c.qty_total or 0) + (o.qty or 0)
+            o.status = status
+        if "name" in payload:
+            o.name = _clean_name(payload)
+        if "qty" in payload:
+            o.qty = _non_negative_int(payload, "qty", 1, minimum=1)
+        for field in ("est_unit_cost", "vendor", "link", "needed_by", "notes"):
+            if field in payload:
+                setattr(o, field, payload[field])
+        session.commit()
+        session.refresh(o)
+        return _serialize_order(o)
+    finally:
+        session.close()
+
+
+@app.delete("/inventory/orders/{order_id}", status_code=204)
+def delete_order(order_id: int):
+    session = get_session()
+    try:
+        o = session.query(ComponentOrder).filter_by(id=order_id).first()
+        if o is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        session.delete(o)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+@app.get("/inventory/summary")
+def inventory_summary():
+    """Headline numbers for the Inventory tab."""
+    session = get_session()
+    try:
+        components = session.query(InventoryComponent).all()
+        low_stock = []
+        stock_value = 0.0
+        for c in components:
+            assigned = _assigned_qty(session, c.id)
+            available = (c.qty_total or 0) - assigned
+            stock_value += (c.unit_cost or 0.0) * (c.qty_total or 0)
+            if available < 1:
+                low_stock.append(_serialize_component(c, assigned))
+        open_orders = (
+            session.query(ComponentOrder)
+            .filter(ComponentOrder.status.in_(("planned", "ordered")))
+            .count()
+        )
+        return {
+            "component_count": len(components),
+            "prototype_count": session.query(Prototype).count(),
+            "open_order_count": open_orders,
+            "stock_value": stock_value,
+            "low_stock": low_stock,
+        }
+    finally:
+        session.close()
+
+
+# ── Area C: Projects → Sites (parks) → Missions/Inspections ──────────────────
+
+def _serialize_project(p: Project) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "client": p.client,
+        "description": p.description,
+        "status": p.status,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+def _project_sites(session, project_id: int) -> list[dict]:
+    sites = []
+    parks = session.query(Park).filter(Park.project_id == project_id).order_by(Park.id.asc()).all()
+    for park in parks:
+        inspections = (
+            session.query(Inspection)
+            .filter(Inspection.park_id == park.id)
+            .order_by(Inspection.flight_date.desc())
+            .all()
+        )
+        mission_count = session.query(Mission).filter(Mission.park_id == park.id).count()
+        sites.append({
+            "id": park.id,
+            "name": park.name,
+            "total_panels": park.total_panels,
+            "inspection_count": len(inspections),
+            "mission_count": mission_count,
+            "last_inspection_date": inspections[0].flight_date if inspections else None,
+        })
+    return sites
+
+
+@app.get("/projects")
+def list_projects():
+    session = get_session()
+    try:
+        projects = session.query(Project).order_by(Project.created_at.desc()).all()
+        out = []
+        for p in projects:
+            row = _serialize_project(p)
+            row["site_count"] = session.query(Park).filter(Park.project_id == p.id).count()
+            out.append(row)
+        return out
+    finally:
+        session.close()
+
+
+@app.post("/projects", status_code=201)
+def create_project(payload: dict):
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    status = str(payload.get("status") or "active")
+    if status not in PROJECT_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {PROJECT_STATUSES}")
+    session = get_session()
+    try:
+        p = Project(
+            name=name[:200],
+            client=payload.get("client"),
+            description=payload.get("description"),
+            status=status,
+        )
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        return JSONResponse(content=_serialize_project(p), status_code=201)
+    finally:
+        session.close()
+
+
+@app.get("/projects/{project_id}")
+def get_project(project_id: int):
+    """Project detail with its sites (parks) and per-site mission/inspection counts."""
+    session = get_session()
+    try:
+        p = session.query(Project).filter_by(id=project_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        detail = _serialize_project(p)
+        detail["sites"] = _project_sites(session, p.id)
+        return detail
+    finally:
+        session.close()
+
+
+@app.patch("/projects/{project_id}")
+def update_project(project_id: int, payload: dict):
+    session = get_session()
+    try:
+        p = session.query(Project).filter_by(id=project_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if "name" in payload:
+            name = str(payload.get("name") or "").strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="name is required")
+            p.name = name[:200]
+        if "status" in payload:
+            status = str(payload.get("status") or "")
+            if status not in PROJECT_STATUSES:
+                raise HTTPException(status_code=400, detail=f"status must be one of {PROJECT_STATUSES}")
+            p.status = status
+        for field in ("client", "description"):
+            if field in payload:
+                setattr(p, field, payload[field])
+        session.commit()
+        session.refresh(p)
+        return _serialize_project(p)
+    finally:
+        session.close()
+
+
+@app.delete("/projects/{project_id}", status_code=204)
+def delete_project(project_id: int):
+    """Delete a project; its parks remain but are unassigned."""
+    session = get_session()
+    try:
+        p = session.query(Project).filter_by(id=project_id).first()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        session.query(Park).filter(Park.project_id == project_id).update(
+            {Park.project_id: None}, synchronize_session=False
+        )
+        session.delete(p)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+@app.patch("/park/{park_id}")
+def update_park(park_id: str, payload: dict):
+    """Assign/unassign a park to a project (and rename)."""
+    park_id = _validate_park_id(park_id)
+    session = get_session()
+    try:
+        park = session.query(Park).filter_by(id=park_id).first()
+        if park is None:
+            raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
+        if "project_id" in payload:
+            project_id = payload.get("project_id")
+            if project_id is not None:
+                proj = session.query(Project).filter_by(id=int(project_id)).first()
+                if proj is None:
+                    raise HTTPException(status_code=404, detail="Project not found")
+            park.project_id = project_id
+        if "name" in payload:
+            name = str(payload.get("name") or "").strip()
+            if name:
+                park.name = name[:200]
+        session.commit()
+        session.refresh(park)
+        return {
+            "id": park.id,
+            "name": park.name,
+            "project_id": park.project_id,
+            "total_panels": park.total_panels,
+        }
+    finally:
+        session.close()
+
+
+@app.get("/analytics/overview")
+def analytics_overview():
+    """All parks with their severity trends in ONE call — replaces the
+    frontend's per-park /park/{id}/trend fan-out on the Overview tab."""
+    from sqlalchemy import text
+    from axalon.park.trend import build_trend
+
+    session = get_session()
+    try:
+        parks = session.query(Park).order_by(Park.id.asc()).all()
+        if not parks:
+            return []
+        rows = session.execute(
+            text("""
+                SELECT i.park_id,
+                       i.id,
+                       i.flight_date,
+                       SUM(CASE WHEN d.severity = 'CRITICAL' THEN 1 ELSE 0 END) AS critical_count,
+                       SUM(CASE WHEN d.severity = 'HIGH'     THEN 1 ELSE 0 END) AS high_count,
+                       SUM(CASE WHEN d.severity = 'MEDIUM'   THEN 1 ELSE 0 END) AS medium_count,
+                       SUM(CASE WHEN d.severity = 'LOW'      THEN 1 ELSE 0 END) AS low_count
+                FROM inspections i
+                LEFT JOIN detections d ON d.inspection_id = i.id
+                GROUP BY i.park_id, i.id, i.flight_date
+            """)
+        ).fetchall()
+        rows_by_park: dict[str, list] = {}
+        for row in rows:
+            rows_by_park.setdefault(row.park_id, []).append(row)
+        return [
+            {
+                "park": {"id": p.id, "name": p.name},
+                "trend": build_trend(rows_by_park.get(p.id, [])),
+            }
+            for p in parks
+        ]
+    finally:
+        session.close()
+
+
+# ── /track workspace: login, notes, file library ─────────────────────────────
+
+TRACK_FILES_DIR = OUTPUT_DIR / "track_files"
+TRACK_FILES_DIR.mkdir(parents=True, exist_ok=True)
+
+# Reference docs and CAD only — no executables/scripts.
+_TRACK_ALLOWED_EXTENSIONS = {
+    ".stl", ".step", ".stp", ".obj", ".3mf", ".dxf", ".f3d", ".fcstd",
+    ".pdf", ".md", ".txt", ".csv", ".xlsx", ".docx",
+    ".png", ".jpg", ".jpeg", ".webp", ".svg",
+    ".zip", ".json", ".yaml", ".yml",
+}
+_MAX_TRACK_FILE_BYTES = 200 * 1024 * 1024  # 200 MB — STL meshes can be large
+
+
+@app.post("/track/login")
+def track_login(payload: dict):
+    """Verify the /track workspace password. The password lives ONLY in the
+    backend env (AXALON_TRACK_PASSWORD) — never shipped to the frontend bundle."""
+    import hmac
+
+    expected = os.environ.get("AXALON_TRACK_PASSWORD", "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="Track workspace password not configured")
+    supplied = str(payload.get("password") or "")
+    if not hmac.compare_digest(supplied.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Wrong password")
+    return {"ok": True}
+
+
+def _serialize_note(n: TrackNote) -> dict:
+    return {
+        "id": n.id,
+        "title": n.title,
+        "kind": n.kind,
+        "body": n.body,
+        "url": n.url,
+        "tags": n.tags,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+        "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+    }
+
+
+@app.get("/track/notes")
+def list_track_notes(kind: str | None = None):
+    session = get_session()
+    try:
+        q = session.query(TrackNote)
+        if kind:
+            q = q.filter(TrackNote.kind == kind)
+        return [_serialize_note(n) for n in q.order_by(TrackNote.created_at.desc()).all()]
+    finally:
+        session.close()
+
+
+@app.post("/track/notes", status_code=201)
+def create_track_note(payload: dict):
+    title = str(payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    kind = str(payload.get("kind") or "other")
+    if kind not in NOTE_KINDS:
+        raise HTTPException(status_code=400, detail=f"kind must be one of {NOTE_KINDS}")
+    session = get_session()
+    try:
+        n = TrackNote(
+            title=title[:200],
+            kind=kind,
+            body=payload.get("body"),
+            url=payload.get("url"),
+            tags=payload.get("tags"),
+        )
+        session.add(n)
+        session.commit()
+        session.refresh(n)
+        return JSONResponse(content=_serialize_note(n), status_code=201)
+    finally:
+        session.close()
+
+
+@app.patch("/track/notes/{note_id}")
+def update_track_note(note_id: int, payload: dict):
+    session = get_session()
+    try:
+        n = session.query(TrackNote).filter_by(id=note_id).first()
+        if n is None:
+            raise HTTPException(status_code=404, detail="Note not found")
+        if "title" in payload:
+            title = str(payload.get("title") or "").strip()
+            if not title:
+                raise HTTPException(status_code=400, detail="title is required")
+            n.title = title[:200]
+        if "kind" in payload:
+            kind = str(payload.get("kind") or "")
+            if kind not in NOTE_KINDS:
+                raise HTTPException(status_code=400, detail=f"kind must be one of {NOTE_KINDS}")
+            n.kind = kind
+        for field in ("body", "url", "tags"):
+            if field in payload:
+                setattr(n, field, payload[field])
+        session.commit()
+        session.refresh(n)
+        return _serialize_note(n)
+    finally:
+        session.close()
+
+
+@app.delete("/track/notes/{note_id}", status_code=204)
+def delete_track_note(note_id: int):
+    session = get_session()
+    try:
+        n = session.query(TrackNote).filter_by(id=note_id).first()
+        if n is None:
+            raise HTTPException(status_code=404, detail="Note not found")
+        session.delete(n)
+        session.commit()
+        return Response(status_code=204)
+    finally:
+        session.close()
+
+
+def _serialize_track_file(f: TrackFile) -> dict:
+    return {
+        "id": f.id,
+        "original_name": f.original_name,
+        "stored_name": f.stored_name,
+        "label": f.label,
+        "content_type": f.content_type,
+        "size_bytes": f.size_bytes,
+        "created_at": f.created_at.isoformat() if f.created_at else None,
+    }
+
+
+@app.get("/track/files")
+def list_track_files():
+    session = get_session()
+    try:
+        files = session.query(TrackFile).order_by(TrackFile.created_at.desc()).all()
+        return [_serialize_track_file(f) for f in files]
+    finally:
+        session.close()
+
+
+@app.post("/track/files", status_code=201)
+def upload_track_file(file: UploadFile = File(...), label: str = Form(None)):
+    """Store a reference file (.stl, .pdf, datasheet, …) in the track library."""
+    original = _safe_filename(file.filename, fallback="upload")
+    ext = Path(original).suffix.lower()
+    if ext not in _TRACK_ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext or 'unknown'}' not allowed",
+        )
+    stored_name = f"{uuid.uuid4().hex[:12]}_{original}"
+    dest = TRACK_FILES_DIR / stored_name
+
+    size = 0
+    try:
+        with open(dest, "wb") as out:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > _MAX_TRACK_FILE_BYTES:
+                    raise HTTPException(status_code=413, detail="File exceeds 200 MB limit")
+                out.write(chunk)
+    except HTTPException:
+        dest.unlink(missing_ok=True)
+        raise
+    except OSError as exc:
+        dest.unlink(missing_ok=True)
+        logger.error("track file write failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not store file")
+
+    session = get_session()
+    try:
+        rec = TrackFile(
+            original_name=original,
+            stored_name=stored_name,
+            label=(label or "").strip() or None,
+            content_type=file.content_type,
+            size_bytes=size,
+        )
+        session.add(rec)
+        session.commit()
+        session.refresh(rec)
+        return JSONResponse(content=_serialize_track_file(rec), status_code=201)
+    finally:
+        session.close()
+
+
+@app.get("/track/files/{file_id}")
+def download_track_file(file_id: int):
+    session = get_session()
+    try:
+        rec = session.query(TrackFile).filter_by(id=file_id).first()
+        if rec is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        path = TRACK_FILES_DIR / rec.stored_name
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="File missing on disk")
+        media_type = rec.content_type or mimetypes.guess_type(rec.original_name)[0] or "application/octet-stream"
+        return FileResponse(path, media_type=media_type, filename=rec.original_name)
+    finally:
+        session.close()
+
+
+@app.delete("/track/files/{file_id}", status_code=204)
+def delete_track_file(file_id: int):
+    session = get_session()
+    try:
+        rec = session.query(TrackFile).filter_by(id=file_id).first()
+        if rec is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        (TRACK_FILES_DIR / rec.stored_name).unlink(missing_ok=True)
+        session.delete(rec)
         session.commit()
         return Response(status_code=204)
     finally:

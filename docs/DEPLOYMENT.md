@@ -29,6 +29,7 @@ Open `http://localhost:3000/platform`.
 | Variable | Service | Default | Description |
 |---|---|---|---|
 | `AXALON_API_KEY` | API | empty | Bearer key required on all non-health endpoints when set |
+| `AXALON_TRACK_PASSWORD` | API | empty | Password for the `/track` workspace login (`POST /track/login`). Login returns 503 until set. Never put this in a `NEXT_PUBLIC_*` var |
 | `AXALON_DB_URL` | API | `sqlite:////app/data/axalon.db` in Docker | SQLAlchemy database URL |
 | `AXALON_OUTPUT_DIR` | API | `/app/data/output` in Docker | Generated reports and job artifacts |
 | `NEXT_PUBLIC_AXALON_API_URL` | Next.js | `http://localhost:8000` | API base URL used by the browser |

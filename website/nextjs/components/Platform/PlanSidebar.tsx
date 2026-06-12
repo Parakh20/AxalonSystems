@@ -41,6 +41,11 @@ type Props = {
   reinspectActive: boolean
   reinspectTargets: number
   canExport: boolean
+  terrainActive: boolean
+  terrainBusy: boolean
+  terrainDelta: string | null
+  onApplyTerrain: () => void
+  onClearTerrain: () => void
 }
 
 const TYPES: MissionType[] = ['grid', 'perimeter', 'corridor', 'orbit', 'solar']
@@ -61,6 +66,7 @@ export default function PlanSidebar(props: Props) {
     onImportBoundary, onExportBoundary, canExportBoundary,
     selectingRows, onToggleSelectRows, solarRowCount, onClearRows,
     onLoadReinspect, onClearReinspect, reinspectActive, reinspectTargets, canExport,
+    terrainActive, terrainBusy, terrainDelta, onApplyTerrain, onClearTerrain,
   } = props
 
   const [exportFormat, setExportFormat] = useState<ExportFormat>('litchi')
@@ -379,6 +385,37 @@ export default function PlanSidebar(props: Props) {
               <span style={{ color: '#0ea5e9' }}>{stats.batteryCount}</span>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Terrain follow */}
+      <section className="panel">
+        <div className="panel-head compact"><div className="panel-title">Terrain (AGL)</div></div>
+        <div className="plan-param">
+          {!terrainActive && (
+            <button
+              className="secondary"
+              style={{ width: '100%' }}
+              disabled={!canExport || terrainBusy}
+              onClick={onApplyTerrain}
+            >
+              {terrainBusy ? 'Fetching elevations…' : 'Follow terrain'}
+            </button>
+          )}
+          {terrainActive && (
+            <>
+              <div className="cam-row">
+                <span>Altitude adjusted</span>
+                <span style={{ color: '#0ea5e9' }}>{terrainDelta ?? 'applied'}</span>
+              </div>
+              <button className="secondary" style={{ width: '100%', marginTop: 4 }} onClick={onClearTerrain}>
+                Back to constant altitude
+              </button>
+            </>
+          )}
+          <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+            Per-waypoint ground elevation via Open-Elevation; falls back to constant altitude if unavailable.
+          </p>
         </div>
       </section>
 

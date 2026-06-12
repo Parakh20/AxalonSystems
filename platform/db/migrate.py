@@ -42,4 +42,11 @@ def run_migrations(engine: Engine) -> list[str]:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_detections_fault_id ON detections(fault_id)"))
         actions.append("added detections.fault_id")
 
+    # Add Park.project_id if missing (older DBs predate Area C asset hierarchy).
+    if _table_exists(engine, "parks") and not _has_column(engine, "parks", "project_id"):
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE parks ADD COLUMN project_id INTEGER REFERENCES projects(id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_parks_project_id ON parks(project_id)"))
+        actions.append("added parks.project_id")
+
     return actions

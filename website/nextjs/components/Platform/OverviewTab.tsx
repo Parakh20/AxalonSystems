@@ -59,15 +59,21 @@ export function OverviewTab() {
     let cancelled = false
     setLoading(true)
     ;(async () => {
-      const bundles = await Promise.all(
-        parks.map(async (park) => {
-          try {
-            return { park, trend: await api.parkTrend(park.id) }
-          } catch {
-            return { park, trend: [] as TrendPoint[] }
-          }
-        }),
-      )
+      // Single aggregated call; fall back to the per-park fan-out for older APIs.
+      let bundles: { park: (typeof parks)[number]; trend: TrendPoint[] }[]
+      try {
+        bundles = await api.analyticsOverview()
+      } catch {
+        bundles = await Promise.all(
+          parks.map(async (park) => {
+            try {
+              return { park, trend: await api.parkTrend(park.id) }
+            } catch {
+              return { park, trend: [] as TrendPoint[] }
+            }
+          }),
+        )
+      }
       if (cancelled) return
       const agg = aggregatePortfolio(bundles)
       const worst = bundles.find((b) => b.park.id === agg.worstParkId)

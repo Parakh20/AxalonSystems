@@ -11,6 +11,22 @@ FAULT_STALE = "stale"        # was open, not seen in the most recent inspection 
 FAULT_RESOLVED = "resolved"  # user-confirmed fix or auto-resolved after N missed inspections
 
 
+# Allowed values for Project.status
+PROJECT_STATUSES = ("active", "archived")
+
+
+class Project(Base):
+    """Top of the asset hierarchy: Project → Sites (parks) → Missions/Inspections."""
+    __tablename__ = "projects"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    client = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    status = Column(String, default="active")       # one of PROJECT_STATUSES
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Park(Base):
     __tablename__ = "parks"
     id = Column(String, primary_key=True)          # e.g. "PARK_01"
@@ -19,6 +35,7 @@ class Park(Base):
     total_panels = Column(Integer, default=0)
     rows = Column(Integer, default=0)
     cols = Column(Integer, default=0)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -144,6 +161,108 @@ class Mission(Base):
     image_count  = Column(Integer, nullable=True)
     created_at   = Column(DateTime, default=datetime.utcnow)
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ── Inventory & prototype tracking (spec: 2026-06-12-inventory-page-design) ──
+
+# Allowed values for InventoryComponent.category
+COMPONENT_CATEGORIES = (
+    "flight-controller", "motor", "esc", "battery", "propeller", "frame",
+    "camera", "sensor", "companion-computer", "radio", "gps", "wiring", "other",
+)
+
+# Allowed values for Prototype.status
+PROTOTYPE_STATUSES = ("planning", "building", "active", "retired")
+
+# Allowed values for ComponentOrder.status
+ORDER_STATUSES = ("planned", "ordered", "received", "cancelled")
+
+
+class InventoryComponent(Base):
+    """A hardware part type we own — qty_total counts every unit (in stock + installed)."""
+    __tablename__ = "inventory_components"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    category = Column(String, default="other")       # one of COMPONENT_CATEGORIES
+    part_number = Column(String, nullable=True)
+    vendor = Column(String, nullable=True)
+    link = Column(String, nullable=True)              # product URL
+    unit_cost = Column(Float, nullable=True)
+    currency = Column(String, default="INR")
+    qty_total = Column(Integer, default=0)            # >= 0
+    specs = Column(Text, nullable=True)               # free JSON/text
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Prototype(Base):
+    """A drone build (or any hardware prototype) that components get installed into."""
+    __tablename__ = "prototypes"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    status = Column(String, default="planning")       # one of PROTOTYPE_STATUSES
+    description = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ComponentAssignment(Base):
+    """BOM line: qty units of a component installed in a prototype."""
+    __tablename__ = "component_assignments"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    component_id = Column(Integer, ForeignKey("inventory_components.id"), nullable=False, index=True)
+    prototype_id = Column(Integer, ForeignKey("prototypes.id"), nullable=False, index=True)
+    qty = Column(Integer, default=1)                  # >= 1, <= component availability
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ComponentOrder(Base):
+    """A planned/placed purchase — receiving a linked order stocks-in qty_total."""
+    __tablename__ = "component_orders"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    component_id = Column(Integer, ForeignKey("inventory_components.id"), nullable=True, index=True)
+    name = Column(String, nullable=False)             # item name (defaults from component)
+    qty = Column(Integer, default=1)                  # >= 1
+    est_unit_cost = Column(Float, nullable=True)
+    vendor = Column(String, nullable=True)
+    link = Column(String, nullable=True)
+    status = Column(String, default="planned")        # one of ORDER_STATUSES
+    needed_by = Column(String, nullable=True)         # ISO date string
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# Allowed values for TrackNote.kind
+NOTE_KINDS = ("research", "log", "doc", "link", "idea", "other")
+
+
+class TrackNote(Base):
+    """Research note / hardware log / reference link on the /track workspace."""
+    __tablename__ = "track_notes"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String, nullable=False)
+    kind = Column(String, default="other")            # one of NOTE_KINDS
+    body = Column(Text, nullable=True)
+    url = Column(String, nullable=True)
+    tags = Column(String, nullable=True)              # comma-separated
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrackFile(Base):
+    """Uploaded reference file (.stl, .pdf, datasheets, …) stored on disk."""
+    __tablename__ = "track_files"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    original_name = Column(String, nullable=False)    # sanitized upload filename
+    stored_name = Column(String, nullable=False)      # uuid-prefixed name on disk
+    label = Column(String, nullable=True)             # human description
+    content_type = Column(String, nullable=True)
+    size_bytes = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 # Composite index to make upsert lookups fast.
