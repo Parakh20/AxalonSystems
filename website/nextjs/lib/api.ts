@@ -428,6 +428,9 @@ export const api = {
   deleteCorrection: (jobId: string, id: number) =>
     request<void>(`/corrections/${encodeURIComponent(jobId)}/${id}`, { method: 'DELETE' }),
 
+  analyticsOverview: () =>
+    request<{ park: ParkRef; trend: TrendPoint[] }[]>('/analytics/overview'),
+
   // Inventory & prototype tracking
   inventorySummary: () => request<InventorySummary>('/inventory/summary'),
   inventoryComponents: () => request<InventoryComponent[]>('/inventory/components'),
