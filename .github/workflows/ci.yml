@@ -86,9 +86,9 @@ jobs:
           load: true
           set: |
             api.cache-from=type=gha,scope=api
-            api.cache-to=type=gha,scope=api,mode=max
+            api.cache-to=type=gha,scope=api,mode=max,ignore-error=true
             nextjs.cache-from=type=gha,scope=nextjs
-            nextjs.cache-to=type=gha,scope=nextjs,mode=max
+            nextjs.cache-to=type=gha,scope=nextjs,mode=max,ignore-error=true
 
       - name: Start docker-compose stack
         run: |
