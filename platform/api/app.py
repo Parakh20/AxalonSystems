@@ -60,6 +60,13 @@ from axalon.db.models import (
 )
 from axalon.park.diff import build_diff
 from axalon.core.object_store import get_track_store
+from axalon.core.app_config import (
+    set_track_password,
+    verify_track_password,
+    OK as APP_CONFIG_OK,
+    WRONG as APP_CONFIG_WRONG,
+    UNCONFIGURED as APP_CONFIG_UNCONFIGURED,
+)
 
 logger = logging.getLogger("axalon.api")
 
@@ -2637,16 +2644,38 @@ _MAX_TRACK_FILE_BYTES = 200 * 1024 * 1024  # 200 MB — STL meshes can be large
 
 @app.post("/track/login")
 def track_login(payload: dict):
-    """Verify the /track workspace password. The password lives ONLY in the
-    backend env (AXALON_TRACK_PASSWORD) — never shipped to the frontend bundle."""
-    import hmac
-
-    expected = os.environ.get("AXALON_TRACK_PASSWORD", "").strip()
-    if not expected:
-        raise HTTPException(status_code=503, detail="Track workspace password not configured")
+    """Verify the /track workspace password. Checks the AXALON_TRACK_PASSWORD env
+    override first, then the hash stored in the Supabase `app_config` table.
+    The password is never shipped to the frontend bundle."""
     supplied = str(payload.get("password") or "")
-    if not hmac.compare_digest(supplied.encode(), expected.encode()):
+    session = get_session()
+    try:
+        outcome = verify_track_password(session, supplied)
+    finally:
+        session.close()
+    if outcome == APP_CONFIG_UNCONFIGURED:
+        raise HTTPException(status_code=503, detail="Track workspace password not set up yet")
+    if outcome != APP_CONFIG_OK:
         raise HTTPException(status_code=401, detail="Wrong password")
+    return {"ok": True}
+
+
+@app.post("/track/password")
+def set_track_workspace_password(payload: dict):
+    """Set/rotate the /track password (stored hashed in Supabase). Requires the
+    current password unless none is configured yet (first-time setup)."""
+    new_password = str(payload.get("new_password") or "")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    session = get_session()
+    try:
+        current = verify_track_password(session, str(payload.get("current_password") or ""))
+        if current == APP_CONFIG_WRONG:
+            raise HTTPException(status_code=401, detail="Current password is wrong")
+        # current == OK or UNCONFIGURED (first-time) both allowed to proceed
+        set_track_password(session, new_password)
+    finally:
+        session.close()
     return {"ok": True}
 
 

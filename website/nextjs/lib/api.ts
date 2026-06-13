@@ -503,6 +503,11 @@ export const api = {
   // /track workspace
   trackLogin: (password: string) =>
     request<{ ok: boolean }>('/track/login', jsonInit('POST', { password })),
+  setTrackPassword: (newPassword: string, currentPassword?: string) =>
+    request<{ ok: boolean }>(
+      '/track/password',
+      jsonInit('POST', { new_password: newPassword, current_password: currentPassword ?? '' }),
+    ),
   trackNotes: (kind?: string) =>
     request<TrackNote[]>(`/track/notes${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`),
   createNote: (body: NoteCreate) => request<TrackNote>('/track/notes', jsonInit('POST', body)),

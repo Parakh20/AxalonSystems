@@ -236,6 +236,16 @@ class ComponentOrder(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AppConfig(Base):
+    """Key/value app settings stored in the DB (Supabase) — e.g. the /track
+    workspace password hash. Lets config live in the database instead of
+    per-host environment variables."""
+    __tablename__ = "app_config"
+    key = Column(String, primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Allowed values for TrackNote.kind
 NOTE_KINDS = ("research", "log", "doc", "link", "idea", "other")
 
