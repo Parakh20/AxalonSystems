@@ -1,0 +1,83 @@
+{
+  "auto_run": false,
+  "current_session_id": "20260613_220352_plan-01",
+  "tasks": [
+    {
+      "id": "plan-01",
+      "name": "Split app.py into routers",
+      "priority": "P0",
+      "effort": "Large",
+      "file": "plan-01-api-routers.md",
+      "status": "running",
+      "session_id": "20260613_220352_plan-01",
+      "started_at": "2026-06-13T22:03:52.803285",
+      "completed_at": null
+    },
+    {
+      "id": "plan-02",
+      "name": "Pydantic request/response schemas",
+      "priority": "P0",
+      "effort": "Medium",
+      "file": "plan-02-pydantic-schemas.md",
+      "status": "done",
+      "session_id": null,
+      "started_at": null,
+      "completed_at": "2026-06-13T22:09:58.985191"
+    },
+    {
+      "id": "plan-03",
+      "name": "Implement park/locator.py",
+      "priority": "P1",
+      "effort": "Medium",
+      "file": "plan-03-park-locator.md",
+      "status": "pending",
+      "session_id": null,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "plan-04",
+      "name": "Expand test coverage to 80%",
+      "priority": "P1",
+      "effort": "Large",
+      "file": "plan-04-test-coverage.md",
+      "status": "pending",
+      "session_id": null,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "plan-05",
+      "name": "ML evaluation tooling",
+      "priority": "P2",
+      "effort": "Medium",
+      "file": "plan-05-ml-eval.md",
+      "status": "pending",
+      "session_id": null,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "plan-06",
+      "name": "Frontend UX improvements",
+      "priority": "P2",
+      "effort": "Medium",
+      "file": "plan-06-frontend-ux.md",
+      "status": "pending",
+      "session_id": null,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "plan-07",
+      "name": "Performance & async hardening",
+      "priority": "P2",
+      "effort": "Small",
+      "file": "plan-07-perf-async.md",
+      "status": "pending",
+      "session_id": null,
+      "started_at": null,
+      "completed_at": null
+    }
+  ]
+}

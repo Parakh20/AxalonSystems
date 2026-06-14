@@ -60,6 +60,7 @@ from axalon.db.models import (
 )
 from axalon.park.diff import build_diff
 from axalon.core.object_store import get_track_store
+from axalon.api.agents_router import router as agents_router
 from axalon.core.app_config import (
     set_track_password,
     verify_track_password,
@@ -184,6 +185,8 @@ _CORS_ORIGINS = [
     for origin in os.getenv("AXALON_CORS_ORIGINS", "").split(",")
     if origin.strip()
 ] or _DEFAULT_CORS_ORIGINS
+
+app.include_router(agents_router)
 
 app.add_middleware(
     CORSMiddleware,
