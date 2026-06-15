@@ -1,8 +1,11 @@
-name: DB migrate (Supabase)
+name: DB migrate (Azure PostgreSQL)
 
-# Applies Alembic migrations to the Supabase Postgres database whenever the
-# schema or migrations change on main. The DB URL is the Supabase session-pooler
-# (IPv4) connection string, stored as the AXALON_DB_URL repository secret.
+# Applies Alembic migrations to the Azure PostgreSQL database whenever the
+# schema or migrations change on main. The DB URL is the Azure PG connection
+# string stored as the AXALON_DB_URL repository secret.
+# Azure PG: axalon-pg.postgres.database.azure.com (southeastasia, B1MS)
+# NOTE: update the AXALON_DB_URL secret in GitHub repo settings to:
+#   postgresql+psycopg2://axalon:<PW>@axalon-pg.postgres.database.azure.com:5432/axalon?sslmode=require
 on:
   push:
     branches: [main]
