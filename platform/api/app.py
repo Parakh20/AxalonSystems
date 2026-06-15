@@ -199,7 +199,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def auth_middleware(request, call_next):
-    if request.url.path == "/health" or request.method == "OPTIONS":
+    if request.url.path in ("/health", "/track/login") or request.method == "OPTIONS":
         return await call_next(request)
     api_key = os.environ.get("AXALON_API_KEY", "").strip()
     supplied_key = request.query_params.get("api_key")
