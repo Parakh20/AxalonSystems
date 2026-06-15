@@ -12,8 +12,17 @@ export class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 20_000
+
+function isHtmlBody(text: string): boolean {
+  const t = text.trimStart()
+  return t.startsWith('<!DOCTYPE') || t.startsWith('<html')
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
     const storedKey =
       typeof sessionStorage !== 'undefined'
@@ -25,16 +34,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
           Authorization: `Bearer ${storedKey}`,
         }
       : ((init?.headers as Record<string, string> | undefined) ?? {})
-    res = await fetch(`${API_BASE}${path}`, { ...init, headers })
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers, signal: controller.signal })
   } catch (err) {
-    throw new ApiError(0, String(err), `Network error contacting ${API_BASE}${path}`)
+    const isTimeout = err instanceof Error && err.name === 'AbortError'
+    const msg = isTimeout
+      ? `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s — the backend may be starting up`
+      : `Network error contacting ${API_BASE}${path}`
+    throw new ApiError(0, String(err), msg)
+  } finally {
+    clearTimeout(timer)
   }
   const text = await res.text()
   if (!res.ok) {
     if (res.status === 401 && typeof window !== 'undefined') {
       window.dispatchEvent(new Event('axalon:unauthorized'))
     }
-    throw new ApiError(res.status, text)
+    const body = isHtmlBody(text) ? '' : text
+    const msg = isHtmlBody(text)
+      ? `Server error (HTTP ${res.status}) — the backend returned an unexpected response`
+      : undefined
+    throw new ApiError(res.status, body, msg)
   }
   if (!text) return undefined as T
   try {
