@@ -207,6 +207,25 @@ async def auth_middleware(request, call_next):
         return JSONResponse({"detail": "Invalid or missing API key"}, status_code=401)
     return await call_next(request)
 
+
+# Hard ceiling on any single request so a stuck inference can't pin a client open.
+_REQUEST_TIMEOUT_S = 120
+
+
+@app.middleware("http")
+async def timeout_middleware(request, call_next):
+    """Return 504 if a request takes longer than _REQUEST_TIMEOUT_S.
+
+    Registered after auth_middleware, so it wraps it as the outermost layer and
+    bounds the whole request lifecycle.
+    """
+    import asyncio
+
+    try:
+        return await asyncio.wait_for(call_next(request), timeout=_REQUEST_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        return JSONResponse({"detail": "Request timeout"}, status_code=504)
+
 # ── Shared state ──────────────────────────────────────────────────────────────
 OUTPUT_DIR = Path(os.getenv("AXALON_OUTPUT_DIR", "output"))
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -605,6 +624,40 @@ def _safe_extract_zip(zf: zipfile.ZipFile, extract_dir: Path) -> None:
         zf.extract(member, str(extract_dir))
 
 
+# 5 minutes — a corrupt/malicious archive must not hang the batch worker forever.
+_ZIP_EXTRACT_TIMEOUT_S = 300
+
+
+def _safe_extract_zip_with_timeout(
+    zf: zipfile.ZipFile, extract_dir: Path, timeout_s: int = _ZIP_EXTRACT_TIMEOUT_S
+) -> None:
+    """Run _safe_extract_zip under a SIGALRM watchdog (Unix-only).
+
+    Batch jobs run in a worker thread via BackgroundTasks, but extraction itself
+    has no inner bound — this caps it so a pathological ZIP raises TimeoutError
+    instead of stalling indefinitely. SIGALRM only fires on the main thread; when
+    it isn't available (non-main thread or non-Unix) we fall back to a plain call.
+    """
+    import signal
+
+    try:
+        def _handler(_signum, _frame):
+            raise TimeoutError(f"ZIP extraction exceeded {timeout_s}s")
+
+        old = signal.signal(signal.SIGALRM, _handler)
+    except (ValueError, AttributeError):
+        # Not the main thread, or SIGALRM unavailable — extract without the watchdog.
+        _safe_extract_zip(zf, extract_dir)
+        return
+
+    signal.alarm(timeout_s)
+    try:
+        _safe_extract_zip(zf, extract_dir)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
 def _run_batch_job(
     job_id: str,
     zip_path: Path,
@@ -617,7 +670,7 @@ def _run_batch_job(
 
     try:
         with zipfile.ZipFile(str(zip_path), "r") as zf:
-            _safe_extract_zip(zf, extract_dir)
+            _safe_extract_zip_with_timeout(zf, extract_dir)
         zip_path.unlink(missing_ok=True)
 
         def progress_cb(processed: int, total: int) -> None:
@@ -1689,8 +1742,12 @@ def get_settings():
 
 
 @app.put("/settings")
-async def update_settings(payload: dict):
-    """Overwrite settings.yaml with the provided dict (top-level key 'settings')."""
+def update_settings(payload: dict):
+    """Overwrite settings.yaml with the provided dict (top-level key 'settings').
+
+    Sync `def` (not `async def`): the body only does blocking file I/O, so
+    FastAPI runs it in its thread pool instead of stalling the event loop.
+    """
     try:
         import yaml
         new_settings = payload.get("settings") if isinstance(payload, dict) else None

@@ -74,10 +74,10 @@
       "priority": "P2",
       "effort": "Small",
       "file": "plan-07-perf-async.md",
-      "status": "pending",
+      "status": "done",
       "session_id": null,
       "started_at": null,
-      "completed_at": null
+      "completed_at": "2026-06-16T18:45:38.954Z"
     }
   ]
 }

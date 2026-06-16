@@ -29,6 +29,12 @@ def init_db(db_url: str = "sqlite:///axalon.db") -> None:
         @event.listens_for(_engine, "connect")
         def _set_sqlite_pragma(conn, _record):
             conn.execute("PRAGMA foreign_keys=ON")
+            # WAL lets the API read while a background job writes, avoiding
+            # "database is locked" errors; synchronous=NORMAL is the safe,
+            # recommended pairing with WAL. SQLite-only — never reached for
+            # PostgreSQL since this listener is gated by is_sqlite.
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
 
     Base.metadata.create_all(_engine)
 
