@@ -19,6 +19,7 @@ import cv2
 
 from axalon.core.geo import detection_to_gps, extract_gps_exif
 from axalon.park.layout import ParkLayoutDetector
+from axalon.park.locator import PANEL_ID_UNKNOWN, locate_faults
 from axalon.db.session import init_db, get_session
 from axalon.db.models import Park, Inspection, Detection as DbDetection
 from axalon.pipeline.ingest import find_image_pairs, load_mission_metadata, validate_pair
@@ -140,9 +141,18 @@ class InspectionOrchestrator:
             except Exception:
                 logger.warning("Temperature extraction failed for %s", thermal_path.name)
 
-        # Assign panel IDs
-        for det in detections:
-            det["panel_id"] = _match_panel_id(det, panel_map or {})
+        # Assign panel IDs — GPS-anchored locator first, pixel-nearest fallback.
+        # locate_faults returns one LocatedFault per detection, in order.
+        located = locate_faults(detections, {"panel_map": panel_map or {}})
+        for det, lf in zip(detections, located):
+            if lf.panel_id != PANEL_ID_UNKNOWN:
+                det["panel_id"] = lf.panel_id
+                det["panel_confidence"] = lf.confidence
+            else:
+                # No usable GPS / no GPS-anchored panel — fall back to the
+                # image-pixel nearest-center heuristic.
+                det["panel_id"] = _match_panel_id(det, panel_map or {})
+                det["panel_confidence"] = lf.confidence
 
         # Annotated thermal output
         annotated_thermal = draw_detections_severity(thermal_bgr, detections)
