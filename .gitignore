@@ -131,3 +131,4 @@ platform-post-*.png
 # Large datasets live outside the repo (stale submodule gitlink removed)
 ml/Datasets/
 .aider*
+deploy/azure/.infra-state

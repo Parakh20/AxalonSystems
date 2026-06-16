@@ -8,9 +8,9 @@
       "priority": "P0",
       "effort": "Large",
       "file": "plan-01-api-routers.md",
-      "status": "running",
-      "session_id": "20260613_220352_plan-01",
-      "started_at": "2026-06-13T22:03:52.803285",
+      "status": "pending",
+      "session_id": null,
+      "started_at": null,
       "completed_at": null
     },
     {
@@ -30,10 +30,10 @@
       "priority": "P1",
       "effort": "Medium",
       "file": "plan-03-park-locator.md",
-      "status": "pending",
+      "status": "done",
       "session_id": null,
       "started_at": null,
-      "completed_at": null
+      "completed_at": "2026-06-16T18:37:00.006Z"
     },
     {
       "id": "plan-04",
