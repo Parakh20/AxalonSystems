@@ -1,9 +1,10 @@
-"""Supabase Storage client for /track file uploads.
+"""Object storage clients for /track file uploads.
 
-The HF Spaces container disk is ephemeral — anything written locally vanishes on
-restart. When SUPABASE_URL + SUPABASE_SERVICE_KEY are set, track files live in a
-Supabase Storage bucket instead; without them we fall back to local disk so dev
-and CI keep working with zero configuration.
+The Azure VM disk is ephemeral across redeploys — anything written locally can
+be lost. When AZURE_STORAGE_CONNECTION_STRING is set, track files live in an
+Azure Blob Storage container instead; failing that, Supabase Storage is used
+if configured; without either we fall back to local disk so dev and CI keep
+working with zero configuration.
 """
 from __future__ import annotations
 
@@ -15,6 +16,47 @@ import requests
 DEFAULT_BUCKET = "track-files"
 _CHUNK = 1024 * 1024
 _TIMEOUT = 60  # seconds — STL uploads can be tens of MB
+
+
+class AzureBlobStorageStore:
+    """Minimal wrapper around azure-storage-blob for one container."""
+
+    def __init__(self, connection_string: str, container: str = DEFAULT_BUCKET):
+        from azure.storage.blob import BlobServiceClient
+
+        self._client = BlobServiceClient.from_connection_string(connection_string)
+        self.container = container
+        try:
+            self._client.create_container(container)
+        except Exception:
+            pass  # already exists
+
+    def upload(self, name: str, fileobj: BinaryIO, content_type: str) -> None:
+        from azure.storage.blob import ContentSettings
+
+        blob = self._client.get_blob_client(container=self.container, blob=name)
+        blob.upload_blob(
+            fileobj,
+            overwrite=True,
+            content_settings=ContentSettings(
+                content_type=content_type or "application/octet-stream"
+            ),
+        )
+
+    def download(self, name: str) -> Iterator[bytes] | None:
+        blob = self._client.get_blob_client(container=self.container, blob=name)
+        try:
+            stream = blob.download_blob()
+        except Exception:
+            return None
+        return stream.chunks()
+
+    def delete(self, name: str) -> None:
+        blob = self._client.get_blob_client(container=self.container, blob=name)
+        try:
+            blob.delete_blob()
+        except Exception:
+            pass  # missing objects are not an error
 
 
 class SupabaseStorage:
@@ -64,8 +106,14 @@ class SupabaseStorage:
             )
 
 
-def get_track_store() -> SupabaseStorage | None:
-    """Build the store from env, or None to use local-disk fallback."""
+def get_track_store() -> AzureBlobStorageStore | SupabaseStorage | None:
+    """Build the store from env, preferring Azure Blob, then Supabase, then
+    None to use the local-disk fallback."""
+    azure_conn = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "").strip()
+    if azure_conn:
+        container = os.environ.get("AZURE_TRACK_CONTAINER", DEFAULT_BUCKET).strip() or DEFAULT_BUCKET
+        return AzureBlobStorageStore(connection_string=azure_conn, container=container)
+
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
     if not url or not key:

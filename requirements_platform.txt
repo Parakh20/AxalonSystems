@@ -11,6 +11,7 @@ fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 python-multipart>=0.0.9          # FastAPI file upload support
 requests>=2.31.0                 # Supabase Storage client (track file library)
+azure-storage-blob>=12.19.0       # Azure Blob Storage client (track file library)
 
 # ── OCR — Panel number recognition ───────────────────────────────────────────
 easyocr>=1.7.1
