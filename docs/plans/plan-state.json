@@ -52,10 +52,10 @@
       "priority": "P2",
       "effort": "Medium",
       "file": "plan-05-ml-eval.md",
-      "status": "pending",
+      "status": "done",
       "session_id": null,
       "started_at": null,
-      "completed_at": null
+      "completed_at": "2026-06-16T18:42:39.185Z"
     },
     {
       "id": "plan-06",
