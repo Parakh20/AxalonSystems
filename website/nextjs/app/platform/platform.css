@@ -1680,3 +1680,163 @@ select:focus {
     display: none;
   }
 }
+
+/* ─── Plan 06: UX improvements ─── */
+
+/* Shimmer keyframe for <Skeleton*> components (global, so tabs need not render <SkeletonStyle/>) */
+@keyframes ax-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Error banner — used by data-fetching tabs on failure */
+.ax-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+}
+.ax-error-banner-icon {
+  flex-shrink: 0;
+}
+.ax-error-banner-msg {
+  flex: 1;
+  word-break: break-word;
+}
+.ax-error-banner-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #991b1b;
+  font: 700 12px/1 Inter, sans-serif;
+  cursor: pointer;
+}
+.ax-error-banner-retry:hover {
+  background: #fee2e2;
+}
+
+/* Empty state — illustration + CTA when a tab has no data */
+.ax-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 16px;
+  padding: 40px 24px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  text-align: center;
+  color: #64748b;
+}
+.ax-empty-state-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e0f2fe, #ede9fe);
+  color: #0ea5e9;
+}
+.ax-empty-state p {
+  margin: 0;
+  font-size: 14px;
+  max-width: 360px;
+}
+.ax-empty-state button {
+  height: 36px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  font: 700 13px/1 Inter, sans-serif;
+  cursor: pointer;
+}
+.ax-empty-state button:hover {
+  background: #1f2937;
+}
+
+/* Sortable history columns */
+.hist-head.sortable span {
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hist-head.sortable span:hover {
+  color: #111827;
+}
+.hist-sort-arrow {
+  font-size: 10px;
+  color: #0ea5e9;
+}
+
+/* ── Mobile rail: icon-only below 768px ── */
+@media (max-width: 768px) {
+  .rail-link span {
+    display: none;
+  }
+  .rail-link {
+    justify-content: center;
+    padding: 9px;
+  }
+}
+
+/* ── Mobile rail: bottom tab-bar below 480px ── */
+@media (max-width: 480px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .rail {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 8px;
+    border-right: 0;
+    border-top: 1px solid #e2e8f0;
+    z-index: 1100;
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.08);
+  }
+  .rail-brand {
+    display: none;
+  }
+  .rail-foot {
+    display: none;
+  }
+  .rail-nav {
+    flex-direction: row;
+    flex: 1;
+    justify-content: space-between;
+    gap: 2px;
+  }
+  .rail-link {
+    flex: 1;
+    padding: 8px 4px;
+  }
+  /* Keep content clear of the fixed bottom bar */
+  .wrap.tab-content {
+    padding-bottom: 72px;
+  }
+}

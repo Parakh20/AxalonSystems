@@ -81,6 +81,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'overview' ? 'active' : ''}`}
               onClick={() => setTab('overview')}
               title="Overview"
+              aria-label="Overview"
             >
               <BarChart3 size={16} />
               <span>Overview</span>
@@ -90,6 +91,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'operations' ? 'active' : ''}`}
               onClick={() => setTab('operations')}
               title="Operations"
+              aria-label="Operations"
             >
               <LayoutDashboard size={16} />
               <span>Operations</span>
@@ -99,6 +101,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'inspect' ? 'active' : ''}`}
               onClick={() => setTab('inspect')}
               title="Inspect"
+              aria-label="Inspect"
             >
               <ImageIcon size={16} />
               <span>Inspect</span>
@@ -108,6 +111,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'history' ? 'active' : ''}`}
               onClick={() => setTab('history')}
               title="History"
+              aria-label="History"
             >
               <HistoryIcon size={16} />
               <span>History</span>
@@ -117,6 +121,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'parkmap' ? 'active' : ''}`}
               onClick={() => setTab('parkmap')}
               title="Park Map"
+              aria-label="Park Map"
               data-testid="tab-parkmap"
             >
               <MapIcon size={16} />
@@ -127,6 +132,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'diff' ? 'active' : ''}`}
               onClick={() => setTab('diff')}
               title="Diff"
+              aria-label="Diff"
             >
               <GitCompare size={16} />
               <span>Diff</span>
@@ -136,6 +142,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'plan' ? 'active' : ''}`}
               onClick={() => setTab('plan')}
               title="Plan"
+              aria-label="Plan"
               data-testid="tab-plan"
             >
               <Navigation2 size={16} />
@@ -146,6 +153,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'assets' ? 'active' : ''}`}
               onClick={() => setTab('assets')}
               title="Assets"
+              aria-label="Assets"
               data-testid="tab-assets"
             >
               <FolderKanban size={16} />
@@ -156,6 +164,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'liveops' ? 'active' : ''}`}
               onClick={() => setTab('liveops')}
               title="Live Ops"
+              aria-label="Live Ops"
               data-testid="tab-liveops"
             >
               <Radio size={16} />
@@ -166,6 +175,7 @@ function PlatformShell() {
               className={`rail-link ${tab === 'settings' ? 'active' : ''}`}
               onClick={() => setTab('settings')}
               title="Settings"
+              aria-label="Settings"
             >
               <SlidersHorizontal size={16} />
               <span>Settings</span>
@@ -184,7 +194,7 @@ function PlatformShell() {
 
         {/* Main content area */}
         <div className="wrap tab-content platform-container">
-          {tab === 'overview' && <OverviewTab />}
+          {tab === 'overview' && <OverviewTab onTabChange={setTab} />}
           {tab === 'operations' && <OperationsTab />}
           {tab === 'inspect' && <InspectTab />}
           {tab === 'history' && <HistoryTab />}

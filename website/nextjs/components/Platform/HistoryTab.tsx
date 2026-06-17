@@ -1,11 +1,21 @@
 'use client'
 
 import { History as HistoryIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useToast } from '@/components/Platform/Toast'
 import { useParks } from '@/components/Platform/hooks/useParks'
 import { TrendChart } from '@/components/Platform/TrendChart'
+import { ErrorBanner } from '@/components/Platform/ErrorBanner'
+import { SkeletonLine } from '@/components/Platform/Skeleton'
 import { api, ApiError, type RecurringPanel, type TrendPoint } from '@/lib/api'
+
+type SortColumn = 'date' | 'images' | 'detections' | 'critical' | 'high'
+type SortDirection = 'asc' | 'desc'
+
+function sevCountOf(summary: Record<string, number> | undefined, key: string): number {
+  const s = summary || {}
+  return Number(s[key] ?? s[key.toUpperCase()] ?? s[key.toLowerCase()] ?? 0)
+}
 
 type InspectionRow = {
   id: number
@@ -101,9 +111,15 @@ export function HistoryTab() {
   const [historyParkId, setHistoryParkId] = useState<string>('')
   const [parkSummary, setParkSummary] = useState<ParkSummary | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const [trendData, setTrendData] = useState<TrendPoint[]>([])
   const [trendLoading, setTrendLoading] = useState(false)
   const [recurringData, setRecurringData] = useState<RecurringPanel[]>([])
+  const [reloadKey, setReloadKey] = useState(0)
+  const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection }>({
+    column: 'date',
+    direction: 'desc',
+  })
 
   // Default to first park once loaded
   useEffect(() => {
@@ -116,18 +132,21 @@ export function HistoryTab() {
   useEffect(() => {
     if (!historyParkId) return
     setHistoryLoading(true)
+    setHistoryError(null)
     ;(async () => {
       try {
         const d = await api.park(historyParkId)
         setParkSummary(d as ParkSummary)
       } catch (err) {
-        toast.error(err instanceof ApiError ? err.message : String(err))
+        const msg = err instanceof ApiError ? err.message : String(err)
+        setHistoryError(msg)
+        toast.error(msg)
         setParkSummary(null)
       } finally {
         setHistoryLoading(false)
       }
     })()
-  }, [historyParkId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [historyParkId, reloadKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!historyParkId) {
@@ -170,6 +189,38 @@ export function HistoryTab() {
       cancelled = true
     }
   }, [historyParkId])
+
+  const inspections = parkSummary?.inspections ?? []
+  const sortedInspections = useMemo(() => {
+    const valueOf = (ins: InspectionRow): number => {
+      switch (sort.column) {
+        case 'date':
+          return ins.flight_date ? new Date(ins.flight_date).getTime() : 0
+        case 'images':
+          return ins.total_images ?? 0
+        case 'detections':
+          return ins.total_detections ?? 0
+        case 'critical':
+          return sevCountOf(ins.summary, 'CRITICAL')
+        case 'high':
+          return sevCountOf(ins.summary, 'HIGH')
+      }
+    }
+    const factor = sort.direction === 'asc' ? 1 : -1
+    return [...inspections].sort((a, b) => (valueOf(a) - valueOf(b)) * factor)
+  }, [inspections, sort])
+
+  const toggleSort = (column: SortColumn) =>
+    setSort((prev) =>
+      prev.column === column
+        ? { column, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+        : { column, direction: 'desc' },
+    )
+
+  const sortArrow = (column: SortColumn) =>
+    sort.column === column ? (
+      <span className="hist-sort-arrow">{sort.direction === 'asc' ? '▲' : '▼'}</span>
+    ) : null
 
   return (
     <section className="tab-section">
@@ -220,44 +271,56 @@ export function HistoryTab() {
           </select>
         </div>
 
-        {historyLoading && <div className="empty">Loading…</div>}
-        {!historyLoading && parkSummary && parkSummary.inspections && (
+        {historyError && !historyLoading && (
+          <ErrorBanner message={historyError} onRetry={() => setReloadKey((k) => k + 1)} />
+        )}
+        {historyLoading && (
+          <div className="table" style={{ marginTop: 16 }}>
+            <div className="table-head hist-head">
+              <span>Date</span>
+              <span>Images</span>
+              <span>Detections</span>
+              <span>Critical</span>
+              <span>High</span>
+            </div>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div className="hist-row" key={i}>
+                <SkeletonLine />
+                <SkeletonLine width={40} />
+                <SkeletonLine width={40} />
+                <SkeletonLine width={32} />
+                <SkeletonLine width={32} />
+              </div>
+            ))}
+          </div>
+        )}
+        {!historyLoading && !historyError && parkSummary && parkSummary.inspections && (
           <>
             <HistoryChart inspections={parkSummary.inspections} />
             <div className="table" style={{ marginTop: 16 }}>
-              <div className="table-head hist-head">
-                <span>Date</span>
-                <span>Images</span>
-                <span>Detections</span>
-                <span>Critical</span>
-                <span>High</span>
+              <div className="table-head hist-head sortable">
+                <span onClick={() => toggleSort('date')}>Date {sortArrow('date')}</span>
+                <span onClick={() => toggleSort('images')}>Images {sortArrow('images')}</span>
+                <span onClick={() => toggleSort('detections')}>Detections {sortArrow('detections')}</span>
+                <span onClick={() => toggleSort('critical')}>Critical {sortArrow('critical')}</span>
+                <span onClick={() => toggleSort('high')}>High {sortArrow('high')}</span>
               </div>
-              {parkSummary.inspections.map((ins) => {
-                const summary = ins.summary || {}
-                const sevCount = (key: string) =>
-                  Number(
-                    summary[key] ??
-                      summary[key.toUpperCase()] ??
-                      summary[key.toLowerCase()] ??
-                      0,
-                  )
-                return (
-                  <div className="hist-row" key={ins.id}>
-                    <span>
-                      {ins.flight_date
-                        ? new Date(ins.flight_date).toLocaleString()
-                        : `#${ins.id}`}
-                    </span>
-                    <span>{ins.total_images ?? '—'}</span>
-                    <span>{ins.total_detections ?? 0}</span>
-                    <span>
-                      <strong style={{ color: '#991b1b' }}>{sevCount('CRITICAL')}</strong>
-                    </span>
-                    <span style={{ color: '#cc5500' }}>{sevCount('HIGH')}</span>
-                  </div>
-                )
-              })}
-              {parkSummary.inspections.length === 0 && (
+              {sortedInspections.map((ins) => (
+                <div className="hist-row" key={ins.id}>
+                  <span>
+                    {ins.flight_date
+                      ? new Date(ins.flight_date).toLocaleString()
+                      : `#${ins.id}`}
+                  </span>
+                  <span>{ins.total_images ?? '—'}</span>
+                  <span>{ins.total_detections ?? 0}</span>
+                  <span>
+                    <strong style={{ color: '#991b1b' }}>{sevCountOf(ins.summary, 'CRITICAL')}</strong>
+                  </span>
+                  <span style={{ color: '#cc5500' }}>{sevCountOf(ins.summary, 'HIGH')}</span>
+                </div>
+              ))}
+              {sortedInspections.length === 0 && (
                 <div className="empty">No inspections yet for this park.</div>
               )}
             </div>
@@ -303,7 +366,7 @@ export function HistoryTab() {
             )}
           </>
         )}
-        {!historyLoading && !parkSummary && (
+        {!historyLoading && !historyError && !parkSummary && (
           <div className="empty">Pick a park to see its history.</div>
         )}
       </section>

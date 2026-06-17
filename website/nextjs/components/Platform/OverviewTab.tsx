@@ -1,12 +1,19 @@
 // website/nextjs/components/Platform/OverviewTab.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { BarChart3 } from 'lucide-react'
 import { api, ApiError, type TrendPoint } from '@/lib/api'
 import { useParks } from '@/components/Platform/hooks/useParks'
 import { aggregatePortfolio, SEVERITIES, type PortfolioSummary, type Severity } from '@/lib/analytics'
 import { TrendChart } from '@/components/Platform/TrendChart'
 import { useToast } from '@/components/Platform/Toast'
+import { ErrorBanner } from '@/components/Platform/ErrorBanner'
+import { SkeletonBlock } from '@/components/Platform/Skeleton'
+
+type OverviewTabProps = {
+  onTabChange?: (tab: 'operations') => void
+}
 
 const SEV_COLOR: Record<Severity, string> = {
   CRITICAL: '#dc2626',
@@ -42,13 +49,15 @@ function SeverityBars({ bySeverity }: { bySeverity: Record<Severity, number> }) 
   )
 }
 
-export function OverviewTab() {
+export function OverviewTab({ onTabChange }: OverviewTabProps = {}) {
   const toast = useToast()
   const { parks, loading: parksLoading } = useParks()
   const [summary, setSummary] = useState<PortfolioSummary | null>(null)
   const [worstTrend, setWorstTrend] = useState<TrendPoint[]>([])
   const [worstName, setWorstName] = useState<string>('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (parksLoading) return
@@ -58,6 +67,7 @@ export function OverviewTab() {
     }
     let cancelled = false
     setLoading(true)
+    setError(null)
     ;(async () => {
       // Single aggregated call; fall back to the per-park fan-out for older APIs.
       let bundles: { park: (typeof parks)[number]; trend: TrendPoint[] }[]
@@ -84,18 +94,27 @@ export function OverviewTab() {
     })().catch((err) => {
       if (cancelled) return
       setLoading(false)
-      toast.error(err instanceof ApiError ? err.message : String(err))
+      const msg = err instanceof ApiError ? err.message : String(err)
+      setError(msg)
+      toast.error(msg)
     })
     return () => {
       cancelled = true
     }
-  }, [parks, parksLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [parks, parksLoading, reloadKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const retry = useCallback(() => setReloadKey((k) => k + 1), [])
 
   if (!parksLoading && parks.length === 0) {
     return (
-      <div className="panel" style={{ margin: 16, padding: 24, textAlign: 'center', color: '#64748b' }}>
-        <div style={{ fontSize: 15, marginBottom: 6 }}>No parks yet</div>
-        <div style={{ fontSize: 13 }}>Run an inspection to populate the portfolio dashboard.</div>
+      <div className="ax-empty-state">
+        <div className="ax-empty-state-icon">
+          <BarChart3 size={26} />
+        </div>
+        <p>No parks yet. Upload your first batch inspection to get started.</p>
+        <button type="button" onClick={() => onTabChange?.('operations')}>
+          Go to Operations
+        </button>
       </div>
     )
   }
@@ -104,13 +123,25 @@ export function OverviewTab() {
     <div style={{ padding: 16, overflowY: 'auto' }}>
       <h2 style={{ margin: '0 0 12px', fontSize: 18 }}>Portfolio Overview</h2>
 
+      {error && <ErrorBanner message={error} onRetry={retry} />}
+
       {/* KPIs */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-        <Kpi label="Parks" value={summary?.parkCount ?? (loading ? '…' : 0)} />
-        <Kpi label="Inspections" value={summary?.inspectionCount ?? (loading ? '…' : 0)} />
-        <Kpi label="Total faults" value={summary?.totalFaults ?? (loading ? '…' : 0)} />
-        <Kpi label="Critical" value={summary?.bySeverity.CRITICAL ?? (loading ? '…' : 0)} color={SEV_COLOR.CRITICAL} />
-      </div>
+      {!summary && loading ? (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="panel" style={{ flex: '1 1 120px', padding: '12px 14px' }}>
+              <SkeletonBlock height={48} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+          <Kpi label="Parks" value={summary?.parkCount ?? (loading ? '…' : 0)} />
+          <Kpi label="Inspections" value={summary?.inspectionCount ?? (loading ? '…' : 0)} />
+          <Kpi label="Total faults" value={summary?.totalFaults ?? (loading ? '…' : 0)} />
+          <Kpi label="Critical" value={summary?.bySeverity.CRITICAL ?? (loading ? '…' : 0)} color={SEV_COLOR.CRITICAL} />
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         {/* Severity breakdown */}

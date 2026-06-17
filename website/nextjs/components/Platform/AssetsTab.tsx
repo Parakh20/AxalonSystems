@@ -5,6 +5,8 @@ import { ChevronDown, ChevronRight, FolderKanban, Plus, Trash2 } from 'lucide-re
 import { api, ApiError, type Project, type ProjectDetail } from '@/lib/api'
 import { useParks } from '@/components/Platform/hooks/useParks'
 import { useToast } from '@/components/Platform/Toast'
+import { ErrorBanner } from '@/components/Platform/ErrorBanner'
+import { SkeletonLine } from '@/components/Platform/Skeleton'
 
 function errMessage(err: unknown): string {
   return err instanceof ApiError || err instanceof Error ? err.message : String(err)
@@ -161,15 +163,19 @@ export function AssetsTab() {
   const toast = useToast()
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [client, setClient] = useState('')
   const [description, setDescription] = useState('')
 
   const reload = useCallback(async () => {
+    setLoadError(null)
     try {
       setProjects(await api.projects())
     } catch (err) {
-      toast.error(errMessage(err))
+      const msg = errMessage(err)
+      setLoadError(msg)
+      toast.error(msg)
     } finally {
       setIsLoading(false)
     }
@@ -218,8 +224,20 @@ export function AssetsTab() {
         </div>
       </div>
 
-      {isLoading && <div className="empty">Loading projects…</div>}
-      {!isLoading && projects.length === 0 && (
+      {loadError && !isLoading && <ErrorBanner message={loadError} onRetry={reload} />}
+      {isLoading && (
+        <div className="table" style={{ marginTop: 14 }}>
+          {[0, 1, 2].map((i) => (
+            <div className="panel" key={i} style={{ marginBottom: 10 }}>
+              <SkeletonLine width={200} height={16} />
+              <div style={{ marginTop: 8 }}>
+                <SkeletonLine width="60%" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {!isLoading && !loadError && projects.length === 0 && (
         <div className="empty">No projects yet — group your parks into client projects above.</div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
