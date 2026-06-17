@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas import ProjectBody
 
 router = APIRouter(tags=["projects"])
 
@@ -22,7 +23,8 @@ def list_projects():
 
 
 @router.post("/projects", status_code=201)
-def create_project(payload: dict):
+def create_project(payload: ProjectBody):
+    payload = payload.model_dump(exclude_unset=True)
     name = str(payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
@@ -61,7 +63,8 @@ def get_project(project_id: int):
 
 
 @router.patch("/projects/{project_id}")
-def update_project(project_id: int, payload: dict):
+def update_project(project_id: int, payload: ProjectBody):
+    payload = payload.model_dump(exclude_unset=True)
     session = get_session()
     try:
         p = session.query(Project).filter_by(id=project_id).first()

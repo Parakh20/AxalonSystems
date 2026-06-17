@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas import AssignmentBody, ComponentBody, OrderBody, PrototypeBody
 
 router = APIRouter(tags=["inventory"])
 
@@ -22,7 +23,8 @@ def list_inventory_components():
 
 
 @router.post("/inventory/components", status_code=201)
-def create_inventory_component(payload: dict):
+def create_inventory_component(payload: ComponentBody):
+    payload = payload.model_dump(exclude_unset=True)
     name = _clean_name(payload)
     category = str(payload.get("category") or "other")
     if category not in COMPONENT_CATEGORIES:
@@ -51,7 +53,8 @@ def create_inventory_component(payload: dict):
 
 
 @router.patch("/inventory/components/{component_id}")
-def update_inventory_component(component_id: int, payload: dict):
+def update_inventory_component(component_id: int, payload: ComponentBody):
+    payload = payload.model_dump(exclude_unset=True)
     session = get_session()
     try:
         c = session.query(InventoryComponent).filter_by(id=component_id).first()
@@ -122,7 +125,8 @@ def list_prototypes():
 
 
 @router.post("/inventory/prototypes", status_code=201)
-def create_prototype(payload: dict):
+def create_prototype(payload: PrototypeBody):
+    payload = payload.model_dump(exclude_unset=True)
     name = _clean_name(payload)
     status = str(payload.get("status") or "planning")
     if status not in PROTOTYPE_STATUSES:
@@ -144,7 +148,8 @@ def create_prototype(payload: dict):
 
 
 @router.patch("/inventory/prototypes/{prototype_id}")
-def update_prototype(prototype_id: int, payload: dict):
+def update_prototype(prototype_id: int, payload: PrototypeBody):
+    payload = payload.model_dump(exclude_unset=True)
     session = get_session()
     try:
         p = session.query(Prototype).filter_by(id=prototype_id).first()
@@ -192,8 +197,9 @@ def delete_prototype(prototype_id: int):
 
 
 @router.post("/inventory/assignments", status_code=201)
-def create_assignment(payload: dict):
+def create_assignment(payload: AssignmentBody):
     """Install qty units of a component into a prototype — bounded by availability."""
+    payload = payload.model_dump(exclude_unset=True)
     component_id = _non_negative_int(payload, "component_id", 0, minimum=1)
     prototype_id = _non_negative_int(payload, "prototype_id", 0, minimum=1)
     qty = _non_negative_int(payload, "qty", 1, minimum=1)
@@ -226,7 +232,8 @@ def create_assignment(payload: dict):
 
 
 @router.patch("/inventory/assignments/{assignment_id}")
-def update_assignment(assignment_id: int, payload: dict):
+def update_assignment(assignment_id: int, payload: AssignmentBody):
+    payload = payload.model_dump(exclude_unset=True)
     session = get_session()
     try:
         a = session.query(ComponentAssignment).filter_by(id=assignment_id).first()
@@ -278,7 +285,8 @@ def list_orders():
 
 
 @router.post("/inventory/orders", status_code=201)
-def create_order(payload: dict):
+def create_order(payload: OrderBody):
+    payload = payload.model_dump(exclude_unset=True)
     status = str(payload.get("status") or "planned")
     if status not in ORDER_STATUSES:
         raise HTTPException(status_code=400, detail=f"status must be one of {ORDER_STATUSES}")
@@ -314,8 +322,9 @@ def create_order(payload: dict):
 
 
 @router.patch("/inventory/orders/{order_id}")
-def update_order(order_id: int, payload: dict):
+def update_order(order_id: int, payload: OrderBody):
     """Update an order. Transitioning to 'received' on a linked order stocks-in qty."""
+    payload = payload.model_dump(exclude_unset=True)
     session = get_session()
     try:
         o = session.query(ComponentOrder).filter_by(id=order_id).first()

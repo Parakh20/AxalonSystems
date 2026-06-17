@@ -3,14 +3,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas import LoginRequest, NoteBody, PasswordSetRequest
 
 router = APIRouter(tags=["track"])
 
 @router.post("/track/login")
-def track_login(payload: dict):
+def track_login(payload: LoginRequest):
     """Verify the /track workspace password. Checks the AXALON_TRACK_PASSWORD env
     override first, then the hash stored in the Supabase `app_config` table.
     The password is never shipped to the frontend bundle."""
+    payload = payload.model_dump(exclude_unset=True)
     supplied = str(payload.get("password") or "")
     session = get_session()
     try:
@@ -25,9 +27,10 @@ def track_login(payload: dict):
 
 
 @router.post("/track/password")
-def set_track_workspace_password(payload: dict):
+def set_track_workspace_password(payload: PasswordSetRequest):
     """Set/rotate the /track password (stored hashed in Supabase). Requires the
     current password unless none is configured yet (first-time setup)."""
+    payload = payload.model_dump(exclude_unset=True)
     new_password = str(payload.get("new_password") or "")
     if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
@@ -56,7 +59,8 @@ def list_track_notes(kind: str | None = None):
 
 
 @router.post("/track/notes", status_code=201)
-def create_track_note(payload: dict):
+def create_track_note(payload: NoteBody):
+    payload = payload.model_dump(exclude_unset=True)
     title = str(payload.get("title") or "").strip()
     if not title:
         raise HTTPException(status_code=400, detail="title is required")
@@ -81,7 +85,8 @@ def create_track_note(payload: dict):
 
 
 @router.patch("/track/notes/{note_id}")
-def update_track_note(note_id: int, payload: dict):
+def update_track_note(note_id: int, payload: NoteBody):
+    payload = payload.model_dump(exclude_unset=True)
     session = get_session()
     try:
         n = session.query(TrackNote).filter_by(id=note_id).first()

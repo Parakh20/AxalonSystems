@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas import ParkUpdate
 
 router = APIRouter(tags=["park"])
 
@@ -354,8 +355,9 @@ def list_parks():
 
 
 @router.patch("/park/{park_id}")
-def update_park(park_id: str, payload: dict):
+def update_park(park_id: str, payload: ParkUpdate):
     """Assign/unassign a park to a project (and rename)."""
+    payload = payload.model_dump(exclude_unset=True)
     park_id = _validate_park_id(park_id)
     session = get_session()
     try:

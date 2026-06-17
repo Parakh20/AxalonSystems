@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas import MissionCreate
 
 router = APIRouter(tags=["missions"])
 
 @router.post("/missions", status_code=201)
-def create_mission(payload: dict):
+def create_mission(payload: MissionCreate):
     """Save a planned mission."""
+    payload = payload.model_dump(exclude_unset=True)
     name = str(payload.get("name", "")).strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")

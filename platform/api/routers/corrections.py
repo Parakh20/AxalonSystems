@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas import CorrectionCreate
 
 router = APIRouter(tags=["corrections"])
 
@@ -24,8 +25,9 @@ def list_corrections(job_id: str):
 
 
 @router.post("/corrections/{job_id}", status_code=201)
-def create_correction(job_id: str, body: dict):
+def create_correction(job_id: str, body: CorrectionCreate):
     """Persist a user-drawn bounding box correction."""
+    body = body.model_dump(exclude_unset=True)
     job_id = _validate_job_id(job_id)
     class_ = str(body.get("class_", ""))[:64]
     if not class_:

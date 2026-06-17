@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas import SettingsUpdate
 
 router = APIRouter(tags=["settings"])
 
@@ -24,12 +25,13 @@ def get_settings():
 
 
 @router.put("/settings")
-def update_settings(payload: dict):
+def update_settings(payload: SettingsUpdate):
     """Overwrite settings.yaml with the provided dict (top-level key 'settings').
 
     Sync `def` (not `async def`): the body only does blocking file I/O, so
     FastAPI runs it in its thread pool instead of stalling the event loop.
     """
+    payload = payload.model_dump(exclude_unset=True)
     try:
         import yaml
         new_settings = payload.get("settings") if isinstance(payload, dict) else None

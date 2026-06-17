@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas import CommentCreate, FaultUpdate
 
 router = APIRouter(tags=["faults"])
 
@@ -46,8 +47,9 @@ def list_park_faults(park_id: str, status: str | None = None):
 
 
 @router.patch("/faults/{fault_id}")
-def update_fault(fault_id: int, payload: dict):
+def update_fault(fault_id: int, payload: FaultUpdate):
     """Update fault status (e.g. mark resolved) or append notes."""
+    payload = payload.model_dump(exclude_unset=True)
     if fault_id <= 0:
         raise HTTPException(status_code=400, detail="fault_id must be positive")
     new_status = payload.get("status")
@@ -73,8 +75,9 @@ def update_fault(fault_id: int, payload: dict):
 
 
 @router.post("/faults/{fault_id}/comments", status_code=201)
-def create_fault_comment(fault_id: int, body: dict):
+def create_fault_comment(fault_id: int, body: CommentCreate):
     """Append a comment to a fault's thread."""
+    body = body.model_dump(exclude_unset=True)
     if fault_id <= 0:
         raise HTTPException(status_code=400, detail="fault_id must be positive")
     comment_body = str(body.get("body", "")).strip()
