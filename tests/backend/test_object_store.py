@@ -69,3 +69,53 @@ def test_delete_ignores_missing(store):
         req.delete.return_value = MagicMock(status_code=404)
         store.delete("nope.pdf")  # must not raise
         assert req.delete.call_args[0][0].endswith("/storage/v1/object/track-files/nope.pdf")
+
+
+# ── Azure Blob backend (SDK mocked) ──────────────────────────────────────────
+
+def _azure_store():
+    """Build an AzureBlobStorageStore with the SDK fully mocked."""
+    from axalon.core.object_store import AzureBlobStorageStore
+    return AzureBlobStorageStore(connection_string="UseDevelopmentStorage=true",
+                                 container="track-files")
+
+
+def test_azure_store_upload_calls_blob_client():
+    with patch("azure.storage.blob.BlobServiceClient"):
+        store = _azure_store()
+        blob = store._client.get_blob_client.return_value
+        store.upload("part.stl", io.BytesIO(b"solid"), "model/stl")
+        blob.upload_blob.assert_called_once()
+
+
+def test_azure_store_download_returns_chunks():
+    with patch("azure.storage.blob.BlobServiceClient"):
+        store = _azure_store()
+        blob = store._client.get_blob_client.return_value
+        blob.download_blob.return_value.chunks.return_value = iter([b"so", b"lid"])
+        result = store.download("part.stl")
+        assert b"".join(result) == b"solid"
+
+
+def test_azure_store_download_missing_returns_none():
+    with patch("azure.storage.blob.BlobServiceClient"):
+        store = _azure_store()
+        blob = store._client.get_blob_client.return_value
+        blob.download_blob.side_effect = RuntimeError("404")
+        assert store.download("missing.stl") is None
+
+
+def test_azure_store_delete_ignores_missing():
+    with patch("azure.storage.blob.BlobServiceClient"):
+        store = _azure_store()
+        blob = store._client.get_blob_client.return_value
+        blob.delete_blob.side_effect = RuntimeError("not found")
+        store.delete("missing.stl")  # must not raise
+
+
+def test_get_track_store_prefers_azure(monkeypatch):
+    monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING", "UseDevelopmentStorage=true")
+    with patch("azure.storage.blob.BlobServiceClient"):
+        from axalon.core.object_store import AzureBlobStorageStore
+        s = get_track_store()
+        assert isinstance(s, AzureBlobStorageStore)

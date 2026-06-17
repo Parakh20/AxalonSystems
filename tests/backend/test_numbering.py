@@ -73,3 +73,33 @@ def test_extract_ids_returns_empty_when_reader_unavailable(ocr):
 
     # Assert
     assert result == []
+
+
+class _StubReader:
+    """Stand-in for an EasyOCR reader returning canned (bbox, text, conf) rows."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def readtext(self, _img):
+        return self._rows
+
+
+def test_extract_ids_filters_by_confidence_and_format(ocr):
+    # Arrange — one valid panel ID, one low-confidence, one non-panel string
+    bbox = [[0, 0], [10, 0], [10, 10], [0, 10]]
+    ocr.reader = _StubReader([
+        (bbox, "C4-28", 0.95),     # valid, high confidence -> kept
+        (bbox, "S1-2", 0.40),      # valid format but below min_confidence -> dropped
+        (bbox, "HELLO", 0.99),     # high confidence but not a panel ID -> dropped
+    ])
+    image = np.zeros((20, 20, 3), dtype=np.uint8)
+
+    # Act
+    found = ocr.extract_ids_from_rgb(image, min_confidence=0.7)
+
+    # Assert — only the valid, confident panel ID survives, fully parsed
+    assert len(found) == 1
+    assert found[0]["text"] == "C4-28"
+    assert found[0]["parsed"] == {"type": "cell", "row": 4, "number": 28}
+    assert found[0]["center"] == [5, 5]
