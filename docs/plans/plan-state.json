@@ -8,10 +8,10 @@
       "priority": "P0",
       "effort": "Large",
       "file": "plan-01-api-routers.md",
-      "status": "pending",
+      "status": "done",
       "session_id": null,
       "started_at": null,
-      "completed_at": null
+      "completed_at": "2026-06-17T00:00:00.000Z"
     },
     {
       "id": "plan-02",
