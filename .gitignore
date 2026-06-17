@@ -132,3 +132,7 @@ platform-post-*.png
 ml/Datasets/
 .aider*
 deploy/azure/.infra-state
+
+# Test/coverage and agent-pipeline runtime artifacts (not source)
+.coverage
+docs/pipelines/
