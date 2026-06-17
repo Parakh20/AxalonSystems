@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import MissionFullOut, MissionSummaryOut
 from axalon.api.schemas import MissionCreate
 
 router = APIRouter(tags=["missions"])
@@ -35,7 +36,7 @@ def create_mission(payload: MissionCreate):
         session.close()
 
 
-@router.get("/missions")
+@router.get("/missions", response_model=list[MissionSummaryOut])
 def list_missions(park_id: str | None = None):
     """List saved missions, optionally filtered by park_id. Excludes heavy waypoint payloads."""
     session = get_session()
@@ -49,7 +50,7 @@ def list_missions(park_id: str | None = None):
         session.close()
 
 
-@router.get("/missions/{mission_id}")
+@router.get("/missions/{mission_id}", response_model=MissionFullOut)
 def get_mission(mission_id: int):
     """Return one mission including its full waypoint path."""
     session = get_session()

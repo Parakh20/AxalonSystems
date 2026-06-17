@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import JobStatusOut
 
 router = APIRouter(tags=["inspection"])
 
@@ -191,7 +192,7 @@ async def inspect_batch(
             "warnings": _check_iec_warnings(site_meta)}
 
 
-@router.get("/status/{job_id}")
+@router.get("/status/{job_id}", response_model=JobStatusOut)
 def get_status(job_id: str):
     """Get the status and progress of an inspection job."""
     job_id = _validate_job_id(job_id)

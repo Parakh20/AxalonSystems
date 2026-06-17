@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import HealthOut
 
 router = APIRouter(tags=["health"])
 
-@router.get("/health")
+@router.get("/health", response_model=HealthOut)
 def health():
     try:
         session = get_session()

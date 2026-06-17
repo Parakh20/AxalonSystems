@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import InspectionDiffOut
 
 router = APIRouter(tags=["diff"])
 
-@router.get("/parks/{park_id}/inspections/{a}/diff/{b}")
+@router.get("/parks/{park_id}/inspections/{a}/diff/{b}", response_model=InspectionDiffOut)
 def diff_inspections(park_id: str, a: str, b: str):
     """Compare two inspections of the same park.
 

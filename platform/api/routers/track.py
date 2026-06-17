@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import NoteOut, TrackFileOut
 from axalon.api.schemas import LoginRequest, NoteBody, PasswordSetRequest
 
 router = APIRouter(tags=["track"])
@@ -46,7 +47,7 @@ def set_track_workspace_password(payload: PasswordSetRequest):
     return {"ok": True}
 
 
-@router.get("/track/notes")
+@router.get("/track/notes", response_model=list[NoteOut])
 def list_track_notes(kind: str | None = None):
     session = get_session()
     try:
@@ -126,7 +127,7 @@ def delete_track_note(note_id: int):
         session.close()
 
 
-@router.get("/track/files")
+@router.get("/track/files", response_model=list[TrackFileOut])
 def list_track_files():
     session = get_session()
     try:

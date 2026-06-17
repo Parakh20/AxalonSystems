@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import ProjectOut
 from axalon.api.schemas import ProjectBody
 
 router = APIRouter(tags=["projects"])
 
-@router.get("/projects")
+@router.get("/projects", response_model=list[ProjectOut])
 def list_projects():
     session = get_session()
     try:
@@ -47,7 +48,7 @@ def create_project(payload: ProjectBody):
         session.close()
 
 
-@router.get("/projects/{project_id}")
+@router.get("/projects/{project_id}", response_model=ProjectOut)
 def get_project(project_id: int):
     """Project detail with its sites (parks) and per-site mission/inspection counts."""
     session = get_session()

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import OrthoListOut, OrthoMetaOut
 
 router = APIRouter(tags=["ortho"])
 
@@ -55,7 +56,7 @@ async def upload_ortho(
     return meta
 
 
-@router.get("/park/{park_id}/orthos")
+@router.get("/park/{park_id}/orthos", response_model=OrthoListOut)
 def list_orthos(park_id: str):
     """List all uploaded orthos for a park."""
     park_id = _validate_park_id(park_id)
@@ -107,7 +108,7 @@ def export_park_grid_png(park_id: str, inspection_id: str | None = None):
     )
 
 
-@router.get("/park/{park_id}/ortho/{name}")
+@router.get("/park/{park_id}/ortho/{name}", response_model=OrthoMetaOut)
 def get_ortho_metadata(park_id: str, name: str):
     """Get metadata for a single ortho."""
     path = _ortho_path(park_id, name)

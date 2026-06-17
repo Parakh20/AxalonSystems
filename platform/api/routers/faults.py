@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import CommentOut, FaultsListOut
 from axalon.api.schemas import CommentCreate, FaultUpdate
 
 router = APIRouter(tags=["faults"])
 
-@router.get("/parks/{park_id}/faults")
+@router.get("/parks/{park_id}/faults", response_model=FaultsListOut)
 def list_park_faults(park_id: str, status: str | None = None):
     """List tracked faults for a park, optionally filtered by status."""
     park_id = _validate_park_id(park_id)
@@ -102,7 +103,7 @@ def create_fault_comment(fault_id: int, body: CommentCreate):
         session.close()
 
 
-@router.get("/faults/{fault_id}/comments")
+@router.get("/faults/{fault_id}/comments", response_model=list[CommentOut])
 def list_fault_comments(fault_id: int):
     """List all comments on a fault in chronological order."""
     if fault_id <= 0:

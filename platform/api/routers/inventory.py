@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import ComponentOut, InventorySummaryOut, OrderOut, PrototypeOut
 from axalon.api.schemas import AssignmentBody, ComponentBody, OrderBody, PrototypeBody
 
 router = APIRouter(tags=["inventory"])
 
-@router.get("/inventory/components")
+@router.get("/inventory/components", response_model=list[ComponentOut])
 def list_inventory_components():
     """List all components with derived assigned/available quantities."""
     session = get_session()
@@ -103,7 +104,7 @@ def delete_inventory_component(component_id: int):
         session.close()
 
 
-@router.get("/inventory/prototypes")
+@router.get("/inventory/prototypes", response_model=list[PrototypeOut])
 def list_prototypes():
     """List prototypes, each embedding its BOM (assignments + component names)."""
     session = get_session()
@@ -274,7 +275,7 @@ def delete_assignment(assignment_id: int):
         session.close()
 
 
-@router.get("/inventory/orders")
+@router.get("/inventory/orders", response_model=list[OrderOut])
 def list_orders():
     session = get_session()
     try:
@@ -367,7 +368,7 @@ def delete_order(order_id: int):
         session.close()
 
 
-@router.get("/inventory/summary")
+@router.get("/inventory/summary", response_model=InventorySummaryOut)
 def inventory_summary():
     """Headline numbers for the Inventory tab."""
     session = get_session()

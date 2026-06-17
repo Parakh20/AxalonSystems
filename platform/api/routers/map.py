@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import JobMapOut
 
 router = APIRouter(tags=["map"])
 
-@router.get("/map/{job_id}")
+@router.get("/map/{job_id}", response_model=JobMapOut)
 def get_job_map(job_id: str):
     """Return combined GPS map data for a batch job.
 

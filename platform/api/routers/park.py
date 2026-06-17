@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import GridOut, ParkDiffOut, ParksOut, ParkSummaryOut, RecurringOut, TrendOut
 from axalon.api.schemas import ParkUpdate
 
 router = APIRouter(tags=["park"])
 
-@router.get("/park/{park_id}")
+@router.get("/park/{park_id}", response_model=ParkSummaryOut)
 def get_park_summary(park_id: str):
     """Get park summary + inspection history from DB."""
     park_id = _validate_park_id(park_id)
@@ -53,7 +54,7 @@ def get_park_summary(park_id: str):
         session.close()
 
 
-@router.get("/park/{park_id}/grid")
+@router.get("/park/{park_id}/grid", response_model=GridOut)
 def get_park_grid(park_id: str, inspection_id: str | None = None):
     """Per-panel grid summary for a park's most recent (or specified) inspection."""
     from axalon.park.grid import build_grid
@@ -118,7 +119,7 @@ def get_park_grid(park_id: str, inspection_id: str | None = None):
         session.close()
 
 
-@router.get("/park/{park_id}/trend")
+@router.get("/park/{park_id}/trend", response_model=list[TrendOut])
 def get_park_trend(park_id: str):
     """Per-inspection severity count trend for a park, oldest first."""
     from sqlalchemy import text
@@ -151,7 +152,7 @@ def get_park_trend(park_id: str):
         session.close()
 
 
-@router.get("/park/{park_id}/recurring")
+@router.get("/park/{park_id}/recurring", response_model=list[RecurringOut])
 def get_park_recurring(park_id: str, min_inspections: int = 2):
     """Panels with anomalies in at least min_inspections inspections."""
     from sqlalchemy import text
@@ -191,7 +192,7 @@ def get_park_recurring(park_id: str, min_inspections: int = 2):
         session.close()
 
 
-@router.get("/park/{park_id}/diff")
+@router.get("/park/{park_id}/diff", response_model=ParkDiffOut)
 def diff_park_inspections(park_id: str, inspection_a: str, inspection_b: str):
     """Compare two inspections of the same park, returning a rich per-panel diff.
 
@@ -336,7 +337,7 @@ def diff_park_inspections(park_id: str, inspection_a: str, inspection_b: str):
         session.close()
 
 
-@router.get("/parks")
+@router.get("/parks", response_model=ParksOut)
 def list_parks():
     """List all parks from DB."""
     session = get_session()

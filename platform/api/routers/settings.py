@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import SettingsOut
 from axalon.api.schemas import SettingsUpdate
 
 router = APIRouter(tags=["settings"])
 
-@router.get("/settings")
+@router.get("/settings", response_model=SettingsOut)
 def get_settings():
     """Return current platform settings.yaml as JSON."""
     try:

@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import CorrectionOut
 from axalon.api.schemas import CorrectionCreate
 
 router = APIRouter(tags=["corrections"])
 
-@router.get("/corrections/{job_id:path}")
+@router.get("/corrections/{job_id:path}", response_model=list[CorrectionOut])
 def list_corrections(job_id: str):
     """List all user correction boxes for an inspect job."""
     job_id = _validate_job_id(job_id)

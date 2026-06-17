@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
+from axalon.api.schemas.responses import OverviewOut
 
 router = APIRouter(tags=["analytics"])
 
-@router.get("/analytics/overview")
+@router.get("/analytics/overview", response_model=list[OverviewOut])
 def analytics_overview():
     """All parks with their severity trends in ONE call — replaces the
     frontend's per-park /park/{id}/trend fan-out on the Overview tab."""
