@@ -1027,7 +1027,7 @@ const html = `<!DOCTYPE html>
 
 <footer>
   <div>AXALON SYSTEMS PVT LTD &nbsp;·&nbsp; Technical Investor Brief &nbsp;·&nbsp; June 2026</div>
-  <div>raj@axalonsystems.com &nbsp;·&nbsp; +91 96382 99491 &nbsp;·&nbsp; axalonsystems.com</div>
+  <div>parakh@axalonsystems.com &nbsp;·&nbsp; +91 94135 52887 &nbsp;·&nbsp; axalonsystems.com</div>
   <div class="confidential-badge">CONFIDENTIAL</div>
 </footer>
 
