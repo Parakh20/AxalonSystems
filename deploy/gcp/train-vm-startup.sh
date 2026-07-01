@@ -24,6 +24,11 @@ mount -o discard,defaults "$DATA_DEVICE" "$MOUNT_POINT"
 GITHUB_TOKEN="$(curl -s -H 'Metadata-Flavor: Google' \
   'http://metadata.google.internal/computeMetadata/v1/instance/attributes/github-token' || true)"
 
+# Optional W&B API key, same pattern — enables live training dashboards when
+# present, no-op (per _maybe_enable_wandb in train_ultralytics.py) when absent.
+export WANDB_API_KEY="$(curl -s -H 'Metadata-Flavor: Google' \
+  'http://metadata.google.internal/computeMetadata/v1/instance/attributes/wandb-api-key' || true)"
+
 cd /opt
 if [ -n "$GITHUB_TOKEN" ]; then
   git clone --depth 1 "https://${GITHUB_TOKEN}@github.com/Parakh20/AxalonSystems.git" repo

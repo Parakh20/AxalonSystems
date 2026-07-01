@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import yaml
@@ -34,10 +35,23 @@ def build_model(model_name: str):
     return YOLO(model_name)
 
 
+def _maybe_enable_wandb(model) -> None:
+    """Attach W&B logging if WANDB_API_KEY is set in the environment; no-op otherwise."""
+    if not os.environ.get("WANDB_API_KEY"):
+        return
+    import wandb
+    from wandb.integration.ultralytics import add_wandb_callback
+
+    wandb.login()
+    add_wandb_callback(model, enable_model_checkpointing=True)
+    logger.info("W&B logging enabled")
+
+
 def run_training(config_path: Path) -> None:
     """Train the model described by `config_path` and log the result location."""
     cfg = load_training_config(config_path)
     model = build_model(cfg["model"])
+    _maybe_enable_wandb(model)
 
     train_kwargs = {k: v for k, v in cfg.items() if k not in _NON_TRAIN_KEYS}
     train_kwargs["data"] = cfg["dataset_yaml"]

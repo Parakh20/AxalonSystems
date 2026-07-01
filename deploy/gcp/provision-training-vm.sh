@@ -34,17 +34,26 @@ fi
 # this VM's instance metadata for the duration of the training run.
 GITHUB_TOKEN="$(gh auth token)"
 
+# Optional: export WANDB_API_KEY locally before running this script to enable
+# live training dashboards. Omitted entirely (not even as an empty value) when
+# unset, so training still runs log-only without it.
+WANDB_METADATA=()
+if [ -n "${WANDB_API_KEY:-}" ]; then
+  WANDB_METADATA=(--metadata "wandb-api-key=${WANDB_API_KEY}")
+fi
+
 gcloud compute instances create "$VM_NAME" \
   --project="$PROJECT_ID" --zone="$ZONE" \
   --machine-type=g2-standard-8 \
   --accelerator="type=nvidia-l4,count=1" \
   --provisioning-model=SPOT \
   --instance-termination-action=STOP \
-  --image-family=common-cu124-ubuntu-2204 \
+  --image-family=common-cu129-ubuntu-2204-nvidia-580 \
   --image-project=deeplearning-platform-release \
   --boot-disk-size=100GB \
   --disk="name=${DISK_NAME},device-name=${DISK_NAME},mode=rw" \
   --metadata=candidate="${CANDIDATE}",github-token="${GITHUB_TOKEN}" \
+  "${WANDB_METADATA[@]}" \
   --metadata-from-file=startup-script=deploy/gcp/train-vm-startup.sh
 
 echo "VM ${VM_NAME} created. Tail progress with:"
