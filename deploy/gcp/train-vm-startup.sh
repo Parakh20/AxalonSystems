@@ -38,9 +38,10 @@ if [ -d "$MOUNT_POINT/combined_coco" ]; then
   ln -s "$MOUNT_POINT"/combined_coco ml/data/combined_coco
 fi
 
-# The image ships the CUDA driver only, not a Python/pip toolchain.
+# The image ships the CUDA driver only, not a Python/pip toolchain, and
+# opencv-python needs libGL which this minimal server image also lacks.
 apt-get update -qq
-apt-get install -y -qq python3-pip
+apt-get install -y -qq python3-pip libgl1
 python3 -m pip install -r ml/requirements.txt
 
 case "$CANDIDATE" in
