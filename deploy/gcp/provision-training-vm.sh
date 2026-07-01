@@ -29,6 +29,11 @@ if ! gcloud compute disks describe "$DISK_NAME" --zone="$ZONE" --project="$PROJE
   echo "Created $DISK_NAME — mount it once on a scratch VM and rsync ml/data/combined onto it before training."
 fi
 
+# Repo is private — mint a short-lived token via the local gh CLI so the VM
+# can clone it. Never persisted to disk or committed anywhere; lives only in
+# this VM's instance metadata for the duration of the training run.
+GITHUB_TOKEN="$(gh auth token)"
+
 gcloud compute instances create "$VM_NAME" \
   --project="$PROJECT_ID" --zone="$ZONE" \
   --machine-type=g2-standard-8 \
@@ -39,7 +44,7 @@ gcloud compute instances create "$VM_NAME" \
   --image-project=deeplearning-platform-release \
   --boot-disk-size=100GB \
   --disk="name=${DISK_NAME},device-name=${DISK_NAME},mode=rw" \
-  --metadata=candidate="${CANDIDATE}" \
+  --metadata=candidate="${CANDIDATE}",github-token="${GITHUB_TOKEN}" \
   --metadata-from-file=startup-script=deploy/gcp/train-vm-startup.sh
 
 echo "VM ${VM_NAME} created. Tail progress with:"

@@ -19,8 +19,17 @@ MOUNT_POINT="/mnt/dataset"
 mkdir -p "$MOUNT_POINT"
 mount -o discard,defaults "$DATA_DEVICE" "$MOUNT_POINT"
 
+# The repo is private, so a short-lived GitHub token is passed in as instance
+# metadata at VM-creation time (never committed to this script or the repo).
+GITHUB_TOKEN="$(curl -s -H 'Metadata-Flavor: Google' \
+  'http://metadata.google.internal/computeMetadata/v1/instance/attributes/github-token' || true)"
+
 cd /opt
-git clone --depth 1 https://github.com/<org>/AxalonSystems.git repo
+if [ -n "$GITHUB_TOKEN" ]; then
+  git clone --depth 1 "https://${GITHUB_TOKEN}@github.com/Parakh20/AxalonSystems.git" repo
+else
+  git clone --depth 1 https://github.com/Parakh20/AxalonSystems.git repo
+fi
 cd repo
 ln -s "$MOUNT_POINT"/combined ml/data/combined
 [ -d "$MOUNT_POINT/combined_coco" ] && ln -s "$MOUNT_POINT"/combined_coco ml/data/combined_coco
