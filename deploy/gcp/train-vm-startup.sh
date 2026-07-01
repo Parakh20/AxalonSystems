@@ -44,17 +44,38 @@ apt-get update -qq
 apt-get install -y -qq python3-pip libgl1
 python3 -m pip install -r ml/requirements.txt
 
+# This repo's own platform/ directory (at repo root) shadows the stdlib
+# platform module whenever cwd is the repo root and lands on sys.path, which
+# `python3 -m` always does. PYTHONSAFEPATH only fixes this on Python 3.11+,
+# and this image ships 3.10. Fix: launch python3 from /opt (parent of repo,
+# no platform/ dir there) so `import platform` caches the real stdlib module
+# in sys.modules *before* the repo directory is added to sys.path — later
+# imports (numpy/matplotlib/etc.) hit the cache and never see the shadow.
+# Verified locally: running this from the repo root itself does NOT work,
+# since cwd is already shadowed before the pre-import line even runs.
+run_py_module() {
+  local module="$1"; shift
+  (cd /opt && python3 -c "
+import platform, uuid  # cwd is /opt here — no shadow yet
+import os, runpy, sys
+os.chdir('/opt/repo')
+sys.path.insert(0, '/opt/repo')
+sys.argv = ['$module'] + sys.argv[1:]
+runpy.run_module('$module', run_name='__main__')
+" "$@")
+}
+
 case "$CANDIDATE" in
   yolo11x)
-    python3 -m ml.scripts.train_ultralytics --config ml/configs/thermal_yolo11x.yaml
+    run_py_module ml.scripts.train_ultralytics --config ml/configs/thermal_yolo11x.yaml
     ;;
   rtdetr-x)
-    python3 -m ml.scripts.train_ultralytics --config ml/configs/thermal_rtdetr_x.yaml
+    run_py_module ml.scripts.train_ultralytics --config ml/configs/thermal_rtdetr_x.yaml
     ;;
   codetr)
     git clone --depth 1 https://github.com/Sense-X/Co-DETR.git /opt/co-detr
     python3 -m pip install -r /opt/co-detr/requirements.txt
-    python3 -m ml.scripts.yolo_to_coco --combined-root ml/data/combined --out ml/data/combined_coco
+    run_py_module ml.scripts.yolo_to_coco --combined-root ml/data/combined --out ml/data/combined_coco
     python3 /opt/co-detr/tools/train.py ml/configs/co_detr_thermal.py
     ;;
   *)
