@@ -337,6 +337,58 @@ def _():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# SECTION 6: extract.py
+# ═══════════════════════════════════════════════════════════════════════════
+print("\n── Section 6: extract.py ────────────────────────────────────────────")
+
+from ml.src.extract import extract_archive_zip, extract_pvmd
+
+ARCHIVE_ZIP = ROOT / "ml/Datasets/archive.zip"
+PVMD_ZIP = ROOT / (
+    "ml/Datasets/Photovoltaic module dataset for automated fault detection "
+    "and analysis in large photovoltaic systems using photovoltaic module "
+    "fault detection.zip"
+)
+
+@test("extract_archive_zip produces ImageSet with train/valid/test")
+def _():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out = extract_archive_zip(ARCHIVE_ZIP, Path(tmpdir))
+        assert (out / "train" / "images").exists()
+        assert (out / "valid" / "images").exists()
+        assert (out / "test" / "images").exists()
+        train_imgs = list((out / "train" / "images").glob("*.jpg"))
+        assert len(train_imgs) == 6924, f"Expected 6924 train images, got {len(train_imgs)}"
+
+@test("extract_archive_zip is idempotent (second call is a no-op, same result)")
+def _():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out1 = extract_archive_zip(ARCHIVE_ZIP, Path(tmpdir))
+        out2 = extract_archive_zip(ARCHIVE_ZIP, Path(tmpdir))
+        assert out1 == out2
+        train_imgs = list((out2 / "train" / "images").glob("*.jpg"))
+        assert len(train_imgs) == 6924
+
+@test("extract_pvmd produces Cracks/Hotspots/Shadings folders")
+def _():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out = extract_pvmd(PVMD_ZIP, Path(tmpdir))
+        assert (out / "Cracks").exists()
+        assert (out / "Hotspots").exists()
+        assert (out / "Shadings").exists()
+        cracks = list((out / "Cracks").glob("*.jpeg"))
+        assert len(cracks) == 350, f"Expected 350 Cracks images, got {len(cracks)}"
+
+@test("extract_pvmd is idempotent")
+def _():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out1 = extract_pvmd(PVMD_ZIP, Path(tmpdir))
+        out2 = extract_pvmd(PVMD_ZIP, Path(tmpdir))
+        assert out1 == out2
+        assert len(list((out2 / "Cracks").glob("*.jpeg"))) == 350
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════
 print("\n" + "═" * 65)
