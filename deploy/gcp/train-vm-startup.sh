@@ -105,13 +105,31 @@ case "$CANDIDATE" in
     fi
     ;;
   codetr)
-    # No resume support here yet — MMDetection has its own --resume flag/
-    # mechanism, separate from the Ultralytics path above; add if/when this
-    # candidate is actually run and preemption becomes a real issue for it.
-    git clone --depth 1 https://github.com/Sense-X/Co-DETR.git /opt/co-detr
-    python3 -m pip install -r /opt/co-detr/requirements.txt
-    run_py_module ml.scripts.yolo_to_coco --combined-root ml/data/combined --out ml/data/combined_coco
-    python3 /opt/co-detr/tools/train.py ml/configs/co_detr_thermal.py
+    # MMDetection 3.3.0 stack — the Sense-X/Co-DETR repo is mmdet 2.x-era and
+    # fails to build against modern torch; mmdet 3.x ships CO-DETR as a
+    # first-party project with prebuilt mmcv wheels for torch 2.1 + cu121.
+    # numpy is pinned last because intermediate installs drag in numpy 2.x,
+    # which breaks torch/mmcv extensions compiled against the 1.x ABI.
+    apt-get install -y -qq cmake
+    python3 -m pip install "torch==2.1.2" "torchvision==0.16.2" --index-url https://download.pytorch.org/whl/cu121
+    python3 -m pip install -U openmim fairscale
+    mim install mmengine "mmcv==2.1.0"
+    git clone --depth 1 -b v3.3.0 https://github.com/open-mmlab/mmdetection.git /opt/mmdetection
+    (cd /opt/mmdetection && python3 -m pip install -e . --no-deps)
+    python3 -m pip install pycocotools shapely terminaltables scipy "numpy==1.26.4"
+    # COCO annotations live on the boot disk (cheap to regenerate, ~2 min).
+    if [ ! -f /opt/repo/ml/data/combined_coco/train.json ]; then
+      run_py_module ml.scripts.yolo_to_coco --combined-root ml/data/combined --out ml/data/combined_coco
+    fi
+    # mmengine's bare --resume auto-picks the latest checkpoint in work_dir
+    # (which sits on the persistent disk via the runs symlink).
+    RESUME_ARGS=()
+    if ls /opt/repo/runs/thermal/codetr_solar/*.pth >/dev/null 2>&1; then
+      RESUME_ARGS=(--resume)
+    fi
+    # cwd must be the mmdetection checkout so the base config's
+    # custom_imports of projects.CO-DETR resolves.
+    (cd /opt/mmdetection && WANDB_API_KEY="$WANDB_API_KEY" python3 tools/train.py /opt/repo/ml/configs/co_detr_thermal.py "${RESUME_ARGS[@]}")
     ;;
   *)
     echo "ERROR: unknown candidate '$CANDIDATE'" >&2
