@@ -389,6 +389,68 @@ def _():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# SECTION 7: PVMD support + write_merged_dataset layout fix
+# ═══════════════════════════════════════════════════════════════════════════
+print("\n── Section 7: PVMD support + layout fix ─────────────────────────────")
+
+from ml.src.dataset import (
+    PVMD_CLASSES_MAP, collect_pvmd_pairs, write_merged_dataset,
+)
+
+@test("All PVMD source classes map to valid canonical classes")
+def _():
+    for src, dst in PVMD_CLASSES_MAP.items():
+        assert dst in CLASS2ID, f"PVMD: {src!r} -> {dst!r} not in CANONICAL_CLASSES"
+
+@test("collect_pvmd_pairs scans all 1000 PVMD images")
+def _():
+    with tempfile.TemporaryDirectory() as extract_tmp, tempfile.TemporaryDirectory() as lbl_tmp:
+        pvmd_root = extract_pvmd(PVMD_ZIP, Path(extract_tmp))
+        pairs = collect_pvmd_pairs(pvmd_root, generated_labels_dir=Path(lbl_tmp))
+        assert len(pairs) == 1000, f"Expected 1000, got {len(pairs)}"
+
+@test("collect_pvmd_pairs writes valid whole-image YOLO labels")
+def _():
+    with tempfile.TemporaryDirectory() as extract_tmp, tempfile.TemporaryDirectory() as lbl_tmp:
+        pvmd_root = extract_pvmd(PVMD_ZIP, Path(extract_tmp))
+        pairs = collect_pvmd_pairs(pvmd_root, generated_labels_dir=Path(lbl_tmp))
+        for img, lbl, maj in pairs[:5]:
+            boxes = read_yolo_label(lbl)
+            assert len(boxes) == 1
+            cid, cx, cy, w, h = boxes[0]
+            assert cx == 0.5 and cy == 0.5 and w == 1.0 and h == 1.0
+            assert 0 <= cid <= 10
+
+@test("collect_all_pairs accepts optional pvmd_pairs (3-way merge)")
+def _():
+    a = [(Path("a.jpg"), Path("a.txt"), 0)] * 3
+    b = [(Path("b.jpg"), Path("b.txt"), 1)] * 2
+    c = [(Path("c.jpg"), Path("c.txt"), 2)] * 4
+    merged = collect_all_pairs(a, b, c)
+    assert len(merged) == 9
+
+@test("collect_all_pairs still works with only 2 args (backward compatible)")
+def _():
+    a = [(Path("a.jpg"), Path("a.txt"), 0)] * 3
+    b = [(Path("b.jpg"), Path("b.txt"), 1)] * 2
+    merged = collect_all_pairs(a, b)
+    assert len(merged) == 5
+
+@test("write_merged_dataset writes <split>/images and <split>/labels (matches thermal_dataset.yaml)")
+def _():
+    with tempfile.TemporaryDirectory() as lbl_tmp, tempfile.TemporaryDirectory() as out_tmp:
+        # Build one ISM pair as a minimal real fixture.
+        pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(lbl_tmp))
+        out_root = Path(out_tmp)
+        write_merged_dataset("train", pairs[:3], out_root, pv_source_class_names=list(PV_CLASSES_MAP.keys()))
+        assert (out_root / "train" / "images").exists(), "Expected <out_root>/train/images"
+        assert (out_root / "train" / "labels").exists(), "Expected <out_root>/train/labels"
+        assert not (out_root / "images").exists(), "Old (wrong) images/<split> layout must not exist"
+        imgs = list((out_root / "train" / "images").iterdir())
+        assert len(imgs) == 3
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════
 print("\n" + "═" * 65)

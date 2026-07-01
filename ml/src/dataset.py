@@ -68,6 +68,18 @@ PV_CLASSES_MAP: dict[str, str] = {
     "StringReversedPolarity":"short-circuit",
 }
 
+# ── PVMD class name → canonical class name ──────────────────────────────────
+# PVMD dataset is folder-per-class classification data (Cracks/Hotspots/Shadings),
+# same weak-label treatment as ISM. Mapped for consistency with ISM's existing
+# conventions: cracking -> hot-spot-low (matches ISM's "Cracking" mapping),
+# generic "Hotspots" (no single/multi distinction given) -> hot-spot-low as the
+# conservative default, shading -> vegetation-shading.
+PVMD_CLASSES_MAP: dict[str, str] = {
+    "Cracks":   "hot-spot-low",
+    "Hotspots": "hot-spot-low",
+    "Shadings": "vegetation-shading",
+}
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -157,6 +169,50 @@ def collect_ism_pairs(
     return pairs
 
 
+# ── PVMD dataset scanning ─────────────────────────────────────────────────────
+
+def collect_pvmd_pairs(
+    pvmd_root: Path,
+    classes_map: dict[str, str] = PVMD_CLASSES_MAP,
+    generated_labels_dir: Path | None = None,
+) -> list[tuple[Path, Path, int]]:
+    """Scan PVMD folder-per-class dataset, return (img_path, lbl_path, majority_class_id).
+
+    Same whole-image weak-label strategy as collect_ism_pairs: each crop gets
+    a single synthesised YOLO box (cx=0.5, cy=0.5, w=1.0, h=1.0).
+    """
+    if generated_labels_dir is None:
+        generated_labels_dir = pvmd_root.parent / "pvmd_labels"
+    generated_labels_dir.mkdir(parents=True, exist_ok=True)
+
+    pairs: list[tuple[Path, Path, int]] = []
+    skipped = 0
+
+    for class_name, canonical_name in classes_map.items():
+        class_dir = pvmd_root / class_name
+        if not class_dir.exists():
+            logger.warning("PVMD: class dir %s not found — skipping", class_dir)
+            continue
+
+        canonical_id = CLASS2ID.get(canonical_name)
+        if canonical_id is None:
+            logger.warning("PVMD: canonical name %r not in CLASS2ID — skipping", canonical_name)
+            continue
+
+        for img_path in sorted(class_dir.iterdir()):
+            if img_path.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
+                skipped += 1
+                continue
+            lbl_path = generated_labels_dir / (img_path.stem + ".txt")
+            write_yolo_label(lbl_path, [(canonical_id, 0.5, 0.5, 1.0, 1.0)])
+            pairs.append((img_path, lbl_path, canonical_id))
+
+    if skipped:
+        logger.info("PVMD: skipped %d non-image entries", skipped)
+    logger.info("PVMD: collected %d pairs", len(pairs))
+    return pairs
+
+
 # ── PV archive dataset scanning ───────────────────────────────────────────────
 
 def collect_pv_pairs(
@@ -207,10 +263,15 @@ def collect_pv_pairs(
 def collect_all_pairs(
     ism_pairs: list[tuple[Path, Path, int]],
     pv_pairs: list[tuple[Path, Path, int]],
+    pvmd_pairs: list[tuple[Path, Path, int]] | None = None,
 ) -> list[tuple[Path, Path, int]]:
-    """Merge ISM and PV pairs into a single flat list."""
-    merged = ism_pairs + pv_pairs
-    logger.info("Total pairs: %d (ISM=%d, PV=%d)", len(merged), len(ism_pairs), len(pv_pairs))
+    """Merge ISM, PV, and (optionally) PVMD pairs into a single flat list."""
+    pvmd_pairs = pvmd_pairs or []
+    merged = ism_pairs + pv_pairs + pvmd_pairs
+    logger.info(
+        "Total pairs: %d (ISM=%d, PV=%d, PVMD=%d)",
+        len(merged), len(ism_pairs), len(pv_pairs), len(pvmd_pairs),
+    )
     return merged
 
 
@@ -273,8 +334,8 @@ def write_merged_dataset(
     ISM labels are already in canonical form (written by collect_ism_pairs).
     PV labels are remapped on-the-fly here to avoid storing two label copies.
     """
-    imgs_out  = out_root / "images" / split_name
-    lbls_out  = out_root / "labels" / split_name
+    imgs_out  = out_root / split_name / "images"
+    lbls_out  = out_root / split_name / "labels"
     imgs_out.mkdir(parents=True, exist_ok=True)
     lbls_out.mkdir(parents=True, exist_ok=True)
 
