@@ -451,6 +451,48 @@ def _():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# SECTION 8: end-to-end combined dataset build
+# ═══════════════════════════════════════════════════════════════════════════
+print("\n── Section 8: end-to-end build ──────────────────────────────────────")
+
+from ml.scripts.prepare_dataset import build_combined_dataset
+
+@test("build_combined_dataset produces thermal_dataset.yaml-compatible layout")
+def _():
+    with tempfile.TemporaryDirectory() as out_tmp, tempfile.TemporaryDirectory() as stage_tmp:
+        out_dir = Path(out_tmp)
+        report = build_combined_dataset(
+            out_dir=out_dir,
+            ism_root=ISM_ROOT,
+            archive_zip=ARCHIVE_ZIP,
+            pvmd_zip=PVMD_ZIP,
+            staging_dir=Path(stage_tmp),
+        )
+        for split in ("train", "val", "test"):
+            assert (out_dir / split / "images").exists()
+            assert (out_dir / split / "labels").exists()
+            assert len(list((out_dir / split / "images").iterdir())) > 0
+        assert (out_dir / "class_distribution.json").exists()
+        assert set(report.keys()) == {"train", "val", "test"}
+
+@test("build_combined_dataset class_distribution.json covers 10+ canonical classes")
+def _():
+    with tempfile.TemporaryDirectory() as out_tmp, tempfile.TemporaryDirectory() as stage_tmp:
+        out_dir = Path(out_tmp)
+        report = build_combined_dataset(
+            out_dir=out_dir,
+            ism_root=ISM_ROOT,
+            archive_zip=ARCHIVE_ZIP,
+            pvmd_zip=PVMD_ZIP,
+            staging_dir=Path(stage_tmp),
+        )
+        all_classes_seen = set()
+        for split_counts in report.values():
+            all_classes_seen |= set(split_counts.keys())
+        assert len(all_classes_seen) >= 10, f"Only {len(all_classes_seen)} classes covered: {all_classes_seen}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════
 print("\n" + "═" * 65)

@@ -1,177 +1,124 @@
 """
-Merge InfraredSolarModules + PV-Hawk + Roboflow into a single YOLO dataset.
+prepare_dataset.py — build ml/data/combined/ from the three raw datasets in
+ml/Datasets/, matching the layout ml/thermal_dataset.yaml expects
+(<split>/images/, <split>/labels/).
 
 Usage:
-    python ml/scripts/prepare_dataset.py \
-        --infrared  ml/Datasets/InfraredSolarModules \
-        --pvhawk    /tmp/pv-hawk/data \
-        --roboflow  ml/data/roboflow_solar \
-        --out       ml/data/combined
+    python3 -m ml.scripts.prepare_dataset \
+        --out ml/data/combined \
+        --staging ml/data/_staging
 
-Outputs:
-    ml/data/combined/
-        train/images/   train/labels/
-        val/images/     val/labels/
-        test/images/    test/labels/
+Sources merged (see ml/src/dataset.py for class-mapping tables):
+    - InfraredSolarModules (already extracted on disk, classification -> weak bbox)
+    - archive.zip / ImageSet (Roboflow, real bboxes)
+    - PVMD dataset (.zip containing a .rar, classification -> weak bbox)
 """
 from __future__ import annotations
 
 import argparse
-import shutil
+import json
+from collections import Counter
 from pathlib import Path
 
-# Canonical class IDs — must match ml/src/utils.py CLASS2ID
-CLASS2ID = {
-    "cell": 0, "cell-multi": 1, "module": 2, "string": 3,
-    "bypass-diode": 4, "offline-module": 5, "vegetation-shading": 6,
-    "soiling": 7, "short-circuit": 8, "hot-spot-low": 9, "hot-spot-high": 10,
-}
+from ml.src.dataset import (
+    PV_CLASSES_MAP,
+    collect_all_pairs,
+    collect_ism_pairs,
+    collect_pv_pairs,
+    collect_pvmd_pairs,
+    stratified_split,
+    write_merged_dataset,
+)
+from ml.src.extract import extract_archive_zip, extract_pvmd
+from ml.src.utils import CANONICAL_CLASSES, ID2CLASS, get_logger, read_yolo_label
 
-# PV-Hawk label name → canonical name
-PVHAWK_REMAP = {
-    "cell": "cell", "multi-cell": "cell-multi", "module": "module",
-    "string": "string", "diode": "bypass-diode", "offline": "offline-module",
-    "vegetation": "vegetation-shading", "soiling": "soiling",
-    "short": "short-circuit", "hotspot": "hot-spot-low",
-    "severe-hotspot": "hot-spot-high",
-}
-
-# Roboflow label name → canonical name (update after inspecting downloaded dataset)
-ROBOFLOW_REMAP = {
-    "cell": "cell", "cell_multi": "cell-multi", "module": "module",
-    "string": "string", "bypass_diode": "bypass-diode",
-    "offline_module": "offline-module", "vegetation": "vegetation-shading",
-    "soiling": "soiling", "short_circuit": "short-circuit",
-    "hot_spot_low": "hot-spot-low", "hot_spot_high": "hot-spot-high",
-}
-
-_IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
+logger = get_logger(__name__)
 
 
-def remap_label_file(src: Path, dst: Path, remap: dict[str, str], src_names: list[str]) -> int:
-    """Rewrite a YOLO .txt label file with remapped class IDs. Returns lines written."""
-    if src.stat().st_size == 0:
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text("")
-        return 0
-    lines = src.read_text().strip().split("\n")
-    out_lines = []
-    for line in lines:
-        if not line.strip():
+def _class_distribution(out_dir: Path) -> dict[str, dict[str, int]]:
+    """Count canonical class occurrences per split by reading written labels."""
+    report: dict[str, dict[str, int]] = {}
+    for split in ("train", "val", "test"):
+        counts: Counter[str] = Counter()
+        labels_dir = out_dir / split / "labels"
+        if not labels_dir.exists():
+            report[split] = {}
             continue
-        parts = line.split()
-        old_id = int(parts[0])
-        if old_id >= len(src_names):
-            continue
-        src_name = src_names[old_id]
-        canonical = remap.get(src_name)
-        if canonical is None or canonical not in CLASS2ID:
-            continue
-        new_id = CLASS2ID[canonical]
-        out_lines.append(f"{new_id} {' '.join(parts[1:])}")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text("\n".join(out_lines))
-    return len(out_lines)
+        for lbl_path in labels_dir.glob("*.txt"):
+            for cid, *_ in read_yolo_label(lbl_path):
+                counts[ID2CLASS.get(cid, f"unknown-{cid}")] += 1
+        report[split] = dict(counts)
+    return report
 
 
-def copy_split(
-    img_dir: Path,
-    lbl_dir: Path,
-    out_root: Path,
-    split: str,
-    remap: dict[str, str],
-    src_names: list[str],
-    prefix: str,
-) -> int:
-    """Copy images and remapped labels into out_root/split/. Returns image count."""
-    count = 0
-    for img_path in sorted(img_dir.glob("*")):
-        if img_path.suffix.lower() not in _IMAGE_EXTS:
-            continue
-        lbl_path = lbl_dir / (img_path.stem + ".txt")
-        if not lbl_path.exists():
-            continue
-        dst_img = out_root / split / "images" / f"{prefix}_{img_path.name}"
-        dst_lbl = out_root / split / "labels" / f"{prefix}_{img_path.stem}.txt"
-        dst_img.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(img_path, dst_img)
-        remap_label_file(lbl_path, dst_lbl, remap, src_names)
-        count += 1
-    return count
+def build_combined_dataset(
+    out_dir: Path,
+    ism_root: Path,
+    archive_zip: Path,
+    pvmd_zip: Path,
+    staging_dir: Path,
+    seed: int = 42,
+) -> dict[str, dict[str, int]]:
+    """Merge all three sources into out_dir, return + persist a class-distribution report."""
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    ism_images = ism_root / "images"
+    ism_metadata = ism_root / "module_metadata.json"
+    ism_pairs = collect_ism_pairs(ism_images, ism_metadata)
+
+    archive_root = extract_archive_zip(archive_zip, staging_dir / "archive")
+    pv_source_names = list(PV_CLASSES_MAP.keys())
+    pv_pairs = collect_pv_pairs(archive_root, pv_source_names)
+
+    pvmd_root = extract_pvmd(pvmd_zip, staging_dir / "pvmd")
+    pvmd_pairs = collect_pvmd_pairs(pvmd_root)
+
+    all_pairs = collect_all_pairs(ism_pairs, pv_pairs, pvmd_pairs)
+    train, val, test = stratified_split(all_pairs, seed=seed)
+
+    for split_name, pairs in (("train", train), ("val", val), ("test", test)):
+        write_merged_dataset(split_name, pairs, out_dir, pv_source_class_names=pv_source_names)
+
+    report = _class_distribution(out_dir)
+    (out_dir / "class_distribution.json").write_text(json.dumps(report, indent=2))
+    return report
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Merge solar thermal datasets into unified YOLO format")
-    parser.add_argument("--infrared", default="ml/Datasets/InfraredSolarModules",
-                        help="Path to InfraredSolarModules dataset root")
-    parser.add_argument("--pvhawk", default="/tmp/pv-hawk/data",
-                        help="Path to PV-Hawk dataset root")
-    parser.add_argument("--roboflow", default="ml/data/roboflow_solar",
-                        help="Path to downloaded Roboflow dataset root")
-    parser.add_argument("--out", default="ml/data/combined",
-                        help="Output directory for combined dataset")
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", default="ml/data/combined")
+    parser.add_argument("--staging", default="ml/data/_staging")
+    parser.add_argument(
+        "--ism-root",
+        default="ml/Datasets/InfraredSolarModules/2020-02-14_InfraredSolarModules/InfraredSolarModules",
+    )
+    parser.add_argument("--archive-zip", default="ml/Datasets/archive.zip")
+    parser.add_argument(
+        "--pvmd-zip",
+        default=(
+            "ml/Datasets/Photovoltaic module dataset for automated fault detection "
+            "and analysis in large photovoltaic systems using photovoltaic module "
+            "fault detection.zip"
+        ),
+    )
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    report = build_combined_dataset(
+        out_dir=Path(args.out),
+        ism_root=Path(args.ism_root),
+        archive_zip=Path(args.archive_zip),
+        pvmd_zip=Path(args.pvmd_zip),
+        staging_dir=Path(args.staging),
+        seed=args.seed,
+    )
 
-    # InfraredSolarModules — already uses canonical class IDs, identity remap
-    infrared_path = Path(args.infrared)
-    if infrared_path.exists():
-        infrared_names = list(CLASS2ID.keys())
-        identity_remap = {n: n for n in infrared_names}
-        for split in ("train", "val", "test"):
-            img_dir = infrared_path / split / "images"
-            lbl_dir = infrared_path / split / "labels"
-            if img_dir.exists():
-                n = copy_split(img_dir, lbl_dir, out, split, identity_remap, infrared_names, "ism")
-                print(f"InfraredSolarModules {split}: {n} images")
-    else:
-        print(f"WARNING: InfraredSolarModules not found at {infrared_path} — skipping")
-
-    # PV-Hawk
-    pvhawk_path = Path(args.pvhawk)
-    if pvhawk_path.exists():
-        import yaml
-        pvhawk_yaml = pvhawk_path / "data.yaml"
-        if pvhawk_yaml.exists():
-            pvhawk_cfg = yaml.safe_load(pvhawk_yaml.read_text())
-            pvhawk_names = pvhawk_cfg.get("names", list(PVHAWK_REMAP.keys()))
-        else:
-            pvhawk_names = list(PVHAWK_REMAP.keys())
-        for split in ("train", "val", "test"):
-            img_dir = pvhawk_path / split / "images"
-            lbl_dir = pvhawk_path / split / "labels"
-            if img_dir.exists():
-                n = copy_split(img_dir, lbl_dir, out, split, PVHAWK_REMAP, pvhawk_names, "pvh")
-                print(f"PV-Hawk {split}: {n} images")
-    else:
-        print(f"WARNING: PV-Hawk not found at {pvhawk_path} — skipping")
-
-    # Roboflow
-    rf_path = Path(args.roboflow)
-    if rf_path.exists():
-        import yaml
-        rf_yaml = rf_path / "data.yaml"
-        if rf_yaml.exists():
-            rf_cfg = yaml.safe_load(rf_yaml.read_text())
-            rf_names = rf_cfg.get("names", list(ROBOFLOW_REMAP.keys()))
-        else:
-            rf_names = list(ROBOFLOW_REMAP.keys())
-        for split_src, split_dst in [("train", "train"), ("valid", "val"), ("test", "test")]:
-            img_dir = rf_path / split_src / "images"
-            lbl_dir = rf_path / split_src / "labels"
-            if img_dir.exists():
-                n = copy_split(img_dir, lbl_dir, out, split_dst, ROBOFLOW_REMAP, rf_names, "rf")
-                print(f"Roboflow {split_src}: {n} images")
-    else:
-        print(f"WARNING: Roboflow not found at {rf_path} — skipping")
-
-    # Print dataset summary
-    print("\nCombined dataset summary:")
-    for split in ("train", "val", "test"):
-        imgs = list((out / split / "images").glob("*")) if (out / split / "images").exists() else []
-        print(f"  {split}: {len(imgs)} images")
+    print("\nClass distribution per split:")
+    for split, counts in report.items():
+        print(f"  {split}:")
+        for cls in CANONICAL_CLASSES:
+            print(f"    {cls:<20} {counts.get(cls, 0)}")
 
 
 if __name__ == "__main__":
