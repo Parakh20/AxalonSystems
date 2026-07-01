@@ -8,6 +8,11 @@ set -euo pipefail
 CANDIDATE="$(curl -s -H 'Metadata-Flavor: Google' \
   'http://metadata.google.internal/computeMetadata/v1/instance/attributes/candidate')"
 
+if [ -z "$CANDIDATE" ]; then
+  echo "ERROR: candidate metadata is empty — aborting before wasting the VM" >&2
+  exit 1
+fi
+
 DATA_DEVICE="/dev/disk/by-id/google-thermal-dataset-disk"
 MOUNT_POINT="/mnt/dataset"
 
@@ -33,8 +38,11 @@ case "$CANDIDATE" in
     git clone --depth 1 https://github.com/Sense-X/Co-DETR.git /opt/co-detr
     pip install -r /opt/co-detr/requirements.txt
     python3 -m ml.scripts.yolo_to_coco --combined-root ml/data/combined --out ml/data/combined_coco
-    cd /opt/co-detr
-    python tools/train.py /opt/repo/ml/configs/co_detr_thermal.py
+    python /opt/co-detr/tools/train.py ml/configs/co_detr_thermal.py
+    ;;
+  *)
+    echo "ERROR: unknown candidate '$CANDIDATE'" >&2
+    exit 1
     ;;
 esac
 
