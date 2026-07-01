@@ -41,16 +41,27 @@ def build_model(model_name: str, resume_from: str | None = None):
     return YOLO(weights)
 
 
-def _maybe_enable_wandb(model) -> None:
-    """Attach W&B logging if WANDB_API_KEY is set in the environment; no-op otherwise."""
+def _maybe_enable_wandb(model, run_name: str) -> None:
+    """Attach W&B logging if WANDB_API_KEY is set in the environment; no-op otherwise.
+
+    Uses Ultralytics' own stable, documented callback API (on_fit_epoch_end)
+    rather than the wandb.integration.ultralytics package — that package's
+    add_wandb_callback raised "NameError: name 'RANK' is not defined" against
+    the ultralytics version pinned here, a version-compatibility break in the
+    third-party wrapper rather than anything on our side.
+    """
     if not os.environ.get("WANDB_API_KEY"):
         return
     import wandb
-    from wandb.integration.ultralytics import add_wandb_callback
 
     wandb.login()
-    add_wandb_callback(model, enable_model_checkpointing=True)
-    logger.info("W&B logging enabled")
+    wandb.init(entity="axalonsystems-", project="axalon-thermal-bakeoff", name=run_name, reinit=True)
+
+    def _log_epoch(trainer) -> None:
+        wandb.log(trainer.metrics, step=trainer.epoch)
+
+    model.add_callback("on_fit_epoch_end", _log_epoch)
+    logger.info("W&B logging enabled for run %s", run_name)
 
 
 def run_training(config_path: Path, resume_from: str | None = None) -> None:
@@ -62,7 +73,7 @@ def run_training(config_path: Path, resume_from: str | None = None) -> None:
     """
     cfg = load_training_config(config_path)
     model = build_model(cfg["model"], resume_from=resume_from)
-    _maybe_enable_wandb(model)
+    _maybe_enable_wandb(model, run_name=cfg.get("name", "run"))
 
     train_kwargs = {k: v for k, v in cfg.items() if k not in _NON_TRAIN_KEYS}
     train_kwargs["data"] = cfg["dataset_yaml"]
