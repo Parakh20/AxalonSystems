@@ -26,13 +26,19 @@ def load_training_config(path: Path) -> dict:
     return yaml.safe_load(Path(path).read_text())
 
 
-def build_model(model_name: str):
-    """Lazily construct the right Ultralytics model class for `model_name`."""
+def build_model(model_name: str, resume_from: str | None = None):
+    """Lazily construct the right Ultralytics model class for `model_name`.
+
+    If `resume_from` is given (a path to a prior last.pt checkpoint), the
+    model is loaded from that checkpoint instead of the config's pretrained
+    weights, so training resumes from where a preempted run left off.
+    """
+    weights = resume_from if resume_from else model_name
     if model_name.startswith("rtdetr"):
         from ultralytics import RTDETR
-        return RTDETR(model_name)
+        return RTDETR(weights)
     from ultralytics import YOLO
-    return YOLO(model_name)
+    return YOLO(weights)
 
 
 def _maybe_enable_wandb(model) -> None:
@@ -47,24 +53,32 @@ def _maybe_enable_wandb(model) -> None:
     logger.info("W&B logging enabled")
 
 
-def run_training(config_path: Path) -> None:
-    """Train the model described by `config_path` and log the result location."""
+def run_training(config_path: Path, resume_from: str | None = None) -> None:
+    """Train the model described by `config_path` and log the result location.
+
+    If `resume_from` points at an existing last.pt checkpoint, training
+    resumes from it (Ultralytics reads the saved training state) instead of
+    starting fresh from the config's pretrained weights.
+    """
     cfg = load_training_config(config_path)
-    model = build_model(cfg["model"])
+    model = build_model(cfg["model"], resume_from=resume_from)
     _maybe_enable_wandb(model)
 
     train_kwargs = {k: v for k, v in cfg.items() if k not in _NON_TRAIN_KEYS}
     train_kwargs["data"] = cfg["dataset_yaml"]
+    if resume_from:
+        train_kwargs["resume"] = True
 
-    logger.info("Starting training with config %s", config_path)
+    logger.info("Starting training with config %s (resume_from=%s)", config_path, resume_from)
     model.train(**train_kwargs)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
+    parser.add_argument("--resume-from", default=None, help="Path to a prior last.pt checkpoint to resume from")
     args = parser.parse_args()
-    run_training(Path(args.config))
+    run_training(Path(args.config), resume_from=args.resume_from)
 
 
 if __name__ == "__main__":

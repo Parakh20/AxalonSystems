@@ -82,6 +82,27 @@ def _():
         assert kwargs["data"] == cfg["dataset_yaml"]
         assert kwargs["epochs"] == cfg["epochs"]
         assert kwargs["imgsz"] == cfg["imgsz"]
+        assert "resume" not in kwargs
+
+
+@test("build_model(resume_from=...) loads the checkpoint instead of the config's weights")
+def _():
+    with patch("ultralytics.YOLO") as mock_yolo:
+        mock_yolo.return_value = MagicMock()
+        build_model("yolo11x.pt", resume_from="/mnt/dataset/runs/yolo11x/weights/last.pt")
+        mock_yolo.assert_called_once_with("/mnt/dataset/runs/yolo11x/weights/last.pt")
+
+
+@test("run_training(resume_from=...) passes resume=True to model.train()")
+def _():
+    cfg_path = ROOT / "ml/configs/thermal_yolo11x.yaml"
+    with patch("ml.scripts.train_ultralytics.build_model") as mock_build:
+        mock_model = MagicMock()
+        mock_build.return_value = mock_model
+        run_training(cfg_path, resume_from="/mnt/dataset/runs/yolo11x/weights/last.pt")
+        mock_build.assert_called_once_with("yolo11x.pt", resume_from="/mnt/dataset/runs/yolo11x/weights/last.pt")
+        kwargs = mock_model.train.call_args.kwargs
+        assert kwargs["resume"] is True
 
 
 print("\n" + "═" * 65)

@@ -43,6 +43,12 @@ if [ -d "$MOUNT_POINT/combined_coco" ]; then
   ln -s "$MOUNT_POINT"/combined_coco ml/data/combined_coco
 fi
 
+# Symlink the run-output directory onto the persistent dataset disk (survives
+# spot preemption / VM deletion, unlike the boot disk) so checkpoints saved by
+# a preempted run are still there when a fresh VM boots for the same candidate.
+mkdir -p "$MOUNT_POINT/runs"
+ln -s "$MOUNT_POINT"/runs runs
+
 # The image ships the CUDA driver only, not a Python/pip toolchain, and
 # opencv-python needs libGL which this minimal server image also lacks.
 apt-get update -qq
@@ -70,14 +76,38 @@ runpy.run_module('$module', run_name='__main__')
 " "$@")
 }
 
+# Ultralytics run names follow "<candidate-with-underscores>_solar" per the
+# thermal_*.yaml configs (e.g. yolo11x -> yolo11x_solar, rtdetr-x -> rtdetr_x_solar).
+# Locate any prior last.pt for this candidate on the persistent disk (present
+# only if a previous attempt for this exact candidate was preempted mid-run).
+find_last_checkpoint() {
+  local run_name="$1"
+  find "$MOUNT_POINT/runs" -path "*${run_name}*weights/last.pt" 2>/dev/null | head -1
+}
+
 case "$CANDIDATE" in
   yolo11x)
-    run_py_module ml.scripts.train_ultralytics --config ml/configs/thermal_yolo11x.yaml
+    LAST_CKPT="$(find_last_checkpoint yolo11x_solar)"
+    if [ -n "$LAST_CKPT" ]; then
+      echo "Resuming from $LAST_CKPT"
+      run_py_module ml.scripts.train_ultralytics --config ml/configs/thermal_yolo11x.yaml --resume-from "$LAST_CKPT"
+    else
+      run_py_module ml.scripts.train_ultralytics --config ml/configs/thermal_yolo11x.yaml
+    fi
     ;;
   rtdetr-x)
-    run_py_module ml.scripts.train_ultralytics --config ml/configs/thermal_rtdetr_x.yaml
+    LAST_CKPT="$(find_last_checkpoint rtdetr_x_solar)"
+    if [ -n "$LAST_CKPT" ]; then
+      echo "Resuming from $LAST_CKPT"
+      run_py_module ml.scripts.train_ultralytics --config ml/configs/thermal_rtdetr_x.yaml --resume-from "$LAST_CKPT"
+    else
+      run_py_module ml.scripts.train_ultralytics --config ml/configs/thermal_rtdetr_x.yaml
+    fi
     ;;
   codetr)
+    # No resume support here yet — MMDetection has its own --resume flag/
+    # mechanism, separate from the Ultralytics path above; add if/when this
+    # candidate is actually run and preemption becomes a real issue for it.
     git clone --depth 1 https://github.com/Sense-X/Co-DETR.git /opt/co-detr
     python3 -m pip install -r /opt/co-detr/requirements.txt
     run_py_module ml.scripts.yolo_to_coco --combined-root ml/data/combined --out ml/data/combined_coco
