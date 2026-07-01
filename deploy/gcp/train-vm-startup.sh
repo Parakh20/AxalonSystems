@@ -38,7 +38,10 @@ if [ -d "$MOUNT_POINT/combined_coco" ]; then
   ln -s "$MOUNT_POINT"/combined_coco ml/data/combined_coco
 fi
 
-pip install -r ml/requirements.txt
+# The image ships the CUDA driver only, not a Python/pip toolchain.
+apt-get update -qq
+apt-get install -y -qq python3-pip
+python3 -m pip install -r ml/requirements.txt
 
 case "$CANDIDATE" in
   yolo11x)
@@ -49,9 +52,9 @@ case "$CANDIDATE" in
     ;;
   codetr)
     git clone --depth 1 https://github.com/Sense-X/Co-DETR.git /opt/co-detr
-    pip install -r /opt/co-detr/requirements.txt
+    python3 -m pip install -r /opt/co-detr/requirements.txt
     python3 -m ml.scripts.yolo_to_coco --combined-root ml/data/combined --out ml/data/combined_coco
-    python /opt/co-detr/tools/train.py ml/configs/co_detr_thermal.py
+    python3 /opt/co-detr/tools/train.py ml/configs/co_detr_thermal.py
     ;;
   *)
     echo "ERROR: unknown candidate '$CANDIDATE'" >&2
