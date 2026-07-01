@@ -31,8 +31,12 @@ else
   git clone --depth 1 https://github.com/Parakh20/AxalonSystems.git repo
 fi
 cd repo
+# ml/data/ is gitignored build output, so it doesn't exist in a fresh clone.
+mkdir -p ml/data
 ln -s "$MOUNT_POINT"/combined ml/data/combined
-[ -d "$MOUNT_POINT/combined_coco" ] && ln -s "$MOUNT_POINT"/combined_coco ml/data/combined_coco
+if [ -d "$MOUNT_POINT/combined_coco" ]; then
+  ln -s "$MOUNT_POINT"/combined_coco ml/data/combined_coco
+fi
 
 pip install -r ml/requirements.txt
 
