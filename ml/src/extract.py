@@ -10,6 +10,7 @@ still need extraction before ml.src.dataset can scan them.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import zipfile
 from pathlib import Path
@@ -42,11 +43,11 @@ def extract_pvmd(outer_zip_path: Path, dest_dir: Path) -> Path:
     """Extract the PVMD dataset: outer .zip -> inner .rar -> Cracks/Hotspots/Shadings.
 
     Returns the PVMD root directory (containing the three class folders).
-    Idempotent: skips extraction if dest_dir/Cracks already exists and is
-    non-empty. Requires the `unrar` CLI to be installed.
+    Idempotent: skips extraction if all three class folders (Cracks, Hotspots,
+    Shadings) already exist and are non-empty. Requires the `unrar` CLI to be installed.
     """
-    marker = dest_dir / "Cracks"
-    if marker.exists() and any(marker.iterdir()):
+    expected_classes = ("Cracks", "Hotspots", "Shadings")
+    if all((dest_dir / name).exists() and any((dest_dir / name).iterdir()) for name in expected_classes):
         logger.info("PVMD already extracted at %s — skipping", dest_dir)
         return dest_dir
 
@@ -74,6 +75,9 @@ def extract_pvmd(outer_zip_path: Path, dest_dir: Path) -> Path:
             target = dest_dir / class_dir.name
             if not target.exists():
                 class_dir.rename(target)
+
+    # Clean up staging directory after extraction
+    shutil.rmtree(staging, ignore_errors=True)
 
     logger.info("Extracted PVMD to %s", dest_dir)
     return dest_dir
