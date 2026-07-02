@@ -49,6 +49,27 @@ export const CAMERAS: Camera[] = [
     resolutionH: 512,
   },
   {
+    // FLIR Boson+ (radiometric), 12um pixel pitch. Sensor dims = resolution * pixel
+    // pitch. Focal length is lens-dependent; 13mm matches the other 640x512 entries
+    // above as a reasonable nadir-survey default — adjust per the lens actually fitted.
+    id: 'flir-boson-plus-640',
+    name: 'FLIR Boson+ 640',
+    sensorWidthMm: 7.68,
+    sensorHeightMm: 6.144,
+    focalLengthMm: 13,
+    resolutionW: 640,
+    resolutionH: 512,
+  },
+  {
+    id: 'flir-boson-plus-320',
+    name: 'FLIR Boson+ 320',
+    sensorWidthMm: 3.84,
+    sensorHeightMm: 3.072,
+    focalLengthMm: 13,
+    resolutionW: 320,
+    resolutionH: 256,
+  },
+  {
     id: 'custom',
     name: 'Custom…',
     sensorWidthMm: 7.68,

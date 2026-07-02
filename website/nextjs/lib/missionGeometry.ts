@@ -303,6 +303,39 @@ export function splitByBattery(
   return { waypoints: out, legCount: leg + 1 }
 }
 
+// Walk the assembled flight path and place a point at every `triggerDistM`
+// travelled, matching what CMD_SET_CAM_TRIGG_DIST makes the flight controller
+// do onboard (continuous distance-based triggering from the moment the
+// command is issued, independent of leg/RTL boundaries). This is the list of
+// expected image-capture coordinates, which the mission export previously
+// only encoded as a trigger *interval* rather than concrete points.
+export function computeCapturePoints(waypoints: Waypoint[], triggerDistM: number): Waypoint[] {
+  if (waypoints.length < 2 || triggerDistM <= 0) return []
+  const points: Waypoint[] = []
+  let carry = 0 // distance remaining until the next trigger, carried across segments
+  for (let i = 1; i < waypoints.length; i++) {
+    const a = waypoints[i - 1]
+    const b = waypoints[i]
+    const segLen = haversineM(a, b)
+    if (segLen <= 0) continue
+    const heading = b.heading ?? bearingDeg(a, b)
+    let travelled = triggerDistM - carry
+    while (travelled <= segLen) {
+      const t = travelled / segLen
+      points.push({
+        lat: a.lat + (b.lat - a.lat) * t,
+        lon: a.lon + (b.lon - a.lon) * t,
+        alt: a.alt + (b.alt - a.alt) * t,
+        heading,
+        leg: b.leg,
+      })
+      travelled += triggerDistM
+    }
+    carry = segLen - (travelled - triggerDistM)
+  }
+  return points
+}
+
 function haversineM(a: LatLon, b: LatLon): number {
   const R = 6371000
   const dLat = ((b.lat - a.lat) * Math.PI) / 180

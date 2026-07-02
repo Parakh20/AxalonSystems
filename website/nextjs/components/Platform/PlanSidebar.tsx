@@ -55,6 +55,7 @@ const EXPORT_FORMATS: { value: ExportFormat; label: string; short: string }[] = 
   { value: 'kml', label: 'KML (Google Earth)', short: 'KML' },
   { value: 'plan', label: 'QGroundControl .plan', short: '.plan' },
   { value: 'waypoints', label: 'ArduPilot .waypoints', short: '.waypoints' },
+  { value: 'capture-points', label: 'Capture points (GeoJSON)', short: '.geojson' },
 ]
 
 export default function PlanSidebar(props: Props) {

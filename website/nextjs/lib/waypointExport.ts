@@ -1,7 +1,7 @@
 // website/nextjs/lib/waypointExport.ts
-import type { Waypoint, MissionParams } from './missionGeometry'
+import { computeCapturePoints, type Waypoint, type MissionParams } from './missionGeometry'
 
-export type ExportFormat = 'litchi' | 'kml' | 'plan' | 'waypoints'
+export type ExportFormat = 'litchi' | 'kml' | 'plan' | 'waypoints' | 'capture-points'
 
 // ── MAVLink command IDs (QGC WPL 110 + .plan) ────────────────────────────────
 const CMD_WAYPOINT = 16
@@ -163,6 +163,21 @@ export function toQgcPlan(waypoints: Waypoint[], triggerDistM: number): string {
   return JSON.stringify({ ...base, mission }, null, 2)
 }
 
+// ── Capture points (GeoJSON) ─────────────────────────────────────────────────
+// Precomputed lat/lon/alt of every expected image-capture location along the
+// flight path, at the same triggerDistM interval sent to the flight controller
+// via CMD_SET_CAM_TRIGG_DIST. Useful for pre-flight coverage verification and
+// for correlating captured images (EXIF GPS) against planned shot positions.
+export function toCapturePointsGeoJson(waypoints: Waypoint[], triggerDistM: number): string {
+  const points = computeCapturePoints(waypoints, triggerDistM)
+  const features = points.map((p, i) => ({
+    type: 'Feature',
+    properties: { index: i, altitude_m: p.alt, heading_deg: p.heading ?? null, leg: p.leg ?? 0 },
+    geometry: { type: 'Point', coordinates: [p.lon, p.lat, p.alt] },
+  }))
+  return JSON.stringify({ type: 'FeatureCollection', features }, null, 2)
+}
+
 // ── Unified serialise + download ─────────────────────────────────────────────
 type Serialised = { text: string; ext: string; mime: string }
 
@@ -173,6 +188,7 @@ export function serialiseMission(
   if (format === 'litchi') return { text: toLitchiCsv(waypoints, params, triggerDistM), ext: 'csv', mime: 'text/csv' }
   if (format === 'kml') return { text: toKml(waypoints, missionName), ext: 'kml', mime: 'application/vnd.google-earth.kml+xml' }
   if (format === 'waypoints') return { text: serialiseQGCWPL110(waypoints, triggerDistM), ext: 'waypoints', mime: 'text/plain' }
+  if (format === 'capture-points') return { text: toCapturePointsGeoJson(waypoints, triggerDistM), ext: 'geojson', mime: 'application/geo+json' }
   return { text: toQgcPlan(waypoints, triggerDistM), ext: 'plan', mime: 'application/json' }
 }
 
