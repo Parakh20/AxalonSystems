@@ -136,3 +136,13 @@ deploy/azure/.infra-state
 # Test/coverage and agent-pipeline runtime artifacts (not source)
 .coverage
 docs/pipelines/
+
+# Bake-off training artifacts (large, regenerable locally or on the training
+# VMs — never committed): built combined dataset, candidate checkpoints, and
+# Ultralytics/MMDetection run outputs.
+ml/data/combined/
+ml/data/combined_coco/
+ml/data/_staging/
+ml/checkpoints/candidates/
+ml/checkpoints/*_legacy.pt
+/runs/
