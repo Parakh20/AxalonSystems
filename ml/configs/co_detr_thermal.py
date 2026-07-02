@@ -124,10 +124,25 @@ val_dataloader = dict(
         metainfo=dict(classes=classes),
     )
 )
-test_dataloader = val_dataloader
+test_dataloader = dict(
+    dataset=dict(
+        data_root=data_root,
+        ann_file="test.json",
+        data_prefix=dict(img="../combined/test/images/"),
+        metainfo=dict(classes=classes),
+    )
+)
 
 val_evaluator = dict(ann_file=data_root + "val.json")
-test_evaluator = val_evaluator
+# classwise=True + the held-out test.json split (not val.json) match how
+# ml/eval/evaluate.py scores the Ultralytics candidates, so results are
+# directly comparable across all three bake-off candidates.
+test_evaluator = dict(
+    type="CocoMetric",
+    ann_file=data_root + "test.json",
+    metric="bbox",
+    classwise=True,
+)
 
 # /opt/repo/runs is symlinked to the persistent dataset disk by the VM startup
 # script, so checkpoints survive spot preemption (same pattern as the
