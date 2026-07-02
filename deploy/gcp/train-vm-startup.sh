@@ -5,6 +5,16 @@
 # then shuts the VM down so spot billing stops.
 set -euo pipefail
 
+# Guarantee the VM shuts down (stopping spot billing) no matter how this
+# script exits — including a nonzero exit from the training command itself.
+# Without this, `set -e` aborts the script on any nonzero exit and the
+# `shutdown -h now` at the bottom never runs, leaving a finished (or crashed)
+# training run billing as an idle GPU indefinitely. Observed in practice: the
+# yolo11x run finished training cleanly (best.pt saved, early-stopped) but its
+# wrapper process exited 120, aborting the script before reaching shutdown —
+# the VM idled for ~4h before being caught and stopped manually.
+trap 'shutdown -h now' EXIT
+
 CANDIDATE="$(curl -s -H 'Metadata-Flavor: Google' \
   'http://metadata.google.internal/computeMetadata/v1/instance/attributes/candidate')"
 
@@ -136,5 +146,5 @@ case "$CANDIDATE" in
     exit 1
     ;;
 esac
-
-shutdown -h now
+# Shutdown is handled by the EXIT trap above, so training completing (or
+# failing) either way always reaches it.
