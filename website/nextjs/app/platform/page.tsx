@@ -57,25 +57,19 @@ function PlatformShell() {
         <aside className="rail">
           {/* Rail brand */}
           <div className="rail-brand">
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 6,
-                background: 'linear-gradient(135deg, #0ea5e9, #06b6d4)',
-                display: 'grid',
-                placeItems: 'center',
-                fontSize: 18,
-                fontWeight: 800,
-                color: '#fff',
-              }}
-            >
-              A
+            <div className="rail-mark" aria-hidden="true">
+              AX
+            </div>
+            <div className="rail-brand-text">
+              <strong>Axalon</strong>
+              <span>Thermal Ops</span>
             </div>
           </div>
+          <div className="rail-spectrum" aria-hidden="true" />
 
           {/* Navigation buttons */}
           <nav className="rail-nav tab-bar">
+            <div className="rail-group">Monitor</div>
             <button
               type="button"
               className={`rail-link ${tab === 'overview' ? 'active' : ''}`}
@@ -116,6 +110,7 @@ function PlatformShell() {
               <HistoryIcon size={16} />
               <span>History</span>
             </button>
+            <div className="rail-group">Field</div>
             <button
               type="button"
               className={`rail-link ${tab === 'parkmap' ? 'active' : ''}`}
@@ -150,17 +145,6 @@ function PlatformShell() {
             </button>
             <button
               type="button"
-              className={`rail-link ${tab === 'assets' ? 'active' : ''}`}
-              onClick={() => setTab('assets')}
-              title="Assets"
-              aria-label="Assets"
-              data-testid="tab-assets"
-            >
-              <FolderKanban size={16} />
-              <span>Assets</span>
-            </button>
-            <button
-              type="button"
               className={`rail-link ${tab === 'liveops' ? 'active' : ''}`}
               onClick={() => setTab('liveops')}
               title="Live Ops"
@@ -169,6 +153,18 @@ function PlatformShell() {
             >
               <Radio size={16} />
               <span>Live Ops</span>
+            </button>
+            <div className="rail-group">Manage</div>
+            <button
+              type="button"
+              className={`rail-link ${tab === 'assets' ? 'active' : ''}`}
+              onClick={() => setTab('assets')}
+              title="Assets"
+              aria-label="Assets"
+              data-testid="tab-assets"
+            >
+              <FolderKanban size={16} />
+              <span>Assets</span>
             </button>
             <button
               type="button"
@@ -186,9 +182,9 @@ function PlatformShell() {
           <div className="rail-foot">
             <div className="rail-status ok">
               <span />
-              Axalon Platform
+              Detector online
             </div>
-            <div className="rail-foot-line">YOLO11m</div>
+            <div className="rail-foot-line">YOLO11 · 11 fault classes</div>
           </div>
         </aside>
 
