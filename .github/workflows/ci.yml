@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -59,10 +61,10 @@ jobs:
 
       - name: Copy model weights placeholder if needed
         run: |
-          if [ ! -f ml/checkpoints/best.pt ]; then
-            echo "WARNING: best.pt missing; creating a 0-byte UI smoke-test placeholder"
-            mkdir -p ml/checkpoints
-            touch ml/checkpoints/best.pt
+          mkdir -p ml/checkpoints
+          if [ ! -s ml/checkpoints/best.pt ] || head -c 7 ml/checkpoints/best.pt | grep -q "version"; then
+            echo "WARNING: best.pt missing or an unresolved LFS pointer; creating a 0-byte UI smoke-test placeholder"
+            : > ml/checkpoints/best.pt
           fi
 
       - name: Install fixture generator dependencies
