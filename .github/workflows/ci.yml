@@ -58,13 +58,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
-      - name: Copy model weights placeholder if needed
+      - name: Verify model weights resolved from LFS
         run: |
           mkdir -p ml/checkpoints
           if [ ! -s ml/checkpoints/best.pt ] || head -c 7 ml/checkpoints/best.pt | grep -q "version"; then
-            echo "WARNING: best.pt missing or an unresolved LFS pointer; creating a 0-byte UI smoke-test placeholder"
-            : > ml/checkpoints/best.pt
+            echo "ERROR: ml/checkpoints/best.pt is missing or still an unresolved LFS pointer" >&2
+            exit 1
           fi
 
       - name: Install fixture generator dependencies
