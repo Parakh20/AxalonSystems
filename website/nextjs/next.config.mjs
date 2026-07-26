@@ -8,6 +8,9 @@ const nextConfig = {
     return {
       beforeFiles: [
         { source: '/', destination: '/site/index.html' },
+        // Static technical investor brief — plain HTML, no React.
+        // Lives in public/stack/index.html rather than a 1000-line route handler.
+        { source: '/stack', destination: '/stack/index.html' },
       ],
     }
   },

@@ -1,9 +1,4 @@
-import { NextResponse } from 'next/server'
-
-// Static technical investor brief served at /stack.
-// Full self-contained HTML document — rendered via a route handler so it
-// bypasses the root layout (no nested <html>/<body>).
-const html = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1032,12 +1027,4 @@ const html = `<!DOCTYPE html>
 </footer>
 
 </body>
-</html>`
-
-export const dynamic = 'force-static'
-
-export function GET() {
-  return new NextResponse(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  })
-}
+</html>

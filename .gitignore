@@ -56,6 +56,8 @@ __pycache__/
 *pyc*
 venv/
 .venv/
+# Secondary venvs (e.g. .venv-relay for the drone relay deps)
+.venv-*/
 
 # Development tools
 chainlit.md

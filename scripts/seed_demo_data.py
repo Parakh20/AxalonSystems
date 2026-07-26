@@ -22,14 +22,21 @@ from datetime import date, timedelta
 # ---------------------------------------------------------------------------
 # Ensure the project root is on sys.path so `axalon` can be imported when the
 # script is executed from any working directory.
+#
+# Must be APPENDED, not inserted at position 0: the repo root contains a
+# `platform/` package that would otherwise shadow the stdlib `platform` module
+# for every downstream import (SQLAlchemy calls platform.python_implementation()
+# at import time and crashes). Appending leaves the stdlib earlier in the path.
 # ---------------------------------------------------------------------------
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+    sys.path.append(_REPO_ROOT)
 
 try:
     from axalon.db.session import init_db, session_scope
     from axalon.db.models import Park, Inspection, Detection
+    # Canonical class/severity definitions — never redefine these locally.
+    from ml.src.utils import CANONICAL_CLASSES, CLASS2ID, SEVERITY_MAP
 except ImportError as exc:
     sys.exit(
         f"[seed_demo_data] Cannot import axalon package: {exc}\n"
@@ -54,43 +61,14 @@ INSPECTION_DATES = [
 ROWS = 6
 COLS = 8
 
-CANONICAL_CLASSES = [
-    "cell",
-    "cell-multi",
-    "module",
-    "string",
-    "bypass-diode",
-    "offline-module",
-    "vegetation-shading",
-    "soiling",
-    "short-circuit",
-    "hot-spot-low",
-    "hot-spot-high",
-]
-
-CLASS2ID = {cls: idx for idx, cls in enumerate(CANONICAL_CLASSES)}
-
-SEVERITY_MAP = {
-    "cell": "MEDIUM",
-    "cell-multi": "MEDIUM",
-    "module": "MEDIUM",
-    "string": "CRITICAL",
-    "bypass-diode": "CRITICAL",
-    "offline-module": "HIGH",
-    "vegetation-shading": "LOW",
-    "soiling": "LOW",
-    "short-circuit": "HIGH",
-    "hot-spot-low": "HIGH",
-    "hot-spot-high": "CRITICAL",
-}
-
-# Severity → candidate class names (used for weighted random selection)
-_SEVERITY_CLASSES = {
-    "CRITICAL": ["string", "bypass-diode", "hot-spot-high"],
-    "HIGH":     ["offline-module", "short-circuit", "hot-spot-low"],
-    "MEDIUM":   ["cell", "cell-multi", "module"],
-    "LOW":      ["vegetation-shading", "soiling"],
-}
+# Severity → candidate class names, inverted from the canonical SEVERITY_MAP.
+# Sorted so a seeded RNG produces identical output across runs regardless of
+# dict insertion order upstream.
+_SEVERITY_CLASSES: dict[str, list[str]] = {}
+for _cls, _sev in SEVERITY_MAP.items():
+    _SEVERITY_CLASSES.setdefault(_sev, []).append(_cls)
+for _sev in _SEVERITY_CLASSES:
+    _SEVERITY_CLASSES[_sev].sort()
 
 # Approximate distribution weights: 10% CRITICAL, 15% HIGH, 50% MEDIUM, 25% LOW
 _SEVERITY_WEIGHTS = [("CRITICAL", 0.10), ("HIGH", 0.15), ("MEDIUM", 0.50), ("LOW", 0.25)]
