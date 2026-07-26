@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import {
   Boxes,
   ExternalLink,
@@ -28,6 +30,17 @@ import {
   stockValue,
 } from '@/lib/inventory'
 import { useToast } from '@/components/Platform/Toast'
+import { FieldError } from '@/components/Platform/FieldError'
+import {
+  addComponentSchema,
+  addOrderSchema,
+  addPrototypeSchema,
+  assignComponentSchema,
+  type AddComponentInput,
+  type AddOrderInput,
+  type AddPrototypeInput,
+  type AssignComponentInput,
+} from '@/lib/schemas/inventory'
 
 const CATEGORIES: ComponentCategory[] = [
   'flight-controller', 'motor', 'esc', 'battery', 'propeller', 'frame',
@@ -57,41 +70,36 @@ function errMessage(err: unknown): string {
 
 // ── Components section ────────────────────────────────────────────────────────
 
+const ADD_COMPONENT_DEFAULTS: AddComponentInput = {
+  name: '', category: 'other', qty_total: '1', unit_cost: '', vendor: '', link: '',
+}
+
+const ADD_ORDER_DEFAULTS: AddOrderInput = {
+  name: '', component_id: '', qty: '1', est_cost: '', needed_by: '',
+}
+
 function AddComponentForm({ onCreated }: { onCreated: () => void }) {
   const toast = useToast()
   const [isOpen, setIsOpen] = useState(false)
-  const [isBusy, setIsBusy] = useState(false)
-  const [name, setName] = useState('')
-  const [category, setCategory] = useState<ComponentCategory>('other')
-  const [qty, setQty] = useState('1')
-  const [unitCost, setUnitCost] = useState('')
-  const [vendor, setVendor] = useState('')
-  const [link, setLink] = useState('')
+  const {
+    register, handleSubmit, reset,
+    formState: { errors, isSubmitting },
+  } = useForm<AddComponentInput>({
+    resolver: zodResolver(addComponentSchema),
+    defaultValues: ADD_COMPONENT_DEFAULTS,
+  })
 
-  async function submit() {
-    if (!name.trim()) {
-      toast.error('Component name is required')
-      return
-    }
-    setIsBusy(true)
+  const onSubmit = handleSubmit(async (raw) => {
+    const values = addComponentSchema.parse(raw)
     try {
-      await api.createComponent({
-        name: name.trim(),
-        category,
-        qty_total: Math.max(0, Number(qty) || 0),
-        unit_cost: unitCost ? Number(unitCost) : null,
-        vendor: vendor.trim() || null,
-        link: link.trim() || null,
-      })
-      setName(''); setQty('1'); setUnitCost(''); setVendor(''); setLink('')
+      await api.createComponent(values)
+      reset(ADD_COMPONENT_DEFAULTS)
       setIsOpen(false)
       onCreated()
     } catch (err) {
       toast.error(errMessage(err))
-    } finally {
-      setIsBusy(false)
     }
-  }
+  })
 
   if (!isOpen) {
     return (
@@ -101,20 +109,24 @@ function AddComponentForm({ onCreated }: { onCreated: () => void }) {
     )
   }
   return (
-    <div className="inv-form">
-      <input placeholder="Part name *" value={name} onChange={(e) => setName(e.target.value)} />
-      <select value={category} onChange={(e) => setCategory(e.target.value as ComponentCategory)}>
+    <form className="inv-form" onSubmit={onSubmit} noValidate>
+      <input placeholder="Part name *" {...register('name')} />
+      <FieldError message={errors.name?.message} />
+      <select {...register('category')}>
         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
       </select>
-      <input type="number" min={0} placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
-      <input type="number" min={0} placeholder="Unit cost ₹" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
-      <input placeholder="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} />
-      <input placeholder="Product link" value={link} onChange={(e) => setLink(e.target.value)} />
+      <input type="number" min={0} placeholder="Qty" {...register('qty_total')} />
+      <FieldError message={errors.qty_total?.message} />
+      <input type="number" min={0} placeholder="Unit cost ₹" {...register('unit_cost')} />
+      <FieldError message={errors.unit_cost?.message} />
+      <input placeholder="Vendor" {...register('vendor')} />
+      <input placeholder="Product link" {...register('link')} />
+      <FieldError message={errors.link?.message} />
       <div className="inv-form-actions">
-        <button type="button" className="primary" disabled={isBusy} onClick={submit}>Save</button>
+        <button type="submit" className="primary" disabled={isSubmitting}>Save</button>
         <button type="button" className="secondary" onClick={() => setIsOpen(false)}>Cancel</button>
       </div>
-    </div>
+    </form>
   )
 }
 
@@ -219,38 +231,44 @@ function AssignForm({
 }) {
   const toast = useToast()
   const available = components.filter((c) => c.qty_available > 0)
-  const [componentId, setComponentId] = useState('')
-  const [qty, setQty] = useState('1')
+  const {
+    register, handleSubmit, reset, watch,
+    formState: { errors, isSubmitting },
+  } = useForm<AssignComponentInput>({
+    resolver: zodResolver(assignComponentSchema),
+    defaultValues: { component_id: '', qty: '1' },
+  })
 
-  async function submit() {
-    if (!componentId) return
+  const onSubmit = handleSubmit(async (raw) => {
+    const values = assignComponentSchema.parse(raw)
     try {
       await api.createAssignment({
-        component_id: Number(componentId),
+        component_id: Number(values.component_id),
         prototype_id: prototype.id,
-        qty: Math.max(1, Number(qty) || 1),
+        qty: values.qty,
       })
-      setComponentId(''); setQty('1')
+      reset({ component_id: '', qty: '1' })
       onChanged()
     } catch (err) {
       toast.error(errMessage(err))
     }
-  }
+  })
 
   if (available.length === 0) return null
   return (
-    <div className="inv-assign-form">
-      <select value={componentId} onChange={(e) => setComponentId(e.target.value)}>
+    <form className="inv-assign-form" onSubmit={onSubmit} noValidate>
+      <select {...register('component_id')}>
         <option value="">Install a component…</option>
         {available.map((c) => (
           <option key={c.id} value={c.id}>{c.name} ({c.qty_available} avail.)</option>
         ))}
       </select>
-      <input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} />
-      <button type="button" className="secondary" disabled={!componentId} onClick={submit}>
+      <input type="number" min={1} {...register('qty')} />
+      <button type="submit" className="secondary" disabled={!watch('component_id') || isSubmitting}>
         <Wrench size={13} /> Install
       </button>
-    </div>
+      <FieldError message={errors.component_id?.message ?? errors.qty?.message} />
+    </form>
   )
 }
 
@@ -347,25 +365,24 @@ function PrototypesPanel({
   onChanged: () => void
 }) {
   const toast = useToast()
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
+  const {
+    register, handleSubmit, reset,
+    formState: { errors, isSubmitting },
+  } = useForm<AddPrototypeInput>({
+    resolver: zodResolver(addPrototypeSchema),
+    defaultValues: { name: '', description: '' },
+  })
 
-  async function create() {
-    if (!name.trim()) {
-      toast.error('Prototype name is required')
-      return
-    }
+  const onSubmit = handleSubmit(async (raw) => {
+    const values = addPrototypeSchema.parse(raw)
     try {
-      await api.createPrototype({
-        name: name.trim(),
-        description: description.trim() || null,
-      })
-      setName(''); setDescription('')
+      await api.createPrototype(values)
+      reset({ name: '', description: '' })
       onChanged()
     } catch (err) {
       toast.error(errMessage(err))
     }
-  }
+  })
 
   return (
     <section className="panel">
@@ -376,13 +393,14 @@ function PrototypesPanel({
         </div>
       </div>
 
-      <div className="inv-form">
-        <input placeholder="New prototype name *" value={name} onChange={(e) => setName(e.target.value)} />
-        <input placeholder="Description (e.g. thermal quad, 7-inch frame)" value={description} onChange={(e) => setDescription(e.target.value)} />
+      <form className="inv-form" onSubmit={onSubmit} noValidate>
+        <input placeholder="New prototype name *" {...register('name')} />
+        <FieldError message={errors.name?.message} />
+        <input placeholder="Description (e.g. thermal quad, 7-inch frame)" {...register('description')} />
         <div className="inv-form-actions">
-          <button type="button" className="primary" onClick={create}><Plus size={14} /> Create</button>
+          <button type="submit" className="primary" disabled={isSubmitting}><Plus size={14} /> Create</button>
         </div>
-      </div>
+      </form>
 
       {prototypes.length === 0 && <div className="empty">No prototypes yet.</div>}
       <div className="inv-proto-grid">
@@ -406,32 +424,31 @@ function OrdersPanel({
   onChanged: () => void
 }) {
   const toast = useToast()
-  const [name, setName] = useState('')
-  const [componentId, setComponentId] = useState('')
-  const [qty, setQty] = useState('1')
-  const [estCost, setEstCost] = useState('')
-  const [neededBy, setNeededBy] = useState('')
   const totals = orderCostByStatus(orders)
+  const {
+    register, handleSubmit, reset,
+    formState: { errors, isSubmitting },
+  } = useForm<AddOrderInput>({
+    resolver: zodResolver(addOrderSchema),
+    defaultValues: ADD_ORDER_DEFAULTS,
+  })
 
-  async function create() {
-    if (!name.trim() && !componentId) {
-      toast.error('Give the order a name or link it to a component')
-      return
-    }
+  const onSubmit = handleSubmit(async (raw) => {
+    const values = addOrderSchema.parse(raw)
     try {
       await api.createOrder({
-        name: name.trim() || undefined,
-        component_id: componentId ? Number(componentId) : null,
-        qty: Math.max(1, Number(qty) || 1),
-        est_unit_cost: estCost ? Number(estCost) : null,
-        needed_by: neededBy || null,
+        name: values.name || undefined,
+        component_id: values.component_id ? Number(values.component_id) : null,
+        qty: values.qty,
+        est_unit_cost: values.est_cost,
+        needed_by: values.needed_by,
       })
-      setName(''); setComponentId(''); setQty('1'); setEstCost(''); setNeededBy('')
+      reset(ADD_ORDER_DEFAULTS)
       onChanged()
     } catch (err) {
       toast.error(errMessage(err))
     }
-  }
+  })
 
   async function setStatus(o: ComponentOrder, status: OrderStatus) {
     try {
@@ -463,19 +480,22 @@ function OrdersPanel({
         </div>
       </div>
 
-      <div className="inv-form">
-        <input placeholder="Item to order *" value={name} onChange={(e) => setName(e.target.value)} />
-        <select value={componentId} onChange={(e) => setComponentId(e.target.value)}>
+      <form className="inv-form" onSubmit={onSubmit} noValidate>
+        <input placeholder="Item to order *" {...register('name')} />
+        <FieldError message={errors.name?.message} />
+        <select {...register('component_id')}>
           <option value="">Restock existing part…</option>
           {components.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <input type="number" min={1} placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
-        <input type="number" min={0} placeholder="Est. unit cost ₹" value={estCost} onChange={(e) => setEstCost(e.target.value)} />
-        <input type="date" value={neededBy} onChange={(e) => setNeededBy(e.target.value)} title="Needed by" />
+        <input type="number" min={1} placeholder="Qty" {...register('qty')} />
+        <FieldError message={errors.qty?.message} />
+        <input type="number" min={0} placeholder="Est. unit cost ₹" {...register('est_cost')} />
+        <FieldError message={errors.est_cost?.message} />
+        <input type="date" {...register('needed_by')} title="Needed by" />
         <div className="inv-form-actions">
-          <button type="button" className="primary" onClick={create}><PackagePlus size={14} /> Plan order</button>
+          <button type="submit" className="primary" disabled={isSubmitting}><PackagePlus size={14} /> Plan order</button>
         </div>
-      </div>
+      </form>
 
       {orders.length === 0 && <div className="empty">Nothing in the order queue.</div>}
       {orders.length > 0 && (

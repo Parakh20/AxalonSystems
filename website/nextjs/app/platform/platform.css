@@ -1764,6 +1764,15 @@ span.low:not(.severity) {
   border-radius: 8px;
   background: #f8fafc;
 }
+/* Inline validation message. Breaks the flex row so it sits under its field. */
+.field-error {
+  flex-basis: 100%;
+  margin-top: -4px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--th-crit);
+}
+
 .inv-form input,
 .inv-form select,
 .inv-form textarea {

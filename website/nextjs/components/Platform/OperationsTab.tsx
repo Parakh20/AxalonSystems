@@ -18,6 +18,7 @@ import {
 import dynamic from 'next/dynamic'
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useToast } from '@/components/Platform/Toast'
+import { batchUploadSchema, firstError } from '@/lib/schemas/operations'
 import { api, ApiError, API_BASE } from '@/lib/api'
 import {
   useMapData,
@@ -342,8 +343,18 @@ export function OperationsTab() {
       setMessage('Choose a mission ZIP first')
       return
     }
-    if (!selectedFile.name.endsWith('.zip')) {
-      setMessage('Only .zip mission folders can be submitted')
+
+    // Validate against the same contract the API enforces, so a bad park ID
+    // fails here instead of after the whole ZIP has uploaded.
+    const parsed = batchUploadSchema.safeParse({
+      park_id: parkId,
+      altitude_m: altitude,
+      file_name: selectedFile.name,
+    })
+    const problem = firstError(parsed)
+    if (problem) {
+      setMessage(problem)
+      toast.error(problem)
       return
     }
 
