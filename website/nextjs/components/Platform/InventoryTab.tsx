@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
@@ -41,6 +42,11 @@ import {
   type AddPrototypeInput,
   type AssignComponentInput,
 } from '@/lib/schemas/inventory'
+import { queryKeys } from '@/lib/queryKeys'
+
+const EMPTY_COMPONENTS: InventoryComponent[] = []
+const EMPTY_PROTOTYPES: Prototype[] = []
+const EMPTY_ORDERS: ComponentOrder[] = []
 
 const CATEGORIES: ComponentCategory[] = [
   'flight-controller', 'motor', 'esc', 'battery', 'propeller', 'frame',
@@ -540,32 +546,32 @@ function OrdersPanel({
 // ── Tab root ──────────────────────────────────────────────────────────────────
 
 export function InventoryTab() {
-  const toast = useToast()
-  const [components, setComponents] = useState<InventoryComponent[]>([])
-  const [prototypes, setPrototypes] = useState<Prototype[]>([])
-  const [orders, setOrders] = useState<ComponentOrder[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const queryClient = useQueryClient()
 
-  const reload = useCallback(async () => {
-    try {
-      const [comps, protos, ords] = await Promise.all([
-        api.inventoryComponents(),
-        api.prototypes(),
-        api.orders(),
-      ])
-      setComponents(comps)
-      setPrototypes(protos)
-      setOrders(ords)
-    } catch (err) {
-      toast.error(errMessage(err))
-    } finally {
-      setIsLoading(false)
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // The three lists load in parallel and are cached independently, so a
+  // mutation touching only orders no longer refetches components too.
+  const componentsQuery = useQuery({
+    queryKey: queryKeys.inventory.components,
+    queryFn: () => api.inventoryComponents(),
+  })
+  const prototypesQuery = useQuery({
+    queryKey: queryKeys.inventory.prototypes,
+    queryFn: () => api.prototypes(),
+  })
+  const ordersQuery = useQuery({
+    queryKey: queryKeys.inventory.orders,
+    queryFn: () => api.orders(),
+  })
 
-  useEffect(() => {
-    reload()
-  }, [reload])
+  const components = componentsQuery.data ?? EMPTY_COMPONENTS
+  const prototypes = prototypesQuery.data ?? EMPTY_PROTOTYPES
+  const orders = ordersQuery.data ?? EMPTY_ORDERS
+  const isLoading = componentsQuery.isPending || prototypesQuery.isPending || ordersQuery.isPending
+  const loadError = componentsQuery.error ?? prototypesQuery.error ?? ordersQuery.error
+
+  const reload = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
+  }, [queryClient])
 
   const low = lowStockComponents(components)
   const openOrders = orders.filter((o) => o.status === 'planned' || o.status === 'ordered')
@@ -593,7 +599,10 @@ export function InventoryTab() {
       </header>
 
       {isLoading && <div className="empty">Loading inventory…</div>}
-      {!isLoading && (
+      {!isLoading && loadError && (
+        <div className="empty">Could not load inventory — {errMessage(loadError)}</div>
+      )}
+      {!isLoading && !loadError && (
         <div className="inv-layout">
           <ComponentsPanel components={components} onChanged={reload} />
           <PrototypesPanel prototypes={prototypes} components={components} onChanged={reload} />
