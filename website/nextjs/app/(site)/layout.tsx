@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import DynamicCursor from '@/components/DynamicCursor'
-import Navbar from '@/components/Navbar'
 
 export const metadata: Metadata = {
   title: 'Axalon Systems — Autonomous Solar Inspection',
@@ -16,7 +15,6 @@ export default function SiteLayout({
   return (
     <>
       <DynamicCursor />
-      <Navbar />
       <main>{children}</main>
     </>
   )
