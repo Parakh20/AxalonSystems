@@ -1,9 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, FolderOpen, Trash2, Upload } from 'lucide-react'
 import { api, type TrackFileMeta } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 import { useToast } from '@/components/Platform/Toast'
+import { useErrorToast } from '@/components/Platform/hooks/useErrorToast'
+
+const NO_FILES: TrackFileMeta[] = []
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -13,48 +18,44 @@ function formatBytes(bytes: number): string {
 
 export function TrackFilesPanel() {
   const toast = useToast()
-  const [files, setFiles] = useState<TrackFileMeta[]>([])
+  const queryClient = useQueryClient()
   const [label, setLabel] = useState('')
-  const [isBusy, setIsBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  async function reload() {
-    try {
-      setFiles(await api.trackFiles())
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
-    }
-  }
+  const filesQuery = useQuery({ queryKey: queryKeys.track.files, queryFn: () => api.trackFiles() })
+  useErrorToast(filesQuery.error)
+  const files = filesQuery.data ?? NO_FILES
 
-  useEffect(() => {
-    reload()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const refreshFiles = () => void queryClient.invalidateQueries({ queryKey: queryKeys.track.files })
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : String(err))
 
-  async function upload(selected: File) {
+  const uploadMutation = useMutation({
+    mutationFn: (form: FormData) => api.uploadTrackFile(form),
+    onSuccess: () => {
+      setLabel('')
+      if (inputRef.current) inputRef.current.value = ''
+      refreshFiles()
+    },
+    onError,
+  })
+  const isBusy = uploadMutation.isPending
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteTrackFile(id),
+    onSuccess: refreshFiles,
+    onError,
+  })
+
+  function upload(selected: File) {
     const form = new FormData()
     form.append('file', selected)
     if (label.trim()) form.append('label', label.trim())
-    setIsBusy(true)
-    try {
-      await api.uploadTrackFile(form)
-      setLabel('')
-      if (inputRef.current) inputRef.current.value = ''
-      reload()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsBusy(false)
-    }
+    uploadMutation.mutate(form)
   }
 
-  async function remove(f: TrackFileMeta) {
+  function remove(f: TrackFileMeta) {
     if (!window.confirm(`Delete "${f.original_name}"?`)) return
-    try {
-      await api.deleteTrackFile(f.id)
-      reload()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
-    }
+    deleteMutation.mutate(f.id)
   }
 
   return (

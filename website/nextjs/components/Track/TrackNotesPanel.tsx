@@ -1,15 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, NotebookPen, Plus, Trash2 } from 'lucide-react'
-import { api, type NoteKind, type TrackNote } from '@/lib/api'
+import { api, type NoteCreate, type NoteKind, type TrackNote } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 import { useToast } from '@/components/Platform/Toast'
+import { useErrorToast } from '@/components/Platform/hooks/useErrorToast'
 
 const KINDS: NoteKind[] = ['research', 'log', 'doc', 'link', 'idea', 'other']
+const NO_NOTES: TrackNote[] = []
 
 export function TrackNotesPanel() {
   const toast = useToast()
-  const [notes, setNotes] = useState<TrackNote[]>([])
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<string>('')
   const [title, setTitle] = useState('')
   const [kind, setKind] = useState<NoteKind>('research')
@@ -17,51 +21,49 @@ export function TrackNotesPanel() {
   const [url, setUrl] = useState('')
   const [tags, setTags] = useState('')
 
-  async function reload(kindFilter = filter) {
-    try {
-      setNotes(await api.trackNotes(kindFilter || undefined))
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
-    }
-  }
+  const notesQuery = useQuery({
+    queryKey: queryKeys.track.notes(filter),
+    queryFn: () => api.trackNotes(filter || undefined),
+  })
+  useErrorToast(notesQuery.error)
+  const notes = notesQuery.data ?? NO_NOTES
 
-  useEffect(() => {
-    reload()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Every kind filter shows the change, so refresh all cached note lists.
+  const refreshNotes = () => void queryClient.invalidateQueries({ queryKey: queryKeys.track.notesAll })
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : String(err))
 
-  async function create() {
+  const createMutation = useMutation({
+    mutationFn: (body: NoteCreate) => api.createNote(body),
+    onSuccess: () => {
+      setTitle(''); setBody(''); setUrl(''); setTags('')
+      refreshNotes()
+    },
+    onError,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteNote(id),
+    onSuccess: refreshNotes,
+    onError,
+  })
+
+  function create() {
     if (!title.trim()) {
       toast.error('Note title is required')
       return
     }
-    try {
-      await api.createNote({
-        title: title.trim(),
-        kind,
-        body: body.trim() || null,
-        url: url.trim() || null,
-        tags: tags.trim() || null,
-      })
-      setTitle(''); setBody(''); setUrl(''); setTags('')
-      reload()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
-    }
+    createMutation.mutate({
+      title: title.trim(),
+      kind,
+      body: body.trim() || null,
+      url: url.trim() || null,
+      tags: tags.trim() || null,
+    })
   }
 
-  async function remove(note: TrackNote) {
+  function remove(note: TrackNote) {
     if (!window.confirm(`Delete note "${note.title}"?`)) return
-    try {
-      await api.deleteNote(note.id)
-      reload()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  function applyFilter(value: string) {
-    setFilter(value)
-    reload(value)
+    deleteMutation.mutate(note.id)
   }
 
   return (
@@ -71,7 +73,7 @@ export function TrackNotesPanel() {
           <div className="panel-title"><NotebookPen size={15} /> Research & logs</div>
           <p>Notes, hardware logs, datasheet links — anything useful for future work</p>
         </div>
-        <select value={filter} onChange={(e) => applyFilter(e.target.value)}>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)}>
           <option value="">All kinds</option>
           {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
