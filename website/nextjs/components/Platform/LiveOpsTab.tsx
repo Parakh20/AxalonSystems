@@ -1,7 +1,7 @@
 // website/nextjs/components/Platform/LiveOpsTab.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   connectLiveOps, buildCommandEnvelope, buildControlEnvelope,
@@ -53,7 +53,9 @@ export default function LiveOpsTab(
     return () => h.dispose();
   }, [droneId, operatorId]);
 
-  const send = (env: object) => handleRef.current?.send(env);
+  // Stable identity: VideoPanel's unmount effect depends on `send`, so a new
+  // function each render sent the video "bye" on every status/telemetry update.
+  const send = useCallback((env: object) => handleRef.current?.send(env) ?? false, []);
 
   const acquire = () => send(buildControlEnvelope("acquire", operatorId));
   const release = () => { send(buildControlEnvelope("release", operatorId)); setHasControl(false); };

@@ -87,7 +87,8 @@ export interface LiveOpsHandlers {
 }
 
 export interface LiveOpsHandle {
-  send: (env: object) => void;
+  /** False when the frame was dropped because the socket isn't open. */
+  send: (env: object) => boolean;
   dispose: () => void;
 }
 
@@ -132,7 +133,14 @@ export function connectLiveOps(
 
   open();
   return {
-    send: (env: object) => ws?.send(JSON.stringify(env)),
+    send: (env: object) => {
+      // WebSocket.send throws while CONNECTING and warns while CLOSING. Frames are
+      // dropped, not queued: a command replayed after a reconnect could fly a
+      // stale ARM/TAKEOFF long after the operator pressed it.
+      if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+      ws.send(JSON.stringify(env));
+      return true;
+    },
     dispose: () => { closed = true; ws?.close(); },
   };
 }
