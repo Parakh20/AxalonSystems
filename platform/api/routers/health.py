@@ -46,4 +46,5 @@ def health():
         "db": db_status,
         "parks_in_db": park_count,
         "capabilities": {"odm": odm_capability()},
+        "migrations": {"state": MIGRATION_STATUS["state"]},
     }

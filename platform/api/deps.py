@@ -167,6 +167,12 @@ logger = logging.getLogger("axalon.api")
 
 
 # ── API-wide wiring that has no better home ──────────────────────────────────
+# Outcome of the startup migration run, surfaced on /health. The API keeps
+# serving when migrations fail, so without this a schema stuck at an old revision
+# is invisible. State only — /health is public and error text can carry DB details.
+MIGRATION_STATUS: dict = {"state": "not_run"}
+
+
 def _run_alembic_migrations() -> None:
     """Run Alembic migrations for persistent DBs; tests still use create_all()."""
     from axalon.db.url import resolve_db_url
@@ -183,9 +189,11 @@ def _run_alembic_migrations() -> None:
         cfg.set_main_option("script_location", str(repo_root / "alembic"))
         cfg.set_main_option("sqlalchemy.url", db_url)
         alembic_cmd.upgrade(cfg, "head")
+        MIGRATION_STATUS["state"] = "ok"
         logger.info("Alembic migrations: up to date")
-    except Exception as exc:
-        logger.warning("Alembic migration warning: %s", exc)
+    except Exception:
+        MIGRATION_STATUS["state"] = "failed"
+        logger.exception("Alembic migrations FAILED — schema may be behind head")
 
 
 def _check_iec_warnings(site_meta: dict) -> list[str]:
@@ -319,6 +327,7 @@ __all__ = [
     "_register_ortho",
     "_project_sites",
     "_read_inspection_report",
+    "MIGRATION_STATUS",
     "_run_alembic_migrations",
     "_run_batch_job",
     "_safe_extract_zip",
