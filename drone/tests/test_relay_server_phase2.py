@@ -3,13 +3,16 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from drone.relay.server import create_app
+from drone.tests.relay_sync import sync_drone, sync_ops
 
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("DRONE_TOKENS", "sitl-01:dtok")
     monkeypatch.setenv("OPS_TOKEN", "otok")
-    return TestClient(create_app())
+    # one shared event loop for every WebSocket session (see relay_sync.py)
+    with TestClient(create_app()) as c:
+        yield c
 
 
 def _telemetry_frame(tier="AMBER"):
@@ -58,6 +61,7 @@ def test_command_forwarded_to_drone_when_lock_held_and_tier_ok(client):
     with client.websocket_connect("/ws/drone/sitl-01?token=dtok") as drone:
         # establish tier via a telemetry frame
         drone.send_text(_telemetry_frame("AMBER"))
+        sync_drone(drone)  # tier applied before the command is authorized
         with client.websocket_connect("/ws/ops/sitl-01?token=otok&operator=op-a") as ops:
             ops.send_text(json.dumps({"type": "control",
                                       "control": {"action": "acquire", "operator_id": "op-a"}}))
@@ -99,6 +103,7 @@ def test_command_rejected_on_red_tier(client):
 def test_ack_from_drone_fans_to_operator(client):
     with client.websocket_connect("/ws/drone/sitl-01?token=dtok") as drone:
         with client.websocket_connect("/ws/ops/sitl-01?token=otok&operator=op-a") as ops:
+            sync_ops(ops, "op-a")
             drone.send_text(json.dumps({"type": "ack",
                                         "ack": {"cmd_id": "c1", "success": True, "message": "armed"}}))
             reply = json.loads(ops.receive_text())
