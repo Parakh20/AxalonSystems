@@ -52,6 +52,76 @@
 - Keep-alive cron to avoid Oracle Always-Free idle reclaim:
   `*/15 * * * * curl -s https://relay.axalonsystems.com/health >/dev/null`
 
+### Relay (Hugging Face Docker Space) — free, always-reachable HTTPS
+
+Use this when there is no always-on VM/tunnel origin (e.g. `relay.axalonsystems.com`
+returning Cloudflare 530). HF terminates TLS and proxies WebSockets; the relay keeps
+all state in memory, so the ephemeral disk is fine. Files live in `deploy/hf-relay/`.
+
+1. **Create the Space**: huggingface.co → New Space → SDK **Docker** (blank template),
+   hardware **CPU basic (free)**, visibility **Public** (a private Space needs an HF
+   token on every request, which the browser and the Jetson can't send). The Space
+   URL is `https://<user>-<space>.hf.space`.
+2. **Upload the files** (only the relay, no ML/platform code):
+   ```bash
+   git clone https://huggingface.co/spaces/<user>/<space> /tmp/axalon-relay-space
+   deploy/hf-relay/stage.sh /tmp/axalon-relay-space
+   cd /tmp/axalon-relay-space && git add -A && git commit -m "Deploy relay" && git push
+   ```
+   The Space repo ends up with: `Dockerfile`, `README.md` (front matter `sdk: docker`,
+   `app_port: 7860`), `drone/__init__.py`, `drone/requirements.txt`, `drone/common/`,
+   `drone/relay/`. Rerun the same three commands to redeploy after relay changes.
+3. **Settings → Variables and secrets** (names only; generate values with
+   `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`):
+
+   | Name | Kind | Required | Notes |
+   |------|------|----------|-------|
+   | `DRONE_TOKENS` | Secret | yes | `drone-01:<token>[,drone-02:<token>]` |
+   | `OPS_TOKEN` | Secret | yes | must equal Vercel `NEXT_PUBLIC_OPS_TOKEN` |
+   | `RELAY_CORS_ORIGINS` | Variable | no | default `https://axalonsystems.com,https://www.axalonsystems.com`; add preview/localhost origins comma-separated |
+   | `RELAY_PING_INTERVAL_S` | Variable | no | default `25`; app-level ping to browsers, keep < 60 |
+   | `TURN_HOST` | Variable | no | only if a coturn runs elsewhere (see caveat) |
+   | `TURN_SECRET` | Secret | no | coturn `static-auth-secret`, only with `TURN_HOST` |
+
+   Changing a secret restarts the Space.
+4. **Verify**:
+   ```bash
+   curl -s https://<user>-<space>.hf.space/health            # {"status":"ok"}
+   curl -si -H 'Origin: https://axalonsystems.com' \
+     "https://<user>-<space>.hf.space/turn-credentials?token=$OPS_TOKEN&name=probe" \
+     | grep -i access-control-allow-origin
+   ```
+5. **Vercel** (website project → Environment Variables → Production, then redeploy;
+   `NEXT_PUBLIC_*` values are inlined at build time):
+   - `NEXT_PUBLIC_RELAY_WS_URL=wss://<user>-<space>.hf.space` (no trailing slash; the
+     client appends `/ws/ops/<drone>`)
+   - `NEXT_PUBLIC_RELAY_HTTP_URL=https://<user>-<space>.hf.space`
+   - `NEXT_PUBLIC_OPS_TOKEN` = the Space's `OPS_TOKEN`
+6. **Jetson agent**: the agent reads its relay base URL from `RELAY_WS_URL`
+   (`drone/agent/config.py`, used by `AgentConfig.ops_url()`). In the agent's systemd
+   unit set `RELAY_WS_URL=wss://<user>-<space>.hf.space` and make `DRONE_ID` /
+   `DRONE_TOKEN` match an entry in the Space's `DRONE_TOKENS`, then
+   `sudo systemctl restart axalon-drone-agent`.
+
+**Keepalive.** Proxies drop WebSockets idle for ~60 s. The drone socket is never idle
+(agent heartbeats at `HEARTBEAT_HZ`, echoed by the relay); uvicorn sends protocol
+pings every 20 s; and the relay sends `{"type":"ping","ts":…}` data frames to every
+operator socket every `RELAY_PING_INTERVAL_S`, which the browser client ignores.
+
+**Caveats.**
+- **Sleep:** free Spaces sleep after ~48 h without traffic and cold-start on the next
+  HTTP request (tens of seconds); WebSocket clients just reconnect with backoff. Don't
+  rely on open WebSockets counting as activity: ping `/health` from a cron or uptime
+  monitor (e.g. every 6 h), or upgrade the Space hardware (paid Spaces can disable sleep).
+  A restart drops all sockets and the in-memory control lock; operators re-acquire.
+- **No TURN:** coturn needs UDP/TCP 3478 ingress, which HF does not provide. With no
+  `TURN_HOST`, `/turn-credentials` returns public STUN (`stun:stun.l.google.com:19302`)
+  so WebRTC video works only when a direct/STUN path exists between browser and
+  Jetson (fails behind symmetric NAT/CGNAT such as many LTE links). Telemetry and
+  commands go over the WebSocket and are unaffected. For reliable video, point
+  `TURN_HOST`/`TURN_SECRET` at a coturn on a VM.
+- Only one replica: all drones and operators must hit the same Space.
+
 ### Agent (Jetson Orin Nano)
 - `/etc/systemd/system/axalon-drone-agent.service` with `DRONE_ID`, `DRONE_TOKEN`,
   `RELAY_WS_URL=wss://relay.axalonsystems.com`, `MAVLINK_URL` pointing at the real
