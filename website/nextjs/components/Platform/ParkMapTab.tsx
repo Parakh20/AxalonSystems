@@ -1,12 +1,16 @@
 'use client'
 
 import { Download, UploadCloud } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { DynamicOrthoMap } from '@/components/Platform/DynamicOrthoMap'
 import { OrthoGenerator } from '@/components/Platform/OrthoGenerator'
 import { useToast } from '@/components/Platform/Toast'
 import { CanWrite } from '@/components/Platform/AuthGate'
 import { useParks } from '@/components/Platform/hooks/useParks'
+import { inspectionsOf, useParkSummary, type InspectionRef } from '@/components/Platform/hooks/useParkSummary'
+import { useErrorToast } from '@/components/Platform/hooks/useErrorToast'
+import { queryKeys } from '@/lib/queryKeys'
 import { api, ApiError } from '@/lib/api'
 import { ParkMapGrid } from '@/components/Platform/ParkMapGrid'
 import { ParkPanelDetail } from '@/components/Platform/ParkPanelDetail'
@@ -14,111 +18,73 @@ import { ParkFaultsPanel } from '@/components/Platform/ParkFaultsPanel'
 import { ParkLayoutControl } from '@/components/Platform/ParkLayoutControl'
 import type { GridPanel, OrthoMeta, ParkGrid } from '@/lib/api'
 
+const NO_INSPECTIONS: InspectionRef[] = []
+const NO_ORTHOS: OrthoMeta[] = []
+
+function errorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.message : String(err)
+}
+
 export function ParkMapTab() {
   const toast = useToast()
   const { parks } = useParks()
 
+  const queryClient = useQueryClient()
   const [parkMapParkId, setParkMapParkId] = useState<string>('')
   const [parkMapInspectionId, setParkMapInspectionId] = useState<string>('')
-  const [parkMapInspections, setParkMapInspections] = useState<
-    Array<{ id: string; flight_date?: string | null; created_at?: string | null }>
-  >([])
-  const [parkMapGrid, setParkMapGrid] = useState<ParkGrid | null>(null)
-  const [parkMapLoading, setParkMapLoading] = useState(false)
   const [parkMapSelectedPanel, setParkMapSelectedPanel] = useState<GridPanel | null>(null)
-  const [orthos, setOrthos] = useState<OrthoMeta[]>([])
   const [orthoView, setOrthoView] = useState(false)
   const [orthoUploading, setOrthoUploading] = useState(false)
+  // Name of a just-generated ortho, listed first so the map opens on it.
+  const [preferredOrtho, setPreferredOrtho] = useState<string | null>(null)
 
-  // Fetch inspection list when park changes
-  useEffect(() => {
-    if (!parkMapParkId) {
-      setParkMapInspections([])
-      setParkMapInspectionId('')
-      return
-    }
-    let cancelled = false
-    api
-      .park(parkMapParkId)
-      .then((summary) => {
-        if (cancelled) return
-        const list =
-          (
-            summary as {
-              inspections?: Array<{
-                id: string
-                flight_date?: string | null
-                created_at?: string | null
-              }>
-            }
-          ).inspections ?? []
-        setParkMapInspections(list)
-        // default to most recent if not already chosen
-        if (!parkMapInspectionId && list[0]) setParkMapInspectionId(list[0].id)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        toast.error(err instanceof ApiError ? err.message : String(err))
-        setParkMapInspections([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [parkMapParkId, parkMapInspectionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Inspection list for the chosen park (shared cache with History/Diff).
+  const summaryQuery = useParkSummary(parkMapParkId)
+  useErrorToast(summaryQuery.error, errorMessage)
+  const parkMapInspections = parkMapParkId && !summaryQuery.isError ? inspectionsOf(summaryQuery.data) : NO_INSPECTIONS
 
+  // default to most recent if not already chosen
   useEffect(() => {
-    if (!parkMapParkId) {
-      setOrthos([])
+    if (!parkMapInspectionId && parkMapInspections[0]) setParkMapInspectionId(parkMapInspections[0].id)
+  }, [parkMapInspections, parkMapInspectionId])
+
+  // Same cache entry Operations uploads into, so an ortho added there shows here.
+  const orthosQuery = useQuery({
+    queryKey: queryKeys.ops.orthos(parkMapParkId),
+    queryFn: () => api.orthos(parkMapParkId),
+    enabled: Boolean(parkMapParkId),
+  })
+  const orthos = useMemo(() => {
+    if (!parkMapParkId || orthosQuery.isError) return NO_ORTHOS
+    const list = orthosQuery.data ?? NO_ORTHOS
+    if (!preferredOrtho) return list
+    return [...list.filter((o) => o.name === preferredOrtho), ...list.filter((o) => o.name !== preferredOrtho)]
+  }, [parkMapParkId, orthosQuery.isError, orthosQuery.data, preferredOrtho])
+
+  // The map view needs an ortho: drop back to the grid when a park has none.
+  useEffect(() => {
+    if (!parkMapParkId || orthosQuery.isError || (orthosQuery.isSuccess && orthos.length === 0)) {
       setOrthoView(false)
-      return
     }
-    let cancelled = false
-    api
-      .orthos(parkMapParkId)
-      .then((list) => {
-        if (!cancelled) {
-          setOrthos(list)
-          if (list.length === 0) setOrthoView(false)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setOrthos([])
-          setOrthoView(false)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [parkMapParkId])
+  }, [parkMapParkId, orthosQuery.isError, orthosQuery.isSuccess, orthos.length])
 
-  // Fetch grid when park/inspection changes
+  // Fetch grid when park/inspection changes. The previous grid stays on screen
+  // while the next one loads, as before.
+  const gridQuery = useQuery({
+    queryKey: queryKeys.parks.grid(parkMapParkId, parkMapInspectionId),
+    queryFn: () => api.parkGrid(parkMapParkId, parkMapInspectionId || undefined),
+    enabled: Boolean(parkMapParkId),
+    placeholderData: keepPreviousData,
+  })
+  useErrorToast(gridQuery.error, errorMessage)
+  const parkMapGrid: ParkGrid | null = parkMapParkId && !gridQuery.isError ? (gridQuery.data ?? null) : null
+  const parkMapLoading = gridQuery.isFetching
+
+  // A freshly loaded grid clears the panel selection.
+  const loadedGrid = gridQuery.isPlaceholderData ? undefined : gridQuery.data
   useEffect(() => {
-    if (!parkMapParkId) {
-      setParkMapGrid(null)
-      return
-    }
-    let cancelled = false
-    setParkMapLoading(true)
-    api
-      .parkGrid(parkMapParkId, parkMapInspectionId || undefined)
-      .then((g) => {
-        if (cancelled) return
-        setParkMapGrid(g)
-        setParkMapSelectedPanel(null)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        toast.error(err instanceof ApiError ? err.message : String(err))
-        setParkMapGrid(null)
-      })
-      .finally(() => {
-        if (!cancelled) setParkMapLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [parkMapParkId, parkMapInspectionId]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (loadedGrid) setParkMapSelectedPanel(null)
+  }, [loadedGrid])
 
   async function handleOrthoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -128,7 +94,11 @@ export function ParkMapTab() {
       const form = new FormData()
       form.append('file', file)
       const meta = await api.uploadOrtho(parkMapParkId, form)
-      setOrthos((prev) => [...prev.filter((o) => o.name !== meta.name), meta])
+      queryClient.setQueryData<OrthoMeta[]>(queryKeys.ops.orthos(parkMapParkId), (current = []) => [
+        ...current.filter((o) => o.name !== meta.name),
+        meta,
+      ])
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ops.orthos(parkMapParkId) })
       setOrthoView(true)
       toast.success(`Ortho "${meta.name}" uploaded`)
     } catch (err) {
@@ -142,9 +112,12 @@ export function ParkMapTab() {
   async function handleGeneratedOrtho(orthoName: string) {
     if (!parkMapParkId) return
     try {
-      const list = await api.orthos(parkMapParkId)
-      // Newest first so the map opens on the ortho that was just generated.
-      setOrthos([...list.filter((o) => o.name === orthoName), ...list.filter((o) => o.name !== orthoName)])
+      await queryClient.fetchQuery({
+        queryKey: queryKeys.ops.orthos(parkMapParkId),
+        queryFn: () => api.orthos(parkMapParkId),
+        staleTime: 0,
+      })
+      setPreferredOrtho(orthoName)
       setOrthoView(true)
       toast.success(`Orthomosaic "${orthoName}" generated`)
     } catch (err) {
@@ -184,6 +157,7 @@ export function ParkMapTab() {
             onChange={(e) => {
               setParkMapParkId(e.target.value)
               setParkMapInspectionId('')
+              setPreferredOrtho(null)
             }}
             style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6 }}
           >

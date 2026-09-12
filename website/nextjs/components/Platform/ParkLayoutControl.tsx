@@ -1,9 +1,10 @@
 'use client'
 
 import { LayoutGrid, Trash2, UploadCloud } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/components/Platform/Toast'
 import { api, ApiError } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 import { layoutFileKind, layoutModeLabel } from '@/lib/parkLayout'
 import type { ParkLayoutStatus } from '@/lib/parkLayout'
 
@@ -21,26 +22,45 @@ const controlStyle: React.CSSProperties = {
 /** Shows whether a park localises against a manual layout or auto-grid, and manages the layout file. */
 export function ParkLayoutControl({ parkId }: { parkId: string }) {
   const toast = useToast()
-  const [status, setStatus] = useState<ParkLayoutStatus | null>(null)
-  const [busy, setBusy] = useState(false)
+  const queryClient = useQueryClient()
+  const layoutKey = queryKeys.parks.layout(parkId)
 
-  useEffect(() => {
-    let cancelled = false
-    setStatus(null)
-    api
-      .parkLayout(parkId)
-      .then((s) => {
-        if (!cancelled) setStatus(s)
-      })
-      .catch(() => {
-        if (!cancelled) setStatus(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [parkId])
+  // An unreadable status renders as "—" rather than an error: the upload
+  // control is still usable.
+  const statusQuery = useQuery({
+    queryKey: layoutKey,
+    queryFn: () => api.parkLayout(parkId),
+  })
+  const status: ParkLayoutStatus | null = statusQuery.isError ? null : (statusQuery.data ?? null)
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  // The mutation responses are the new server state: write them straight into
+  // the cache so the badge flips immediately, then reconcile with a refetch.
+  function settle(next: ParkLayoutStatus) {
+    queryClient.setQueryData(layoutKey, next)
+    void queryClient.invalidateQueries({ queryKey: layoutKey })
+  }
+
+  const uploadMutation = useMutation({
+    mutationFn: (form: FormData) => api.uploadParkLayout(parkId, form),
+    onSuccess: (res) => {
+      settle({ ...res, error: null })
+      toast.success(`Manual layout stored: ${res.summary?.total_panels ?? 0} panels`)
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Layout upload failed'),
+  })
+
+  const revertMutation = useMutation({
+    mutationFn: () => api.deleteParkLayout(parkId),
+    onSuccess: () => {
+      settle({ park_id: parkId, mode: 'auto', summary: null, error: null })
+      toast.success('Park reverted to auto-grid')
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Could not remove layout'),
+  })
+
+  const busy = uploadMutation.isPending || revertMutation.isPending
+
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
@@ -48,32 +68,14 @@ export function ParkLayoutControl({ parkId }: { parkId: string }) {
       toast.error('Layout must be a .json layout or a .geojson FeatureCollection')
       return
     }
-    setBusy(true)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await api.uploadParkLayout(parkId, form)
-      setStatus({ ...res, error: null })
-      toast.success(`Manual layout stored: ${res.summary?.total_panels ?? 0} panels`)
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Layout upload failed')
-    } finally {
-      setBusy(false)
-    }
+    const form = new FormData()
+    form.append('file', file)
+    uploadMutation.mutate(form)
   }
 
-  async function handleRevert() {
+  function handleRevert() {
     if (!window.confirm(`Remove the manual layout for ${parkId} and use auto-grid?`)) return
-    setBusy(true)
-    try {
-      await api.deleteParkLayout(parkId)
-      setStatus({ park_id: parkId, mode: 'auto', summary: null, error: null })
-      toast.success('Park reverted to auto-grid')
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Could not remove layout')
-    } finally {
-      setBusy(false)
-    }
+    revertMutation.mutate()
   }
 
   const isManual = status?.mode === 'manual'
