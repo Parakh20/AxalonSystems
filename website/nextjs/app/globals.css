@@ -317,6 +317,14 @@ img {
 .liveops-control, .liveops-commands { display: flex; flex-wrap: wrap; gap: 8px; }
 .liveops-commands button:disabled { opacity: .4; cursor: not-allowed; }
 .live-drone-marker { color: #14b8a6; font-size: 20px; line-height: 24px; text-align: center; }
+.live-route-marker {
+  display: grid; place-items: center; box-sizing: border-box;
+  border-radius: 50%; border: 1.5px solid #f59e0b; background: #fffbeb; color: #92400e;
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .35);
+}
+.live-route-marker--start { background: #16a34a; border-color: #fff; color: #fff; }
+.live-route-marker--end { background: #dc2626; border-color: #fff; color: #fff; }
 .ack-ok { color: #34d399; } .ack-fail { color: #f87171; }
 .video-panel-feed { width: 100%; border-radius: 8px; background: #000; aspect-ratio: 16/9; }
 
