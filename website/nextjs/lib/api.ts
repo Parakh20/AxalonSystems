@@ -68,7 +68,26 @@ export type Health = { status: string; [k: string]: unknown }
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 
-export type GridPanelDetection = {
+// Radiometric fields (°C) from the iTL612R Pro _temp.raw companion. All nullable:
+// images without a companion carry no temperatures.
+export type DetectionTemps = {
+  min_temp?: number | null
+  max_temp?: number | null
+  avg_temp?: number | null
+  reference_temp?: number | null
+  /** max_temp − reference_temp (frame median ≈ healthy module) */
+  delta_t_measured?: number | null
+  /** ΔT scaled to 1000 W/m² (IEC 62446-3); null without irradiance */
+  delta_t_normalized?: number | null
+}
+
+// Estimated daily revenue loss from CRITICAL/HIGH panels — an estimate, not a meter reading.
+export type RevenueLoss = {
+  revenue_loss_usd?: number | null
+  revenue_currency?: string
+}
+
+export type GridPanelDetection = DetectionTemps & {
   class: string | null
   confidence: number | null
   severity: Severity | null
@@ -122,6 +141,8 @@ export type JobStatus = {
   [k: string]: unknown
 }
 export type ParkRef = { id: string; name?: string }
+/** One park in /analytics/overview; revenue loss is for its latest inspection. */
+export type OverviewBundle = RevenueLoss & { park: ParkRef; trend: TrendPoint[] }
 export type ParkSummary = Record<string, unknown>
 export type MapData = Record<string, unknown>
 export type SettingsBlob = Record<string, unknown>
@@ -137,15 +158,17 @@ export type InspectResult = {
     LOW?: number
     [k: string]: unknown
   }
-  detections: Array<{
-    class: string
-    class_id: number
-    confidence: number
-    bbox: [number, number, number, number]
-    bbox_norm?: [number, number, number, number]
-    severity: string
-    [k: string]: unknown
-  }>
+  detections: Array<
+    DetectionTemps & {
+      class: string
+      class_id: number
+      confidence: number
+      bbox: [number, number, number, number]
+      bbox_norm?: [number, number, number, number]
+      severity: string
+      [k: string]: unknown
+    }
+  >
   rgb_filename?: string
   [k: string]: unknown
 }
@@ -487,7 +510,7 @@ export const api = {
     ),
 
   analyticsOverview: () =>
-    request<{ park: ParkRef; trend: TrendPoint[] }[]>('/analytics/overview'),
+    request<OverviewBundle[]>('/analytics/overview'),
 
   // Inventory & prototype tracking
   inventorySummary: () => request<InventorySummary>('/inventory/summary'),

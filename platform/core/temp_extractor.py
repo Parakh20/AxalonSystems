@@ -20,6 +20,17 @@ from pathlib import Path
 _DEFAULT_SCALE = 0.04
 _DEFAULT_OFFSET = 273.15
 
+# Per-detection temperature keys produced by the pipeline and persisted on
+# Detection rows. All are nullable (no `_temp.raw` companion → no temperatures).
+TEMP_FIELDS = (
+    "min_temp",
+    "max_temp",
+    "avg_temp",
+    "reference_temp",
+    "delta_t_measured",
+    "delta_t_normalized",
+)
+
 
 def load_temp_matrix(
     raw_path: str | Path,

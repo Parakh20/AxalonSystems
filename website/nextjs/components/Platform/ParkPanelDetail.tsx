@@ -2,6 +2,7 @@
 
 import type { GridPanel, GridPanelDetection } from '@/lib/api'
 import { API_BASE } from '@/lib/api'
+import { ThermalReadout } from '@/components/Platform/ThermalReadout'
 
 const SEVERITY_COLOR: Record<string, string> = {
   CRITICAL: '#dc2626',
@@ -130,13 +131,17 @@ function DetectionRow({ d }: { d: GridPanelDetection }) {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        gap: 8,
         padding: '6px 10px',
         background: '#f8fafc',
         borderRadius: 4,
         fontSize: 12,
       }}
     >
-      <span style={{ fontWeight: 600 }}>{d.class}</span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontWeight: 600 }}>{d.class}</span>
+        <ThermalReadout max_temp={d.max_temp} delta_t_measured={d.delta_t_measured} />
+      </span>
       <span style={{ color: '#64748b' }}>
         {d.confidence != null ? `${Math.round(d.confidence * 100)}%` : ''}
         {d.severity ? (

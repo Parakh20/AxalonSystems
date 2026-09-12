@@ -133,3 +133,66 @@ def test_inspect_pair_persists_to_db(orchestrator, tmp_path):
     assert len(dets) == 1
     assert dets[0].severity == "CRITICAL"
     session.close()
+
+
+def _seed_inspection(park_id: str, inspection_id: str) -> None:
+    from axalon.db.session import get_session
+    from axalon.db.models import Park, Inspection
+
+    session = get_session()
+    session.add(Park(id=park_id, name="Test", mode="auto"))
+    session.flush()
+    session.add(Inspection(id=inspection_id, park_id=park_id, summary="{}"))
+    session.commit()
+    session.close()
+
+
+def test_inspect_pair_persists_temperatures(orchestrator, tmp_path):
+    """Temperatures from a _temp.raw companion reach the Detection row."""
+    import cv2
+    import numpy as np
+    from axalon.db.session import get_session
+    from axalon.db.models import Detection as DbDetection
+
+    thermal = tmp_path / "thermal_003.jpg"
+    cv2.imwrite(str(thermal), np.zeros((512, 640, 3), dtype=np.uint8))
+    # 30 °C background, 70 °C hotspot inside the mocked bbox [10, 20, 50, 60]
+    raw = np.full((512, 640), round((30 + 273.15) / 0.04), dtype=np.uint16)
+    raw[20:60, 10:50] = round((70 + 273.15) / 0.04)
+    temp_raw = tmp_path / "thermal_003_temp.raw"
+    temp_raw.write_bytes(raw.tobytes())
+    _seed_inspection("PARK_TEMP", "BATCH-TEMP-001")
+
+    orchestrator.inspect_pair(
+        thermal_path=thermal,
+        inspection_id="BATCH-TEMP-001",
+        temp_raw_path=temp_raw,
+        irradiance_wm2=800.0,
+    )
+
+    session = get_session()
+    row = session.query(DbDetection).filter_by(inspection_id="BATCH-TEMP-001").one()
+    assert row.max_temp == pytest.approx(70.0, abs=0.05)
+    assert row.reference_temp == pytest.approx(30.0, abs=0.05)
+    assert row.delta_t_measured == pytest.approx(40.0, abs=0.1)
+    assert row.delta_t_normalized == pytest.approx(50.0, abs=0.2)
+    session.close()
+
+
+def test_inspect_pair_without_temp_raw_leaves_temperatures_null(orchestrator, tmp_path):
+    import cv2
+    import numpy as np
+    from axalon.db.session import get_session
+    from axalon.db.models import Detection as DbDetection
+
+    thermal = tmp_path / "thermal_004.jpg"
+    cv2.imwrite(str(thermal), np.zeros((100, 100, 3), dtype=np.uint8))
+    _seed_inspection("PARK_NOTEMP", "BATCH-NOTEMP-001")
+
+    orchestrator.inspect_pair(thermal_path=thermal, inspection_id="BATCH-NOTEMP-001")
+
+    session = get_session()
+    row = session.query(DbDetection).filter_by(inspection_id="BATCH-NOTEMP-001").one()
+    assert row.max_temp is None
+    assert row.delta_t_measured is None
+    session.close()

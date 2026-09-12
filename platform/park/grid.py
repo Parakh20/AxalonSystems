@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
+from axalon.core.temp_extractor import TEMP_FIELDS
+
 _SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
 _PANEL_ID_RE = re.compile(r"R(\d+)-C(\d+)")
 
@@ -85,6 +87,8 @@ def build_grid(
                         f"{d['image_id']}.jpg" if d.get("image_id") else None
                     ),
                     "bbox": d.get("bbox"),
+                    # Radiometric fields (°C) — None when no _temp.raw companion.
+                    **{field: d.get(field) for field in TEMP_FIELDS},
                 }
                 for d in dets
             ],

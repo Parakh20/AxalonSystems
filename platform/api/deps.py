@@ -300,6 +300,7 @@ __all__ = [
     "_serialize_comment",
     "_serialize_component",
     "_serialize_correction",
+    "_serialize_detection_temps",
     "_serialize_fault",
     "_serialize_mission_full",
     "_serialize_mission_summary",

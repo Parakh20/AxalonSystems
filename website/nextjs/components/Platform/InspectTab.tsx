@@ -3,6 +3,7 @@
 import { ImageIcon as ImageIconLucide, Play, RefreshCw, UploadCloud } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AnnotationCanvas } from '@/components/Platform/AnnotationCanvas'
+import { ThermalReadout } from '@/components/Platform/ThermalReadout'
 import { useToast } from '@/components/Platform/Toast'
 import { API_BASE, api, ApiError } from '@/lib/api'
 import type { InspectResult } from '@/lib/api'
@@ -315,6 +316,7 @@ export function InspectTab() {
                 <span>Class</span>
                 <span>Severity</span>
                 <span>Conf</span>
+                <span>Thermal</span>
               </div>
               {inspectResult.detections.map((d, i) => (
                 <div className="insp-row" key={i}>
@@ -325,6 +327,9 @@ export function InspectTab() {
                     <span className={`severity ${d.severity.toLowerCase()}`}>{d.severity}</span>
                   </span>
                   <span>{Math.round(d.confidence * 100)}%</span>
+                  <span>
+                    <ThermalReadout max_temp={d.max_temp} delta_t_measured={d.delta_t_measured} />
+                  </span>
                 </div>
               ))}
             </div>
