@@ -303,7 +303,7 @@ export function InspectTab() {
                 Fused RGB Overlay
               </div>
               <img
-                src={`${API_BASE}/results/${inspectResult.job_id}/${inspectResult.rgb_filename}`}
+                src={`${API_BASE}/results/${inspectResult.job_id}/${inspectResult.rgb_filename}${api.authQuery('?')}`}
                 alt="Fused RGB annotated"
                 style={{ width: '100%', borderRadius: 8, display: 'block' }}
               />

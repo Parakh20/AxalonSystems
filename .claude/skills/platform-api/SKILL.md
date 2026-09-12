@@ -15,14 +15,19 @@ PYTHONSAFEPATH=1 uvicorn axalon.api.app:app --host 0.0.0.0 --port 8000
 # or ./run.sh all  (API + Next.js platform UI)
 ```
 
-## Auth — `require_auth`
-```python
-# No-op when AXALON_API_KEY is unset; otherwise requires `Authorization: Bearer <key>`.
-def require_auth(creds = Security(_bearer)) -> None: ...
-```
-- Attach `dependencies=[Depends(require_auth)]` (or `Security`) to protected routes.
-- The frontend (`AuthGate.tsx` + `lib/api.ts`) sends `Authorization: Bearer <key>` from `sessionStorage` and pops a prompt on 401.
-- The key is an **encrypted HF Space secret**, never in the frontend/git.
+## Auth — `AXALON_AUTH_MODE` (off | apikey | users)
+- `auth_middleware` (app.py) resolves a `Principal` per request: `off`/`apikey` → unrestricted
+  `SYSTEM_PRINCIPAL`; `users` → session token (Bearer or `?api_key=`) or `?share=` link.
+- Role policy is applied **per router** in `app.py` (`_ROUTER_POLICIES`, `access_policy(...)`):
+  reads viewer+, writes operator+; users/agents admin-only; projects & settings writes admin.
+  Don't re-check roles inside endpoints.
+- Endpoints returning project data take `principal: Principal = Depends(current_principal)` and
+  scope with `axalon.api.support.scope` (`scope_parks`, `ensure_park_visible`, `ensure_job_visible`, …).
+  Out-of-scope → 404, never 403. Helpers are no-ops for unrestricted principals.
+- New router? Add it to `_ROUTER_POLICIES` with the right policy; `allow_share=True` only if it
+  serves project-scoped data and every endpoint scopes its queries.
+- Accounts/sessions/share links live in `axalon.core.auth`; frontend `AuthGate.tsx` asks
+  `GET /auth/mode` and shows email/password login in users mode (token stored like the key).
 
 ## Endpoint groups (current)
 - `GET /health` — model + db status (public).
@@ -33,7 +38,7 @@ def require_auth(creds = Security(_bearer)) -> None: ...
 ## Adding an endpoint
 1. Use the response envelope conventions already in `app.py`; raise `HTTPException` for errors (never swallow).
 2. Validate input at the boundary (Pydantic / explicit checks).
-3. Protect mutating routes with `require_auth`.
+3. Register the router in `_ROUTER_POLICIES` and scope project data (see Auth).
 4. DB access via `get_session()` (see `database` skill) — always `session.close()` in `finally`.
 5. Add a test under `tests/`; run `PYTHONSAFEPATH=1 python -m pytest`.
 

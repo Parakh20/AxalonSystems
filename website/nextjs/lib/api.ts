@@ -14,6 +14,39 @@ export class ApiError extends Error {
 
 const REQUEST_TIMEOUT_MS = 20_000
 
+/** sessionStorage slot for the credential: the shared API key, or — when the
+ * API runs AXALON_AUTH_MODE=users — the session token. Same slot, same header. */
+export const CREDENTIAL_STORAGE_KEY = 'axalon_api_key'
+
+export function storedCredential(): string {
+  const envKey = process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''
+  if (typeof sessionStorage === 'undefined') return envKey
+  return sessionStorage.getItem(CREDENTIAL_STORAGE_KEY) ?? envKey
+}
+
+/** Read-only share token from the page URL (`/platform?share=…`), if any. */
+export function shareToken(): string {
+  if (typeof window === 'undefined') return ''
+  return new URLSearchParams(window.location.search).get('share') ?? ''
+}
+
+function withShare(path: string): string {
+  const share = shareToken()
+  if (!share) return path
+  return `${path}${path.includes('?') ? '&' : '?'}share=${encodeURIComponent(share)}`
+}
+
+/** Query-string auth for URLs the browser fetches itself (<img>, downloads). */
+function authQuery(prefix: '?' | '&'): string {
+  const params = new URLSearchParams()
+  const key = storedCredential()
+  if (key) params.set('api_key', key)
+  const share = shareToken()
+  if (share) params.set('share', share)
+  const qs = params.toString()
+  return qs ? `${prefix}${qs}` : ''
+}
+
 function isHtmlBody(text: string): boolean {
   const t = text.trimStart()
   return t.startsWith('<!DOCTYPE') || t.startsWith('<html')
@@ -24,17 +57,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
-    const storedKey =
-      typeof sessionStorage !== 'undefined'
-        ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
-        : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
+    const storedKey = storedCredential()
     const headers: HeadersInit = storedKey
       ? {
           ...((init?.headers as Record<string, string> | undefined) ?? {}),
           Authorization: `Bearer ${storedKey}`,
         }
       : ((init?.headers as Record<string, string> | undefined) ?? {})
-    res = await fetch(`${API_BASE}${path}`, { ...init, headers, signal: controller.signal })
+    res = await fetch(`${API_BASE}${withShare(path)}`, { ...init, headers, signal: controller.signal })
   } catch (err) {
     const isTimeout = err instanceof Error && err.name === 'AbortError'
     const msg = isTimeout
@@ -382,6 +412,45 @@ export type NoteCreate = Partial<Omit<TrackNote, 'id' | 'created_at' | 'updated_
   title: string
 }
 
+// ── Accounts & sharing (AXALON_AUTH_MODE=users) ─────────────────────────────
+
+export type AuthMode = 'off' | 'apikey' | 'users'
+export type UserRole = 'admin' | 'operator' | 'viewer'
+
+export type AuthUser = {
+  id: number
+  email: string
+  role: UserRole
+  disabled: boolean
+  project_ids: number[]
+  created_at: string | null
+}
+
+export type AuthMe = {
+  mode: AuthMode
+  kind: 'system' | 'user' | 'share'
+  role: UserRole
+  project_ids: number[] | null
+  user: AuthUser | null
+}
+
+export type LoginResponse = { token: string; expires_at: string; user: AuthUser }
+
+export type UserCreate = { email: string; password: string; role: UserRole; project_ids: number[] }
+export type UserUpdate = Partial<{ role: UserRole; disabled: boolean; password: string; project_ids: number[] }>
+
+export type ShareLink = {
+  id: number
+  project_id: number
+  label: string | null
+  created_by: number | null
+  created_at: string | null
+  expires_at: string | null
+  revoked_at: string | null
+  revoked: boolean
+  expired: boolean
+}
+
 function jsonInit(method: string, body: unknown): RequestInit {
   return {
     method,
@@ -397,14 +466,8 @@ export const api = {
   inspect: (form: FormData) =>
     request<InspectResult>('/inspect', { method: 'POST', body: form }),
   status: (jobId: string) => request<JobStatus>(`/status/${encodeURIComponent(jobId)}`),
-  reportUrl: (jobId: string, format: 'json' | 'excel' | 'geojson' | 'pdf') => {
-    const storedKey =
-      typeof sessionStorage !== 'undefined'
-        ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
-        : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
-    const keyParam = storedKey ? `&api_key=${encodeURIComponent(storedKey)}` : ''
-    return `${API_BASE}/report/${encodeURIComponent(jobId)}?format=${format}${keyParam}`
-  },
+  reportUrl: (jobId: string, format: 'json' | 'excel' | 'geojson' | 'pdf') =>
+    `${API_BASE}/report/${encodeURIComponent(jobId)}?format=${format}${authQuery('&')}`,
   mapData: (jobId: string) => request<MapData>(`/map/${encodeURIComponent(jobId)}`),
   parks: () => request<ParkRef[]>('/parks'),
   missions: (parkId?: string) =>
@@ -425,11 +488,8 @@ export const api = {
   },
   parkGridPng: (parkId: string, inspectionId?: string) => {
     const q = inspectionId ? `?inspection_id=${encodeURIComponent(inspectionId)}` : ''
-    const storedKey =
-      typeof sessionStorage !== 'undefined'
-        ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
-        : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
-    return fetch(`${API_BASE}/park/${encodeURIComponent(parkId)}/grid/png${q}`, {
+    const storedKey = storedCredential()
+    return fetch(`${API_BASE}${withShare(`/park/${encodeURIComponent(parkId)}/grid/png${q}`)}`, {
       headers: storedKey ? { Authorization: `Bearer ${storedKey}` } : {},
     }).then((res) => {
       if (!res.ok) throw new Error(`PNG export failed: ${res.status}`)
@@ -537,12 +597,23 @@ export const api = {
   uploadTrackFile: (form: FormData) =>
     request<TrackFileMeta>('/track/files', { method: 'POST', body: form }),
   deleteTrackFile: (id: number) => request<void>(`/track/files/${id}`, { method: 'DELETE' }),
-  trackFileUrl: (id: number) => {
-    const storedKey =
-      typeof sessionStorage !== 'undefined'
-        ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
-        : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
-    const keyParam = storedKey ? `?api_key=${encodeURIComponent(storedKey)}` : ''
-    return `${API_BASE}/track/files/${id}${keyParam}`
-  },
+  trackFileUrl: (id: number) => `${API_BASE}/track/files/${id}${authQuery('?')}`,
+
+  /** Auth query string for browser-loaded URLs (images, tiles, downloads). */
+  authQuery,
+
+  // Accounts (AXALON_AUTH_MODE=users)
+  authMode: () => request<{ mode: AuthMode }>('/auth/mode'),
+  login: (email: string, password: string) =>
+    request<LoginResponse>('/auth/login', jsonInit('POST', { email, password })),
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+  me: () => request<AuthMe>('/auth/me'),
+  users: () => request<AuthUser[]>('/users'),
+  createUser: (body: UserCreate) => request<AuthUser>('/users', jsonInit('POST', body)),
+  updateUser: (id: number, body: UserUpdate) => request<AuthUser>(`/users/${id}`, jsonInit('PATCH', body)),
+  deleteUser: (id: number) => request<void>(`/users/${id}`, { method: 'DELETE' }),
+  shareLinks: () => request<ShareLink[]>('/share-links'),
+  createShareLink: (body: { project_id: number; label?: string; expires_in_days: number }) =>
+    request<ShareLink & { token: string }>('/share-links', jsonInit('POST', body)),
+  revokeShareLink: (id: number) => request<void>(`/share-links/${id}`, { method: 'DELETE' }),
 }

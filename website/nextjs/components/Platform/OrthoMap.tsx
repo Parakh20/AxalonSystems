@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GridPanel } from '@/lib/api'
-import { API_BASE } from '@/lib/api'
+import { API_BASE, api } from '@/lib/api'
 
 const SEVERITY_COLOR: Record<string, string> = {
   CRITICAL: '#dc2626',
@@ -59,7 +59,7 @@ export function OrthoMap({ parkId, orthoName, bounds, center, panels }: OrthoMap
 
   const tileUrl = `${API_BASE}/park/${encodeURIComponent(parkId)}/ortho/${encodeURIComponent(
     orthoName,
-  )}/tiles/{z}/{x}/{y}.png`
+  )}/tiles/{z}/{x}/{y}.png${api.authQuery('?')}`
   const panelsWithGps = useMemo(() => panels.filter((panel) => panel.gps !== null), [panels])
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 

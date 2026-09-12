@@ -1,7 +1,7 @@
 'use client'
 
 import type { GridPanel, GridPanelDetection } from '@/lib/api'
-import { API_BASE } from '@/lib/api'
+import { API_BASE, api } from '@/lib/api'
 
 const SEVERITY_COLOR: Record<string, string> = {
   CRITICAL: '#dc2626',
@@ -39,9 +39,7 @@ export function ParkPanelDetail({
   }
 
   const firstFile = panel.detections.find((d) => d.thermal_filename)?.thermal_filename
-  const apiKey =
-    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('axalon_api_key') ?? '' : ''
-  const keyParam = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ''
+  const keyParam = api.authQuery('?')
   const thumbUrl =
     jobId && firstFile
       ? `${API_BASE}/results/${encodeURIComponent(jobId)}/${encodeURIComponent(firstFile)}${keyParam}`

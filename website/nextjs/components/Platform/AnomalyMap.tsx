@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { api } from '@/lib/api'
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 
@@ -322,7 +323,7 @@ export function useMapData(apiBase: string, jobId: string, jobStatus: string) {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`${apiBase}/map/${jobId}`)
+        const res = await fetch(`${apiBase}/map/${jobId}${api.authQuery('?')}`)
         if (!res.ok) throw new Error(`API returned ${res.status}`)
         const payload: AnomalyMapData = await res.json()
         if (cancelled) return
@@ -438,7 +439,7 @@ export default function AnomalyMap({
           fillOpacity: 0.7,
         })
         const imageUrl = img.thermal_filename
-          ? `${apiBase}/image/${data.job_id}/${img.thermal_filename}`
+          ? `${apiBase}/image/${data.job_id}/${img.thermal_filename}${api.authQuery('?')}`
           : null
         marker.bindPopup(
           `<div style="font: 600 12px/1.4 Inter, sans-serif; color:#111827; min-width:220px">
@@ -502,7 +503,7 @@ export default function AnomalyMap({
             fillOpacity: 0.95,
           })
           const imageUrl = a.thermal_filename
-            ? `${apiBase}/image/${data.job_id}/${a.thermal_filename}`
+            ? `${apiBase}/image/${data.job_id}/${a.thermal_filename}${api.authQuery('?')}`
             : null
           marker.bindPopup(
             `<div style="font: 500 12px/1.5 Inter, sans-serif; color:#111827; min-width:220px">
@@ -610,7 +611,7 @@ export default function AnomalyMap({
 
       const url = `${apiBase}/park/${encodeURIComponent(ortho.park_id)}/ortho/${encodeURIComponent(
         ortho.name,
-      )}/tiles/{z}/{x}/{y}.png`
+      )}/tiles/{z}/{x}/{y}.png${api.authQuery('?')}`
       const tile = L.tileLayer(url, {
         maxZoom: 24,
         opacity: 0.95,

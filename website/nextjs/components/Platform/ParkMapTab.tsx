@@ -4,6 +4,7 @@ import { Download, UploadCloud } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DynamicOrthoMap } from '@/components/Platform/DynamicOrthoMap'
 import { useToast } from '@/components/Platform/Toast'
+import { CanWrite } from '@/components/Platform/AuthGate'
 import { useParks } from '@/components/Platform/hooks/useParks'
 import { api, ApiError } from '@/lib/api'
 import { ParkMapGrid } from '@/components/Platform/ParkMapGrid'
@@ -247,6 +248,7 @@ export function ParkMapTab() {
               Map {orthos.length > 0 ? `(${orthos.length})` : ''}
             </button>
           </div>
+          <CanWrite>
           <label
             style={{
               display: 'inline-flex',
@@ -267,6 +269,7 @@ export function ParkMapTab() {
             />
             {orthoUploading ? 'Uploading...' : 'Upload Ortho'}
           </label>
+          </CanWrite>
           {parkMapGrid && (
             <button
               data-testid="parkmap-export-png"
