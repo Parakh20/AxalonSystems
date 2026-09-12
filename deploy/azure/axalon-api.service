@@ -1,3 +1,5 @@
+# HISTORICAL — DEAD INFRASTRUCTURE (Azure subscription disabled). Not used in production.
+# See deploy/azure/README.md and docs/DEPLOYMENT.md.
 [Unit]
 Description=Axalon Platform API (FastAPI + YOLO11m)
 After=network-online.target

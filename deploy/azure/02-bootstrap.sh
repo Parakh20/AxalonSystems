@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# HISTORICAL — DEAD INFRASTRUCTURE, DO NOT RUN. The Azure subscription is disabled;
+# production is Vercel -> HF Space parakh20/axalon-api. See deploy/azure/README.md
+# and docs/DEPLOYMENT.md.
 # Bootstrap Azure VM: install deps, clone repo, configure systemd service.
 # Usage: PYTHONSAFEPATH=1 bash deploy/azure/02-bootstrap.sh
 set -euo pipefail

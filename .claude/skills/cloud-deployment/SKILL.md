@@ -39,4 +39,4 @@ curl https://parakh20-axalon-api.hf.space/health        # → {"status":"ok","db
 ## Gotchas
 - Backend `RUNTIME_ERROR` after a DB change → read the Space **run** logs (`/api/spaces/<repo>/logs/run`); usually a dialect/connection issue (see `database`).
 - HF free Spaces sleep on idle (cold starts) — that's why the mission planner computes client-side.
-- Full runbook: `docs/DEPLOY_ORACLE.md`; project memory `cloud-deploy-progress` + `platform-remote-deployment`.
+- Full runbook: `docs/DEPLOYMENT.md` (`docs/DEPLOY_ORACLE.md` and `deploy/azure/` are historical, not live); project memory `cloud-deploy-progress` + `platform-remote-deployment`.

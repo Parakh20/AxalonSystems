@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# HISTORICAL — DEAD INFRASTRUCTURE, DO NOT RUN. The Azure subscription is disabled;
+# production is Vercel -> HF Space parakh20/axalon-api. See deploy/azure/README.md
+# and docs/DEPLOYMENT.md.
 # Usage: PYTHONSAFEPATH=1 bash deploy/azure/01-create-infra.sh
 set -euo pipefail
 

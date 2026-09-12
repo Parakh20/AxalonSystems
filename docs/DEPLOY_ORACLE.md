@@ -1,3 +1,9 @@
+> **HISTORICAL — NOT THE LIVE DEPLOYMENT. Do not follow this for production.**
+> Production never ran on Oracle Cloud; this was a plan that was never adopted.
+> The actual path is Vercel `axalon-systems` → Hugging Face Space
+> `parakh20/axalon-api` → Postgres. See [`DEPLOYMENT.md`](DEPLOYMENT.md).
+> Kept only for reference.
+
 # Deploying the Axalon Backend on Oracle Cloud (Always Free)
 
 This runs the FastAPI + YOLO11m backend 24/7 on a free Oracle ARM VM, backed by
