@@ -4,6 +4,7 @@ import { RefreshCw, Save, SlidersHorizontal } from 'lucide-react'
 import { useEffect } from 'react'
 import { useSettings } from '@/components/Platform/hooks/useSettings'
 import { AlertTestPanel } from '@/components/Platform/AlertTestPanel'
+import { FusionCalibrationPanel } from '@/components/Platform/FusionCalibrationPanel'
 
 function Chip({
   label,
@@ -152,6 +153,7 @@ export function SettingsTab() {
       </header>
 
       <AlertTestPanel />
+      <FusionCalibrationPanel />
 
       {settingsBusy && !settings && <div className="empty">Loading settings…</div>}
       {settings && (

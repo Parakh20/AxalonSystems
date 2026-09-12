@@ -15,11 +15,13 @@ from ml.src.utils import draw_detections_severity, load_bgr, get_logger
 
 from axalon.core.detector import SolarDetector
 from axalon.core.fusion import ImageFusion
+from axalon.core.fusion_calibration import resolve_active_calibration
 import cv2
 
 from axalon.core.geo import detection_to_gps, extract_gps_exif
 from axalon.park.layout import ParkLayoutDetector
-from axalon.park.locator import PANEL_ID_UNKNOWN, locate_faults
+from axalon.park.locator import MANUAL_MODE, PANEL_ID_UNKNOWN, locate_faults
+from axalon.park.manual_layout import LayoutError, load_park_layout
 from axalon.db.session import init_db, get_session
 from axalon.db.models import Park, Inspection, Detection as DbDetection
 from axalon.pipeline.ingest import find_image_pairs, load_mission_metadata, validate_pair
@@ -32,6 +34,8 @@ from axalon.core.temp_extractor import (
 from axalon.pipeline.tracking import dedup_detections, reconcile_inspection
 
 logger = get_logger("axalon.orchestrator")
+
+_UNASSIGNED_PANEL = "R?-C?"
 
 
 def _match_panel_id(detection: dict, panel_map: dict) -> str:
@@ -50,6 +54,41 @@ def _match_panel_id(detection: dict, panel_map: dict) -> str:
             best_dist = dist
             best_id = pid
     return best_id
+
+
+def _load_rgb_frames(pairs: list[dict]) -> tuple[list, list]:
+    """Load every pair's RGB frame and its EXIF GPS (for auto-grid fitting)."""
+    rgb_images, rgb_gps_list = [], []
+    for pair in pairs:
+        rgb_path = pair.get("rgb")
+        if rgb_path and Path(rgb_path).exists():
+            img = load_bgr(rgb_path)
+            if img is not None:
+                rgb_images.append(img)
+                rgb_gps_list.append(extract_gps_exif(rgb_path))
+    return rgb_images, rgb_gps_list
+
+
+def assign_panel_ids(detections: list[dict], park_layout: dict) -> list[dict]:
+    """Return detections with ``panel_id`` / ``panel_confidence`` attached.
+
+    GPS-anchored locator first. For auto-grid layouts an unmatched detection
+    falls back to the image-pixel nearest-centre heuristic; manual layouts have
+    no image-space panels, so an unmatched detection stays unassigned.
+    """
+    panel_map = park_layout.get("panel_map") or {}
+    is_manual = park_layout.get("mode") == MANUAL_MODE
+    located = locate_faults(detections, park_layout)
+    out = []
+    for det, lf in zip(detections, located):
+        if lf.panel_id != PANEL_ID_UNKNOWN:
+            panel_id = lf.panel_id
+        elif is_manual:
+            panel_id = _UNASSIGNED_PANEL
+        else:
+            panel_id = _match_panel_id(det, panel_map)
+        out.append({**det, "panel_id": panel_id, "panel_confidence": lf.confidence})
+    return out
 
 
 def _ensure_park(session, park_id: str, layout: dict | None) -> None:
@@ -104,8 +143,12 @@ class InspectionOrchestrator:
         inspection_id: str | None = None,
         temp_raw_path: str | Path | None = None,
         irradiance_wm2: float | None = None,
+        park_layout: dict | None = None,
     ) -> dict:
         """Run full pipeline on a single thermal+RGB pair.
+
+        ``park_layout`` (full layout dict incl. ``mode``) takes precedence over
+        the bare ``panel_map`` so manual layouts keep their polygon matching.
 
         Returns:
             Inspection result dict (matches AXALON_PLATFORM_SPEC output format).
@@ -149,18 +192,9 @@ class InspectionOrchestrator:
             except Exception:
                 logger.warning("Temperature extraction failed for %s", thermal_path.name)
 
-        # Assign panel IDs — GPS-anchored locator first, pixel-nearest fallback.
-        # locate_faults returns one LocatedFault per detection, in order.
-        located = locate_faults(detections, {"panel_map": panel_map or {}})
-        for det, lf in zip(detections, located):
-            if lf.panel_id != PANEL_ID_UNKNOWN:
-                det["panel_id"] = lf.panel_id
-                det["panel_confidence"] = lf.confidence
-            else:
-                # No usable GPS / no GPS-anchored panel — fall back to the
-                # image-pixel nearest-center heuristic.
-                det["panel_id"] = _match_panel_id(det, panel_map or {})
-                det["panel_confidence"] = lf.confidence
+        detections = assign_panel_ids(
+            detections, park_layout if park_layout is not None else {"panel_map": panel_map or {}}
+        )
 
         # Annotated thermal output
         annotated_thermal = draw_detections_severity(thermal_bgr, detections)
@@ -173,15 +207,17 @@ class InspectionOrchestrator:
 
         # RGB fusion overlay
         rgb_out = None
+        fusion_mode = None
         if rgb_path and rgb_path.exists():
             rgb_bgr = load_bgr(rgb_path)
             rgb_gps = extract_gps_exif(rgb_path)
-            fused = self.fusion.align_and_overlay(
+            fused = self.fusion.align(
                 thermal_bgr, rgb_bgr, detections,
                 thermal_gps=image_gps, rgb_gps=rgb_gps
             )
+            fusion_mode = fused.mode
             rgb_out = job_dir / f"{thermal_path.stem}_rgb_annotated.jpg"
-            cv2.imwrite(str(rgb_out), fused)
+            cv2.imwrite(str(rgb_out), fused.image)
 
         summary = self.detector.detection_summary(detections)
 
@@ -199,6 +235,7 @@ class InspectionOrchestrator:
             "summary": summary,
             "annotated_thermal": str(thermal_out),
             "annotated_rgb": str(rgb_out) if rgb_out else None,
+            "fusion_mode": fusion_mode,
             "total_detections": len(detections),
         }
 
@@ -225,6 +262,32 @@ class InspectionOrchestrator:
                 session.close()
 
         return result
+
+    def _resolve_layout(self, park_id: str, load_rgb) -> dict | None:
+        """Manual layout when one is stored for the park, else auto-grid.
+
+        ``load_rgb`` is a zero-arg callable returning ``(rgb_images, gps_list)``;
+        it is only called when auto-grid is needed, so parks with a manual
+        layout never hold every RGB frame in memory. A stored layout that no
+        longer validates raises LayoutError rather than silently localising
+        against a grid the operator already said is wrong.
+        """
+        session = get_session()
+        try:
+            manual = load_park_layout(session, park_id)
+        finally:
+            session.close()
+        if manual is not None:
+            logger.info("Park %s: manual layout, %d panels in %d tables",
+                        park_id, manual.total_panels, manual.table_count)
+            return manual.to_locator_layout()
+
+        rgb_images, rgb_gps_list = load_rgb()
+        if not rgb_images:
+            return None
+        layout = self.layout_detector.build_layout(rgb_images, rgb_gps_list)
+        logger.info("Park grid: %d panels, %d rows", layout["total_panels"], layout["rows"])
+        return layout
 
     def inspect_folder(
         self,
@@ -256,20 +319,20 @@ class InspectionOrchestrator:
         total = len(pairs)
         logger.info("Starting batch: %d pairs, park=%s", total, park_id)
 
-        # PHASE 1: Build park-wide panel grid from all RGB images
-        layout = None
-        rgb_images = []
-        rgb_gps_list = []
-        for pair in pairs:
-            rgb_path = pair.get("rgb")
-            if rgb_path and Path(rgb_path).exists():
-                img = load_bgr(rgb_path)
-                if img is not None:
-                    rgb_images.append(img)
-                    rgb_gps_list.append(extract_gps_exif(rgb_path))
-        if rgb_images:
-            layout = self.layout_detector.build_layout(rgb_images, rgb_gps_list)
-            logger.info("Park grid: %d panels, %d rows", layout["total_panels"], layout["rows"])
+        # Re-resolve the rig calibration per batch so an upload via the API
+        # applies to the next batch without restarting the long-lived API.
+        active_calibration = resolve_active_calibration()
+        if active_calibration.error:
+            logger.warning("Fusion calibration unusable (%s): %s",
+                           active_calibration.source, active_calibration.error)
+        self.fusion = ImageFusion(
+            mode=self.fusion.mode,
+            camera_offset=self.fusion.camera_offset,
+            calibration=active_calibration.calibration,
+        )
+
+        # PHASE 1: Park layout — stored manual layout, else auto-grid from RGB
+        layout = self._resolve_layout(park_id, load_rgb=lambda: _load_rgb_frames(pairs))
         panel_map = layout["panel_map"] if layout else {}
 
         # Ensure park record exists in DB
@@ -325,6 +388,7 @@ class InspectionOrchestrator:
                 park_id=park_id,
                 altitude_m=mission_meta.get("altitude_m", altitude_m),
                 panel_map=panel_map,
+                park_layout=layout,
                 inspection_id=batch_id,
                 temp_raw_path=pair.get("temp_raw"),
                 irradiance_wm2=irradiance_wm2,
@@ -367,6 +431,11 @@ class InspectionOrchestrator:
             "raw_detections": len(all_detections),
             "summary": summary,
             "fault_tracking": fault_counts,
+            "fusion_calibration": {
+                "source": active_calibration.source,
+                "rig_id": getattr(active_calibration.calibration, "rig_id", None),
+                "error": active_calibration.error,
+            },
             "layout": layout,
             "results": all_results,
         }

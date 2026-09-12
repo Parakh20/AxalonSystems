@@ -21,6 +21,7 @@ camera:
   - 0
   - 0
   alignment_mode: auto
+  fusion_calibration: ''
 drone:
   default_altitude_m: 20
   min_altitude_m: 10

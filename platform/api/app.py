@@ -19,8 +19,8 @@ from axalon.api.deps import (
 from axalon.api.agents_router import router as agents_router
 from axalon.api.routers import (
     alerts, analytics, corrections, diff, faults, health, inspection, inventory,
-    map, missions, ortho, ortho_generate, park, projects, results, settings, track,
-    work_orders,
+    map, missions, ortho, ortho_generate, park, park_layout, projects, results,
+    settings, track, work_orders,
 )
 from axalon.api.support.odm_jobs import resume_odm_jobs
 
@@ -132,7 +132,7 @@ async def timeout_middleware(request, call_next):
 # ── Domain routers ──────────────────────────────────────────────────────────────
 for _module in (
     alerts, analytics, corrections, diff, faults, health, inspection, inventory,
-    map, missions, ortho, ortho_generate, park, projects, results, settings, track,
-    work_orders,
+    map, missions, ortho, ortho_generate, park, park_layout, projects, results,
+    settings, track, work_orders,
 ):
     app.include_router(_module.router)

@@ -1,4 +1,6 @@
 import type { OdmJob } from '@/lib/odm'
+import type { CalibrationStatus, CalibrationSummary } from '@/lib/calibration'
+import type { ParkLayoutStatus } from '@/lib/parkLayout'
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_AXALON_API_URL || 'http://localhost:8000'
@@ -588,6 +590,23 @@ export const api = {
     request<OdmJob>(
       `/parks/${encodeURIComponent(parkId)}/orthos/generate/${encodeURIComponent(jobId)}`,
       { method: 'DELETE' },
+    ),
+  parkLayout: (parkId: string) =>
+    request<ParkLayoutStatus>(`/park/${encodeURIComponent(parkId)}/layout`),
+  uploadParkLayout: (parkId: string, form: FormData) =>
+    request<ParkLayoutStatus>(`/park/${encodeURIComponent(parkId)}/layout`, {
+      method: 'POST',
+      body: form,
+    }),
+  deleteParkLayout: (parkId: string) =>
+    request<ParkLayoutStatus>(`/park/${encodeURIComponent(parkId)}/layout`, {
+      method: 'DELETE',
+    }),
+  fusionCalibration: () => request<CalibrationStatus>('/settings/fusion-calibration'),
+  uploadFusionCalibration: (form: FormData) =>
+    request<{ ok: boolean; calibration: CalibrationSummary; active: CalibrationStatus }>(
+      '/settings/fusion-calibration',
+      { method: 'POST', body: form },
     ),
   getSettings: () => request<SettingsBlob>('/settings'),
   putSettings: (blob: SettingsBlob) =>
