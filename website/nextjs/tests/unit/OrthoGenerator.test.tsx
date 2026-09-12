@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { OrthoGenerator } from '@/components/Platform/OrthoGenerator'
 import { api, ApiError } from '@/lib/api'
 import type { OdmJob } from '@/lib/odm'
+import { withQueryClient } from './queryWrapper'
 
 const CONFIGURED = { status: 'ok', capabilities: { odm: { configured: true, message: null } } }
 
@@ -19,6 +20,12 @@ const job = (overrides: Partial<OdmJob> = {}): OdmJob => ({
   ortho_name: null,
   ...overrides,
 })
+
+function renderGenerator(ui: React.ReactElement) {
+  return render(ui, { wrapper: withQueryClient() })
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 beforeEach(() => {
   vi.spyOn(api, 'orthoGenerationJobs').mockResolvedValue([])
@@ -35,7 +42,7 @@ describe('OrthoGenerator', () => {
       status: 'ok',
       capabilities: { odm: { configured: false, message: 'Set AXALON_NODEODM_URL' } },
     })
-    render(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} />)
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} />)
 
     const button = await screen.findByRole('button', { name: /generate orthomosaic/i })
     await waitFor(() => expect(button).toBeDisabled())
@@ -45,7 +52,7 @@ describe('OrthoGenerator', () => {
   test('validates the zip before uploading', async () => {
     vi.spyOn(api, 'health').mockResolvedValue(CONFIGURED)
     const generate = vi.spyOn(api, 'generateOrtho')
-    render(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} />)
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} />)
 
     const open = await screen.findByRole('button', { name: /generate orthomosaic/i })
     await waitFor(() => expect(open).toBeEnabled())
@@ -65,7 +72,7 @@ describe('OrthoGenerator', () => {
       .mockResolvedValueOnce(job())
       .mockResolvedValue(job({ state: 'succeeded', progress: 1, ortho_name: 'odm_abc.tif' }))
     const onReady = vi.fn()
-    render(<OrthoGenerator parkId="P1" onOrthoReady={onReady} pollMs={10} />)
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={onReady} pollMs={10} />)
 
     const open = await screen.findByRole('button', { name: /generate orthomosaic/i })
     await waitFor(() => expect(open).toBeEnabled())
@@ -91,7 +98,7 @@ describe('OrthoGenerator', () => {
     const cancel = vi
       .spyOn(api, 'cancelOrthoGeneration')
       .mockResolvedValue(job({ state: 'cancelled' }))
-    render(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} pollMs={60_000} />)
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} pollMs={60_000} />)
 
     expect(await screen.findByRole('progressbar')).toHaveAttribute('aria-valuenow', '30')
     expect(screen.getByText(/Processing on NodeODM/)).toBeInTheDocument()
@@ -108,7 +115,7 @@ describe('OrthoGenerator', () => {
     vi.mocked(api.orthoGenerationJobs).mockResolvedValue([
       job({ state: 'failed', error: 'NodeODM task failed: Not enough overlap' }),
     ])
-    render(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} />)
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} />)
     expect(await screen.findByRole('alert')).toHaveTextContent(/Not enough overlap/)
   })
 
@@ -117,7 +124,7 @@ describe('OrthoGenerator', () => {
     vi.spyOn(api, 'generateOrtho').mockRejectedValue(
       new ApiError(400, '{"detail":"ZIP holds 2 images"}', 'ZIP holds 2 images'),
     )
-    render(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} />)
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} />)
     const open = await screen.findByRole('button', { name: /generate orthomosaic/i })
     await waitFor(() => expect(open).toBeEnabled())
     fireEvent.click(open)
@@ -126,5 +133,48 @@ describe('OrthoGenerator', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /^start/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/ZIP holds 2 images/)
+  })
+
+  test('stops polling once the job finishes and reports it exactly once', async () => {
+    vi.spyOn(api, 'health').mockResolvedValue(CONFIGURED)
+    vi.mocked(api.orthoGenerationJobs).mockResolvedValue([job()])
+    const status = vi
+      .spyOn(api, 'orthoGenerationStatus')
+      .mockResolvedValue(job({ state: 'succeeded', progress: 1, ortho_name: 'odm_abc.tif' }))
+    const onReady = vi.fn()
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={onReady} pollMs={10} />)
+
+    await waitFor(() => expect(onReady).toHaveBeenCalledWith('odm_abc.tif'))
+    const calls = status.mock.calls.length
+    await sleep(80)
+    expect(status.mock.calls.length).toBe(calls)
+    expect(onReady).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  test('stops polling when the job is gone on the server', async () => {
+    vi.spyOn(api, 'health').mockResolvedValue(CONFIGURED)
+    vi.mocked(api.orthoGenerationJobs).mockResolvedValue([job()])
+    const status = vi.spyOn(api, 'orthoGenerationStatus').mockRejectedValue(new ApiError(404, ''))
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={vi.fn()} pollMs={10} />)
+
+    await waitFor(() => expect(status).toHaveBeenCalled())
+    await sleep(80)
+    expect(status).toHaveBeenCalledTimes(1)
+  })
+
+  test('does not report an ortho for a job that had already finished', async () => {
+    vi.spyOn(api, 'health').mockResolvedValue(CONFIGURED)
+    vi.mocked(api.orthoGenerationJobs).mockResolvedValue([
+      job({ state: 'succeeded', progress: 1, ortho_name: 'old.tif' }),
+    ])
+    const status = vi.spyOn(api, 'orthoGenerationStatus')
+    const onReady = vi.fn()
+    renderGenerator(<OrthoGenerator parkId="P1" onOrthoReady={onReady} pollMs={10} />)
+
+    expect(await screen.findByText(/completed/i)).toBeInTheDocument()
+    await sleep(50)
+    expect(onReady).not.toHaveBeenCalled()
+    expect(status).not.toHaveBeenCalled()
   })
 })

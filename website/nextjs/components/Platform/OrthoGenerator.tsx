@@ -2,7 +2,10 @@
 
 import { Layers, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
+import { isTerminalHttpError } from '@/lib/queryPolicy'
 import {
   isOdmJobActive,
   odmCapability,
@@ -29,96 +32,113 @@ function errorText(err: unknown, fallback: string): string {
   return err instanceof ApiError || err instanceof Error ? err.message : fallback
 }
 
+/** refetchInterval for a generation job: poll while active, stop when done or gone. */
+export function odmPollInterval(job: OdmJob | undefined, error: unknown, pollMs: number): number | false {
+  if (isTerminalHttpError(error)) return false
+  return job && isOdmJobActive(job) ? pollMs : false
+}
+
 export function OrthoGenerator({ parkId, onOrthoReady, pollMs = DEFAULT_POLL_MS }: OrthoGeneratorProps) {
-  const [capability, setCapability] = useState<OdmCapability | null>(null)
-  const [job, setJob] = useState<OdmJob | null>(null)
+  const queryClient = useQueryClient()
   const [formOpen, setFormOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [sensor, setSensor] = useState<OdmSensor>('auto')
   const [resolutionCm, setResolutionCm] = useState(2)
-  const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  // Job started from this form; otherwise the park's most recent job is shown.
+  const [startedJob, setStartedJob] = useState<{ parkId: string; jobId: string } | null>(null)
   const onReadyRef = useRef(onOrthoReady)
   onReadyRef.current = onOrthoReady
 
-  useEffect(() => {
-    let cancelled = false
-    api
-      .health()
-      .then((h) => !cancelled && setCapability(odmCapability(h)))
-      .catch(() => !cancelled && setCapability({ configured: false, message: 'Backend unreachable' }))
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // Shared with Operations' health line: one /health request for both.
+  const healthQuery = useQuery({ queryKey: queryKeys.ops.health, queryFn: () => api.health() })
+  const capability: OdmCapability | null = healthQuery.data
+    ? odmCapability(healthQuery.data)
+    : healthQuery.isError
+      ? { configured: false, message: 'Backend unreachable' }
+      : null
 
   useEffect(() => {
-    let cancelled = false
-    setJob(null)
     setFormOpen(false)
     setFormError(null)
-    api
-      .orthoGenerationJobs(parkId)
-      .then((jobs) => !cancelled && setJob(jobs[0] ?? null))
-      .catch(() => {
-        // No history is not an error worth surfacing — the button still works.
-      })
-    return () => {
-      cancelled = true
-    }
   }, [parkId])
 
+  // No history is not an error worth surfacing — the button still works.
+  const jobsQuery = useQuery({
+    queryKey: queryKeys.odm.jobs(parkId),
+    queryFn: () => api.orthoGenerationJobs(parkId),
+  })
+  const latestJob = jobsQuery.data?.[0] ?? null
+  const jobId = startedJob?.parkId === parkId ? startedJob.jobId : latestJob?.job_id ?? null
+
+  // The tracked job lives in its own cache entry: seeded from the history list
+  // or the generate/cancel response, refreshed by polling while it is active.
+  const jobQuery = useQuery({
+    queryKey: queryKeys.odm.job(parkId, jobId ?? ''),
+    queryFn: () => api.orthoGenerationStatus(parkId, jobId as string),
+    enabled: Boolean(jobId),
+    initialData: () => (latestJob && latestJob.job_id === jobId ? latestJob : undefined),
+    // Seeded data is fresh: the first status request waits one poll interval,
+    // exactly like the old setInterval loop.
+    staleTime: Infinity,
+    refetchInterval: (query) => odmPollInterval(query.state.data, query.state.error, pollMs),
+    refetchIntervalInBackground: true,
+    retry: false,
+  })
+  const job = jobId ? (jobQuery.data ?? null) : null
   const activeJobId = job && isOdmJobActive(job) ? job.job_id : null
 
+  // Report completion only for a transition seen here (active → succeeded), so
+  // a job that had already finished before mount is not re-announced.
+  const lastSeenRef = useRef<{ jobId: string; active: boolean } | null>(null)
   useEffect(() => {
-    if (!activeJobId) return
-    let stopped = false
-    const timer = setInterval(async () => {
-      try {
-        const next = await api.orthoGenerationStatus(parkId, activeJobId)
-        if (stopped) return
-        setJob(next)
-        if (next.state === 'succeeded' && next.ortho_name) onReadyRef.current(next.ortho_name)
-      } catch {
-        // Transient poll failure — keep polling; the next tick usually succeeds.
-      }
-    }, pollMs)
-    return () => {
-      stopped = true
-      clearInterval(timer)
-    }
-  }, [activeJobId, parkId, pollMs])
+    if (!job) return
+    const last = lastSeenRef.current
+    const wasActive = last?.jobId === job.job_id && last.active
+    lastSeenRef.current = { jobId: job.job_id, active: isOdmJobActive(job) }
+    if (wasActive && job.state === 'succeeded' && job.ortho_name) onReadyRef.current(job.ortho_name)
+  }, [job])
 
-  async function start() {
+  function track(next: OdmJob) {
+    queryClient.setQueryData(queryKeys.odm.job(parkId, next.job_id), next)
+    setStartedJob({ parkId, jobId: next.job_id })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.odm.jobs(parkId) })
+  }
+
+  const generateMutation = useMutation({
+    mutationFn: (form: FormData) => api.generateOrtho(parkId, form),
+    onSuccess: (next) => {
+      track(next)
+      setFormOpen(false)
+      setFile(null)
+    },
+    onError: (err) => setFormError(errorText(err, 'Upload failed')),
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: (id: string) => api.cancelOrthoGeneration(parkId, id),
+    onSuccess: track,
+    onError: (err) => setFormError(errorText(err, 'Cancel failed')),
+  })
+
+  const submitting = generateMutation.isPending
+
+  function start() {
     const invalid = validateOdmZip(file)
     if (invalid || !file) {
       setFormError(invalid)
       return
     }
     setFormError(null)
-    setSubmitting(true)
-    try {
-      const form = new FormData()
-      form.append('images', file)
-      form.append('sensor', sensor)
-      form.append('orthophoto_resolution_cm', String(resolutionCm))
-      setJob(await api.generateOrtho(parkId, form))
-      setFormOpen(false)
-      setFile(null)
-    } catch (err) {
-      setFormError(errorText(err, 'Upload failed'))
-    } finally {
-      setSubmitting(false)
-    }
+    const form = new FormData()
+    form.append('images', file)
+    form.append('sensor', sensor)
+    form.append('orthophoto_resolution_cm', String(resolutionCm))
+    generateMutation.mutate(form)
   }
 
-  async function cancel() {
-    if (!job) return
-    try {
-      setJob(await api.cancelOrthoGeneration(parkId, job.job_id))
-    } catch (err) {
-      setFormError(errorText(err, 'Cancel failed'))
-    }
+  function cancel() {
+    if (job) cancelMutation.mutate(job.job_id)
   }
 
   const configured = capability?.configured === true

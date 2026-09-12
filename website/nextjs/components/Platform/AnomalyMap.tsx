@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 
@@ -301,53 +303,34 @@ function buildDemoData(jobId: string): AnomalyMapData {
 }
 
 export function useMapData(apiBase: string, jobId: string, jobStatus: string) {
-  const [data, setData] = useState<AnomalyMapData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // Only fetch real map data once the job is complete; use demo data for
+  // in-progress or seeded jobs so we never fire a 404 against a job that
+  // hasn't been fully persisted yet.
+  const isComplete = jobStatus === 'completed'
+  const query = useQuery({
+    queryKey: [...queryKeys.jobs.mapData(jobId), apiBase],
+    queryFn: async (): Promise<AnomalyMapData> => {
+      const res = await fetch(`${apiBase}/map/${jobId}${api.authQuery('?')}`)
+      if (!res.ok) throw new Error(`API returned ${res.status}`)
+      return res.json()
+    },
+    enabled: isComplete,
+    // One attempt, then the demo map — as before. Keep the previous map on
+    // screen while the next job's loads.
+    retry: false,
+    placeholderData: keepPreviousData,
+  })
 
-  useEffect(() => {
-    let cancelled = false
+  const demo = useMemo(() => buildDemoData(jobId), [jobId])
+  const payload = query.data
+  let data: AnomalyMapData | null = null
+  if (!isComplete || query.isError) data = demo
+  else if (payload) {
+    data = payload.total_images === 0 && payload.total_anomalies === 0 ? demo : payload
+  }
+  const error = isComplete && query.error ? (query.error instanceof Error ? query.error.message : 'Map data unavailable') : null
 
-    async function load() {
-      // Only fetch real map data once the job is complete; use demo data for
-      // in-progress or seeded jobs so we never fire a 404 against a job that
-      // hasn't been fully persisted yet.
-      if (jobStatus !== 'completed') {
-        if (!cancelled) {
-          setData(buildDemoData(jobId))
-          setLoading(false)
-        }
-        return
-      }
-
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch(`${apiBase}/map/${jobId}${api.authQuery('?')}`)
-        if (!res.ok) throw new Error(`API returned ${res.status}`)
-        const payload: AnomalyMapData = await res.json()
-        if (cancelled) return
-        if (payload.total_images === 0 && payload.total_anomalies === 0) {
-          setData(buildDemoData(jobId))
-        } else {
-          setData(payload)
-        }
-      } catch (err) {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : 'Map data unavailable')
-        setData(buildDemoData(jobId))
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [apiBase, jobId, jobStatus])
-
-  return { data, loading, error }
+  return { data, loading: isComplete && query.isFetching, error }
 }
 
 export default function AnomalyMap({

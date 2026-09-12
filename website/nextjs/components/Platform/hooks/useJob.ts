@@ -1,7 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '@/lib/api'
+import { useCallback, useMemo, useState } from 'react'
+import { useQueries } from '@tanstack/react-query'
+import { api, type JobStatus as ApiJobStatus } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
+import { isTerminalHttpError } from '@/lib/queryPolicy'
 
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed'
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
@@ -21,6 +24,7 @@ export type BatchJob = {
 }
 
 const DEMO_JOB_ID = 'batch-8f24c91a'
+const JOB_POLL_MS = 1800
 
 const INITIAL_JOBS: BatchJob[] = [
   {
@@ -37,85 +41,80 @@ const INITIAL_JOBS: BatchJob[] = [
   },
 ]
 
-export function useJob(): {
+/** Fold a /status response into a queue entry, keeping known values the response omits. */
+export function applyJobStatus(job: BatchJob, res: ApiJobStatus): BatchJob {
+  let status: JobStatus = job.status
+  if (res.state === 'queued') status = 'queued'
+  else if (res.state === 'running') status = 'processing'
+  else if (res.state === 'succeeded') status = 'completed'
+  else if (res.state === 'failed') status = 'failed'
+
+  return {
+    ...job,
+    status,
+    progress: res.progress != null ? res.progress : job.progress,
+    processed: res.processed != null ? res.processed : job.processed,
+    total: res.total != null ? res.total : job.total,
+    error: res.message ?? job.error,
+  }
+}
+
+/**
+ * refetchInterval for a job's status query: keep polling while the job is in
+ * flight (transient failures included), stop once it succeeded/failed or the
+ * server says the session or job is gone.
+ */
+export function jobPollInterval(
+  data: ApiJobStatus | undefined,
+  error: unknown,
+  pollMs: number,
+): number | false {
+  if (isTerminalHttpError(error)) return false
+  if (data && (data.state === 'succeeded' || data.state === 'failed')) return false
+  return pollMs
+}
+
+export function useJob(pollMs: number = JOB_POLL_MS): {
   jobs: BatchJob[]
   activeJob: BatchJob
   activeJobId: string
   setActiveJobId: (id: string) => void
   addJob: (job: BatchJob) => void
 } {
-  const [jobs, setJobs] = useState<BatchJob[]>(INITIAL_JOBS)
+  const [baseJobs, setBaseJobs] = useState<BatchJob[]>(INITIAL_JOBS)
   const [activeJobId, setActiveJobId] = useState<string>(DEMO_JOB_ID)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const addJob = useCallback((job: BatchJob) => {
-    setJobs((prev) => [job, ...prev])
+    setBaseJobs((prev) => [job, ...prev])
     setActiveJobId(job.id)
   }, [])
 
-  // Polling loop for real (non-demo) jobs that are still in flight
-  useEffect(() => {
-    function startPolling() {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+  // One status query per real job. The demo job is seeded locally and never
+  // hits the API. Background tabs keep polling, as the old setInterval did.
+  const realJobs = baseJobs.filter((j) => j.id !== DEMO_JOB_ID)
+  const statuses = useQueries({
+    queries: realJobs.map((job) => ({
+      queryKey: queryKeys.jobs.status(job.id),
+      queryFn: () => api.status(job.id),
+      refetchInterval: (query: { state: { data: ApiJobStatus | undefined; error: unknown } }) =>
+        jobPollInterval(query.state.data, query.state.error, pollMs),
+      refetchIntervalInBackground: true,
+      retry: false,
+    })),
+  })
 
-      intervalRef.current = setInterval(async () => {
-        setJobs((prev) => {
-          // Identify jobs that need polling
-          const pollable = prev.filter(
-            (j) =>
-              j.id !== DEMO_JOB_ID &&
-              (j.status === 'queued' || j.status === 'processing'),
-          )
-
-          if (pollable.length === 0) return prev
-
-          // Fire-and-forget fetches; update state when responses arrive
-          pollable.forEach(async (job) => {
-            try {
-              const statusRes = await api.status(job.id)
-              setJobs((current) =>
-                current.map((j) => {
-                  if (j.id !== job.id) return j
-                  // Map API state strings to our JobStatus type
-                  let status: JobStatus = j.status
-                  if (statusRes.state === 'queued') status = 'queued'
-                  else if (statusRes.state === 'running') status = 'processing'
-                  else if (statusRes.state === 'succeeded') status = 'completed'
-                  else if (statusRes.state === 'failed') status = 'failed'
-
-                  return {
-                    ...j,
-                    status,
-                    progress:
-                      statusRes.progress != null
-                        ? statusRes.progress
-                        : j.progress,
-                    processed:
-                      statusRes.processed != null
-                        ? statusRes.processed
-                        : j.processed,
-                    total:
-                      statusRes.total != null ? statusRes.total : j.total,
-                    error: statusRes.message ?? j.error,
-                  }
-                }),
-              )
-            } catch (err) {
-              console.warn(`[useJob] poll failed for job ${job.id}:`, err)
-            }
-          })
-
-          return prev // state update comes from async callbacks above
-        })
-      }, 1800)
-    }
-
-    startPolling()
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [])
+  const statusData = statuses.map((s) => s.data)
+  const jobs = useMemo(() => {
+    const byId = new Map<string, ApiJobStatus>()
+    realJobs.forEach((job, i) => {
+      const data = statusData[i]
+      if (data) byId.set(job.id, data)
+    })
+    return baseJobs.map((job) => {
+      const data = byId.get(job.id)
+      return data ? applyJobStatus(job, data) : job
+    })
+  }, [baseJobs, ...statusData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeJob = jobs.find((j) => j.id === activeJobId) ?? jobs[0]
 
