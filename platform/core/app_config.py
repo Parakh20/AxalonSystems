@@ -53,6 +53,16 @@ def set_config(session, key: str, value: str) -> None:
     session.commit()
 
 
+def delete_config(session, key: str) -> bool:
+    """Remove a key; returns False when it was not set."""
+    row = session.query(AppConfig).filter_by(key=key).first()
+    if row is None:
+        return False
+    session.delete(row)
+    session.commit()
+    return True
+
+
 def set_track_password(session, plaintext: str) -> None:
     set_config(session, TRACK_PASSWORD_KEY, hash_password(plaintext))
 

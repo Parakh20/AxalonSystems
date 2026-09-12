@@ -27,8 +27,10 @@ Data shapes (verified against the real code, NOT the plan pseudocode):
   calling :func:`locate_faults`.
 
 Both grid and numbered modes work by nearest-GPS matching against the
-panels in ``panel_map``. A detection with no usable GPS falls back to
-``panel_id="UNKNOWN"`` with ``confidence=0.0``.
+panels in ``panel_map``. Layouts with ``"mode": "manual"`` (operator-supplied
+geometry, see ``park/manual_layout.py``) are matched point-in-polygon first,
+then to the nearest panel within ``match_tolerance_m``. A detection with no
+usable GPS falls back to ``panel_id="UNKNOWN"`` with ``confidence=0.0``.
 """
 
 from __future__ import annotations
@@ -39,7 +41,20 @@ from typing import Literal
 
 from ml.src.utils import get_logger
 
+from axalon.park.geometry import (
+    distance_to_polygon_edge,
+    gps_to_local,
+    metres_to_lat_deg,
+    metres_to_lon_deg,
+    point_in_polygon,
+)
+
 logger = get_logger("axalon.locator")
+
+# Manual layouts (park/manual_layout.py) carry real panel polygons.
+MANUAL_MODE = "manual"
+_DEFAULT_MANUAL_TOLERANCE_M = 1.0
+_MAX_NEAR_MISS_CONFIDENCE = 0.99
 
 # Confidence falls off linearly from 1.0 at the panel center to 0.0 at this
 # distance (meters). Tuned for typical utility-scale panel spacing.
@@ -155,10 +170,81 @@ def _locate_one(detection: dict, panel_map: dict) -> LocatedFault:
     )
 
 
+@dataclass(frozen=True)
+class _ManualPanel:
+    panel_id: str
+    center: tuple[float, float]                       # (lat, lon)
+    polygon: tuple[tuple[float, float], ...] | None   # (lat, lon) vertices
+    bbox: tuple[float, float, float, float]           # lat_min, lat_max, lon_min, lon_max
+
+
+def _build_manual_index(panel_map: dict, tolerance_m: float) -> list[_ManualPanel]:
+    """Precompute per-panel lat/lon bounding boxes grown by the tolerance."""
+    index = []
+    for pid, info in panel_map.items():
+        centre = _valid_gps(info.get("gps"))
+        if centre is None:
+            continue
+        polygon = tuple((float(v[0]), float(v[1])) for v in info.get("polygon") or ()) or None
+        lats = [v[0] for v in polygon] if polygon else [centre["lat"]]
+        lons = [v[1] for v in polygon] if polygon else [centre["lon"]]
+        pad_lat = metres_to_lat_deg(tolerance_m)
+        pad_lon = metres_to_lon_deg(tolerance_m, centre["lat"])
+        index.append(_ManualPanel(
+            panel_id=pid,
+            center=(centre["lat"], centre["lon"]),
+            polygon=polygon,
+            bbox=(min(lats) - pad_lat, max(lats) + pad_lat, min(lons) - pad_lon, max(lons) + pad_lon),
+        ))
+    return index
+
+
+def _manual_distance(det_gps: dict, panel: _ManualPanel) -> tuple[bool, float]:
+    """``(inside, metres)`` — metres to the polygon edge, or to the centre point."""
+    ref_lat, ref_lon = det_gps["lat"], det_gps["lon"]
+    if panel.polygon is None:
+        x, y = gps_to_local(panel.center[0], panel.center[1], ref_lat, ref_lon)
+        return False, math.hypot(x, y)
+    local = [gps_to_local(lat, lon, ref_lat, ref_lon) for lat, lon in panel.polygon]
+    if point_in_polygon(0.0, 0.0, local):
+        return True, 0.0
+    return False, distance_to_polygon_edge(0.0, 0.0, local)
+
+
+def _locate_manual(detection: dict, index: list[_ManualPanel], tolerance_m: float) -> LocatedFault:
+    """Point-in-polygon first; otherwise the nearest panel within the tolerance."""
+    det_gps = _valid_gps(detection.get("gps"))
+    if det_gps is None:
+        return _unknown(detection)
+    lat, lon = det_gps["lat"], det_gps["lon"]
+
+    containing: list[tuple[float, str]] = []
+    best_id, best_dist = None, math.inf
+    for panel in index:
+        lat_min, lat_max, lon_min, lon_max = panel.bbox
+        if not (lat_min <= lat <= lat_max and lon_min <= lon <= lon_max):
+            continue
+        inside, dist = _manual_distance(det_gps, panel)
+        if inside:
+            cx, cy = gps_to_local(panel.center[0], panel.center[1], lat, lon)
+            containing.append((math.hypot(cx, cy), panel.panel_id))
+        elif dist < best_dist:
+            best_id, best_dist = panel.panel_id, dist
+
+    if containing:
+        panel_id = min(containing)[1]  # overlapping polygons → closest centre
+        return LocatedFault(detection, panel_id, _parse_panel_index(panel_id), 1.0)
+    if best_id is not None and best_dist <= tolerance_m and tolerance_m > 0:
+        # Outside every polygon: never as confident as a hit inside one.
+        confidence = round(min(_MAX_NEAR_MISS_CONFIDENCE, 1.0 - best_dist / tolerance_m), 4)
+        return LocatedFault(detection, best_id, _parse_panel_index(best_id), max(confidence, 0.0))
+    return _unknown(detection)
+
+
 def locate_faults(
     detections: list[dict],
     park_layout: dict,
-    mode: Literal["grid", "numbered"] = "grid",
+    mode: Literal["grid", "numbered", "manual"] = "grid",
 ) -> list[LocatedFault]:
     """Map each detection to the closest panel in the park layout.
 
@@ -180,7 +266,13 @@ def locate_faults(
         logger.info("locate_faults: empty panel_map (mode=%s) — all UNKNOWN", mode)
         return [_unknown(det) for det in detections]
 
-    located = [_locate_one(det, panel_map) for det in detections]
+    if park_layout.get("mode") == MANUAL_MODE:
+        mode = MANUAL_MODE
+        tolerance = float(park_layout.get("match_tolerance_m", _DEFAULT_MANUAL_TOLERANCE_M))
+        index = _build_manual_index(panel_map, tolerance)
+        located = [_locate_manual(det, index, tolerance) for det in detections]
+    else:
+        located = [_locate_one(det, panel_map) for det in detections]
     matched = sum(1 for lf in located if lf.panel_id != PANEL_ID_UNKNOWN)
     logger.info(
         "locate_faults: %d/%d matched (mode=%s, %d panels)",
