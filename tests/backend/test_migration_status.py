@@ -55,3 +55,27 @@ def test_successful_migration_is_reported_on_health(client, monkeypatch, run_mig
 
     assert deps.MIGRATION_STATUS["state"] == "ok"
     assert client.get("/health").json()["migrations"] == {"state": "ok"}
+
+
+def test_url_encoded_password_does_not_break_startup_migrations(client, monkeypatch, run_migrations_for_real):
+    """A '%'-encoded password is ConfigParser interpolation syntax to alembic.
+
+    Production's Supabase URL carries a percent-encoded password; set_main_option
+    raised "invalid interpolation syntax", so startup migrations failed every boot
+    while the same upgrade run by hand succeeded.
+    """
+    from alembic import command
+    from axalon.api import deps
+
+    seen = {}
+
+    def fake_upgrade(cfg, _rev):
+        seen["url"] = cfg.get_main_option("sqlalchemy.url")
+
+    monkeypatch.setenv("AXALON_DB_URL", "postgresql+psycopg2://user:p%40ss%2Fword@db.example.com:5432/postgres")
+    monkeypatch.setattr(command, "upgrade", fake_upgrade)
+
+    run_migrations_for_real()
+
+    assert deps.MIGRATION_STATUS["state"] == "ok"
+    assert seen["url"] == "postgresql+psycopg2://user:p%40ss%2Fword@db.example.com:5432/postgres"

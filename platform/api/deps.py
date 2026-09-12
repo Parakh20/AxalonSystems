@@ -187,7 +187,9 @@ def _run_alembic_migrations() -> None:
         repo_root = Path(__file__).resolve().parents[2]
         cfg = AlembicConfig(str(repo_root / "alembic.ini"))
         cfg.set_main_option("script_location", str(repo_root / "alembic"))
-        cfg.set_main_option("sqlalchemy.url", db_url)
+        # Alembic's config is a ConfigParser: a bare "%" (a percent-encoded
+        # password in the URL) is interpolation syntax and raises. Escape it.
+        cfg.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
         alembic_cmd.upgrade(cfg, "head")
         MIGRATION_STATUS["state"] = "ok"
         logger.info("Alembic migrations: up to date")
