@@ -1,88 +1,86 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, FolderKanban, Plus, Trash2 } from 'lucide-react'
 import { api, ApiError, type Project, type ProjectDetail } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 import { useParks } from '@/components/Platform/hooks/useParks'
+import { useErrorToast } from '@/components/Platform/hooks/useErrorToast'
 import { useToast } from '@/components/Platform/Toast'
 import { useAuth } from '@/components/Platform/AuthGate'
 import { ErrorBanner } from '@/components/Platform/ErrorBanner'
 import { SkeletonLine } from '@/components/Platform/Skeleton'
 
+const NO_PROJECTS: Project[] = []
+
 function errMessage(err: unknown): string {
   return err instanceof ApiError || err instanceof Error ? err.message : String(err)
 }
 
-function ProjectCard({
-  project,
-  onChanged,
-}: {
-  project: Project
-  onChanged: () => void
-}) {
+function ProjectCard({ project }: { project: Project }) {
   const toast = useToast()
+  const queryClient = useQueryClient()
   const { canWrite, canManageProjects } = useAssetPermissions()
   const { parks } = useParks()
   const [isOpen, setIsOpen] = useState(false)
-  const [detail, setDetail] = useState<ProjectDetail | null>(null)
   const [assignParkId, setAssignParkId] = useState('')
 
-  const loadDetail = useCallback(async () => {
-    try {
-      setDetail(await api.project(project.id))
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
-  }, [project.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (isOpen) loadDetail()
-  }, [isOpen, loadDetail])
+  const detailQuery = useQuery({
+    queryKey: queryKeys.projects.detail(project.id),
+    queryFn: () => api.project(project.id),
+    enabled: isOpen,
+  })
+  useErrorToast(detailQuery.error, errMessage)
+  const detail: ProjectDetail | null = detailQuery.data ?? null
 
   const assignedIds = new Set((detail?.sites ?? []).map((s) => s.id))
   const assignable = parks.filter((p) => !assignedIds.has(p.id))
 
-  async function assign() {
+  // Any project change can move site counts, statuses or membership: refresh
+  // the whole projects namespace (list + every open detail).
+  const refreshProjects = () => void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
+  const onError = (err: unknown) => toast.error(errMessage(err))
+
+  const assignMutation = useMutation({
+    mutationFn: ({ parkId, projectId }: { parkId: string; projectId: number | null }) =>
+      api.updatePark(parkId, { project_id: projectId }),
+    onSuccess: (_res, { projectId }) => {
+      if (projectId !== null) setAssignParkId('')
+      refreshProjects()
+    },
+    onError,
+  })
+
+  const statusMutation = useMutation({
+    mutationFn: () =>
+      api.updateProject(project.id, { status: project.status === 'active' ? 'archived' : 'active' }),
+    onSuccess: refreshProjects,
+    onError,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deleteProject(project.id),
+    onSuccess: refreshProjects,
+    onError,
+  })
+
+  function assign() {
     if (!assignParkId) return
-    try {
-      await api.updatePark(assignParkId, { project_id: project.id })
-      setAssignParkId('')
-      loadDetail()
-      onChanged()
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+    assignMutation.mutate({ parkId: assignParkId, projectId: project.id })
   }
 
-  async function unassign(parkId: string) {
-    try {
-      await api.updatePark(parkId, { project_id: null })
-      loadDetail()
-      onChanged()
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+  function unassign(parkId: string) {
+    assignMutation.mutate({ parkId, projectId: null })
   }
 
-  async function toggleStatus() {
-    try {
-      await api.updateProject(project.id, {
-        status: project.status === 'active' ? 'archived' : 'active',
-      })
-      onChanged()
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+  function toggleStatus() {
+    statusMutation.mutate()
   }
 
-  async function remove() {
+  function remove() {
     if (!window.confirm(`Delete project "${project.name}"? Sites stay but become unassigned.`)) return
-    try {
-      await api.deleteProject(project.id)
-      onChanged()
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+    deleteMutation.mutate()
   }
 
   return (
@@ -183,46 +181,39 @@ function useAssetPermissions() {
 export function AssetsTab() {
   const toast = useToast()
   const { canManageProjects } = useAssetPermissions()
-  const [projects, setProjects] = useState<Project[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [client, setClient] = useState('')
   const [description, setDescription] = useState('')
 
-  const reload = useCallback(async () => {
-    setLoadError(null)
-    try {
-      setProjects(await api.projects())
-    } catch (err) {
-      const msg = errMessage(err)
-      setLoadError(msg)
-      toast.error(msg)
-    } finally {
-      setIsLoading(false)
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const projectsQuery = useQuery({ queryKey: queryKeys.projects.list, queryFn: () => api.projects() })
+  useErrorToast(projectsQuery.error, errMessage)
+  const projects = projectsQuery.data ?? NO_PROJECTS
+  const isLoading = projectsQuery.isPending
+  const loadError = projectsQuery.error ? errMessage(projectsQuery.error) : null
+  const { refetch } = projectsQuery
+  const reload = useCallback(() => void refetch(), [refetch])
 
-  useEffect(() => {
-    reload()
-  }, [reload])
+  const createMutation = useMutation({
+    mutationFn: () =>
+      api.createProject({
+        name: name.trim(),
+        client: client.trim() || null,
+        description: description.trim() || null,
+      }),
+    onSuccess: () => {
+      setName(''); setClient(''); setDescription('')
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all })
+    },
+    onError: (err) => toast.error(errMessage(err)),
+  })
 
-  async function create() {
+  function create() {
     if (!name.trim()) {
       toast.error('Project name is required')
       return
     }
-    try {
-      await api.createProject({
-        name: name.trim(),
-        client: client.trim() || null,
-        description: description.trim() || null,
-      })
-      setName(''); setClient(''); setDescription('')
-      reload()
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+    createMutation.mutate()
   }
 
   return (
@@ -266,7 +257,7 @@ export function AssetsTab() {
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
         {projects.map((p) => (
-          <ProjectCard key={p.id} project={p} onChanged={reload} />
+          <ProjectCard key={p.id} project={p} />
         ))}
       </div>
     </section>

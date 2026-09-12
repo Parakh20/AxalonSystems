@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, type Correction } from '@/lib/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, ApiError, type Correction, type CorrectionCreate } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 import { useToast } from '@/components/Platform/Toast'
 import { isTooSmall, normalizeBox, yoloToCanvas } from '@/components/Platform/canvasCoords'
 
@@ -55,6 +57,20 @@ type LocalBox = {
   severity: string
 }
 
+function boxFromCorrection(c: Correction): LocalBox {
+  return {
+    id: String(c.id),
+    serverId: c.id,
+    x1n: c.bbox_norm[0],
+    y1n: c.bbox_norm[1],
+    x2n: c.bbox_norm[2],
+    y2n: c.bbox_norm[3],
+    class_: c.class,
+    class_id: c.class_id ?? 0,
+    severity: c.severity ?? 'MEDIUM',
+  }
+}
+
 type Drawing = { x0: number; y0: number; x1: number; y1: number }
 
 type Props = {
@@ -76,6 +92,7 @@ export function AnnotationCanvas({ jobId, imageFile, natW, natH, yoloBoxes }: Pr
   const [picker, setPicker] = useState<{ id: string; class_: string } | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [, setImageVersion] = useState(0)
+  const queryClient = useQueryClient()
 
   function setDrawingBoth(value: Drawing | null) {
     drawingRef.current = value
@@ -93,33 +110,34 @@ export function AnnotationCanvas({ jobId, imageFile, natW, natH, yoloBoxes }: Pr
     return () => URL.revokeObjectURL(url)
   }, [imageFile])
 
+  // Older servers may not have corrections yet; drawing can still work locally.
+  const correctionsQuery = useQuery({
+    queryKey: queryKeys.jobs.corrections(jobId),
+    queryFn: () => api.corrections(jobId),
+    retry: false,
+  })
+
+  // Seed the editable boxes from the server once per job. Later refetches
+  // (after a save/delete) must not wipe a box the user is still classifying.
+  const seededJobRef = useRef<string | null>(null)
   useEffect(() => {
-    let cancelled = false
-    api
-      .corrections(jobId)
-      .then((list) => {
-        if (cancelled) return
-        setBoxes(
-          list.map((c: Correction) => ({
-            id: String(c.id),
-            serverId: c.id,
-            x1n: c.bbox_norm[0],
-            y1n: c.bbox_norm[1],
-            x2n: c.bbox_norm[2],
-            y2n: c.bbox_norm[3],
-            class_: c.class,
-            class_id: c.class_id ?? 0,
-            severity: c.severity ?? 'MEDIUM',
-          })),
-        )
-      })
-      .catch(() => {
-        // Older servers may not have corrections yet; drawing can still work locally.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [jobId])
+    if (!correctionsQuery.data || seededJobRef.current === jobId) return
+    seededJobRef.current = jobId
+    setBoxes(correctionsQuery.data.map(boxFromCorrection))
+  }, [correctionsQuery.data, jobId])
+
+  const refreshCorrections = () =>
+    void queryClient.invalidateQueries({ queryKey: queryKeys.jobs.corrections(jobId) })
+
+  const addMutation = useMutation({
+    mutationFn: (body: CorrectionCreate) => api.addCorrection(jobId, body),
+    onSuccess: refreshCorrections,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (serverId: number) => api.deleteCorrection(jobId, serverId),
+    onSuccess: refreshCorrections,
+  })
 
   const sizeCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -272,7 +290,7 @@ export function AnnotationCanvas({ jobId, imageFile, natW, natH, yoloBoxes }: Pr
     )
     setPicker(null)
     try {
-      const saved = await api.addCorrection(jobId, {
+      const saved = await addMutation.mutateAsync({
         class_,
         class_id,
         severity,
@@ -294,7 +312,7 @@ export function AnnotationCanvas({ jobId, imageFile, natW, natH, yoloBoxes }: Pr
     if (!box) return
     if (box.serverId) {
       try {
-        await api.deleteCorrection(jobId, box.serverId)
+        await deleteMutation.mutateAsync(box.serverId)
       } catch (err) {
         toast.error(err instanceof ApiError ? err.message : 'Failed to delete correction')
         return
