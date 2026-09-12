@@ -3,13 +3,16 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from drone.relay.server import create_app
+from drone.tests.relay_sync import sync_drone
 
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("DRONE_TOKENS", "sitl-01:dtok")
     monkeypatch.setenv("OPS_TOKEN", "otok")
-    return TestClient(create_app())
+    # one shared event loop for every WebSocket session (see relay_sync.py)
+    with TestClient(create_app()) as c:
+        yield c
 
 
 def _telemetry(tier):
@@ -29,6 +32,7 @@ def _manual():
 def test_manual_forwarded_on_green_with_lock(client):
     with client.websocket_connect("/ws/drone/sitl-01?token=dtok") as drone:
         drone.send_text(_telemetry("GREEN"))
+        sync_drone(drone)  # tier applied before the manual frame is authorized
         with client.websocket_connect("/ws/ops/sitl-01?token=otok&operator=op-a") as ops:
             ops.send_text(json.dumps({"type": "control",
                 "control": {"action": "acquire", "operator_id": "op-a"}}))

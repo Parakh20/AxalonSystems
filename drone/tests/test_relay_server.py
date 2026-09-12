@@ -3,13 +3,16 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from drone.relay.server import create_app
+from drone.tests.relay_sync import sync_ops
 
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("DRONE_TOKENS", "sitl-01:dtok")
     monkeypatch.setenv("OPS_TOKEN", "otok")
-    return TestClient(create_app())
+    # one shared event loop for every WebSocket session (see relay_sync.py)
+    with TestClient(create_app()) as c:
+        yield c
 
 
 def test_health_ok(client):
@@ -21,6 +24,7 @@ def test_health_ok(client):
 def test_drone_frame_reaches_operator(client):
     # operator subscribes first
     with client.websocket_connect("/ws/ops/sitl-01?token=otok&operator=op-a") as ops:
+        sync_ops(ops, "op-a")
         with client.websocket_connect("/ws/drone/sitl-01?token=dtok") as drone:
             frame = {"type": "telemetry", "telemetry": None}
             drone.send_text(json.dumps(frame))

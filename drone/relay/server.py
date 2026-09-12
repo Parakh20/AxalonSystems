@@ -9,25 +9,55 @@ link-tier policy before forwarding any command to the drone.
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import time
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from drone.common.commands import Ack, ControlAction, ControlMsg
 from drone.common.telemetry import Envelope
 from drone.relay.auth import AuthError, verify_drone_token, verify_operator_token
+from drone.relay.config import cors_origins, ping_interval_s
 from drone.relay.control_lock import ControlLock
 from drone.relay.manager import RelayManager
 from drone.relay.tier_policy import authorize_command, authorize_manual
 from drone.relay.turn import ice_servers
 
 
+async def _keepalive(ws: WebSocket, interval_s: float) -> None:
+    """Send a small data frame on an otherwise idle socket.
+
+    Browsers never send WebSocket pings and some proxies ignore control frames
+    when deciding a connection is idle, so an operator watching an offline drone
+    would be cut off after ~60 s. Clients ignore unknown frame types.
+    """
+    while True:
+        await asyncio.sleep(interval_s)
+        try:
+            await ws.send_text(json.dumps({"type": "ping", "ts": time.time()}))
+        except Exception:
+            return  # socket gone; the receive loop handles cleanup
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Axalon Drone Relay")
+    # Browsers call GET /turn-credentials cross-origin from the website.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins(),
+        allow_methods=["GET", "HEAD", "OPTIONS"],
+        allow_headers=["*"],
+    )
     mgr = RelayManager()
     lock = ControlLock()
+    ping_every = ping_interval_s()
     app.state.manager = mgr
     app.state.lock = lock
 
-    @app.get("/health")
+    @app.api_route("/", methods=["GET", "HEAD"])
+    @app.api_route("/health", methods=["GET", "HEAD"])
     def health():
         return {"status": "ok"}
 
@@ -84,6 +114,7 @@ def create_app() -> FastAPI:
         mgr.add_operator(drone_id, ws)
         # register by operator id so the drone can target this peer for signaling
         mgr.register_operator(drone_id, operator, ws)
+        pinger = asyncio.create_task(_keepalive(ws, ping_every)) if ping_every > 0 else None
         try:
             while True:
                 raw = await ws.receive_text()
@@ -106,6 +137,10 @@ def create_app() -> FastAPI:
         except WebSocketDisconnect:
             pass
         finally:
+            if pinger is not None:
+                # don't await: swallowing CancelledError here would also swallow
+                # a cancellation aimed at this handler
+                pinger.cancel()
             mgr.remove_operator(drone_id, ws)
             mgr.unregister_operator(drone_id, operator)
             # release the control lock if this operator held it, so a dropped
