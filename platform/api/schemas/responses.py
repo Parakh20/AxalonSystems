@@ -269,8 +269,29 @@ class JobStatusOut(_Out):
     progress: float | None = None
 
 
+class ModelInfoOut(_Out):
+    """Facts read from the served weights file (see axalon.core.model_info)."""
+    name: str = "unknown"
+    architecture: str = "unknown"
+    task: str = "unknown"
+    num_classes: int | None = None
+    ultralytics_version: str = "unknown"
+    trained_at: str = "unknown"
+    weights_path: str | None = None
+    exists: bool = False
+    size_bytes: int | None = None
+    size_mb: float | None = None
+    sha256: str | None = None
+
+
 class HealthOut(_Out):
     status: str | None = None
+    model: str | None = None
+    weights: str | None = None
+    model_info: ModelInfoOut | None = None
+    version: str | None = None
+    db: str | None = None
+    parks_in_db: int | None = None
 
 
 class SettingsOut(_Out):
