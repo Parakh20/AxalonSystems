@@ -132,6 +132,7 @@ from axalon.api.support.orthos import (
     _empty_tile_png,
     _ortho_metadata,
     _ortho_path,
+    _register_ortho,
     _validate_ortho_name,
 )
 from axalon.api.support.paths import FAULT_PHOTOS_DIR, ORTHO_DIR, OUTPUT_DIR, TRACK_FILES_DIR
@@ -298,6 +299,7 @@ __all__ = [
     "_non_negative_int",
     "_ortho_metadata",
     "_ortho_path",
+    "_register_ortho",
     "_project_sites",
     "_read_inspection_report",
     "_run_alembic_migrations",

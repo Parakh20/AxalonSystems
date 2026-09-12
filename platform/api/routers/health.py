@@ -6,6 +6,7 @@ from axalon.api.deps import *  # noqa: F401,F403
 from axalon.api.schemas.responses import HealthOut
 from axalon.core.detector import DEFAULT_WEIGHTS
 from axalon.core.model_info import empty_model_info, get_model_info
+from axalon.api.support.odm_jobs import odm_capability
 
 router = APIRouter(tags=["health"])
 
@@ -44,4 +45,5 @@ def health():
         "version": "1.0.0",
         "db": db_status,
         "parks_in_db": park_count,
+        "capabilities": {"odm": odm_capability()},
     }

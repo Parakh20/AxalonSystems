@@ -19,14 +19,20 @@ from axalon.api.deps import (
 from axalon.api.agents_router import router as agents_router
 from axalon.api.routers import (
     alerts, analytics, corrections, diff, faults, health, inspection, inventory,
-    map, missions, ortho, park, projects, results, settings, track, work_orders,
+    map, missions, ortho, ortho_generate, park, projects, results, settings, track,
+    work_orders,
 )
+from axalon.api.support.odm_jobs import resume_odm_jobs
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _run_alembic_migrations()
     _requeue_stale_jobs()
+    try:
+        resume_odm_jobs()
+    except Exception:
+        logger.exception("Startup: could not resume orthomosaic generation jobs")
     try:
         _cleanup_old_results()
     except Exception:
@@ -126,6 +132,7 @@ async def timeout_middleware(request, call_next):
 # ── Domain routers ──────────────────────────────────────────────────────────────
 for _module in (
     alerts, analytics, corrections, diff, faults, health, inspection, inventory,
-    map, missions, ortho, park, projects, results, settings, track, work_orders,
+    map, missions, ortho, ortho_generate, park, projects, results, settings, track,
+    work_orders,
 ):
     app.include_router(_module.router)

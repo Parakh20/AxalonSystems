@@ -3,6 +3,7 @@
 import { Download, UploadCloud } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DynamicOrthoMap } from '@/components/Platform/DynamicOrthoMap'
+import { OrthoGenerator } from '@/components/Platform/OrthoGenerator'
 import { useToast } from '@/components/Platform/Toast'
 import { useParks } from '@/components/Platform/hooks/useParks'
 import { api, ApiError } from '@/lib/api'
@@ -133,6 +134,19 @@ export function ParkMapTab() {
     } finally {
       setOrthoUploading(false)
       e.target.value = ''
+    }
+  }
+
+  async function handleGeneratedOrtho(orthoName: string) {
+    if (!parkMapParkId) return
+    try {
+      const list = await api.orthos(parkMapParkId)
+      // Newest first so the map opens on the ortho that was just generated.
+      setOrthos([...list.filter((o) => o.name === orthoName), ...list.filter((o) => o.name !== orthoName)])
+      setOrthoView(true)
+      toast.success(`Orthomosaic "${orthoName}" generated`)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Could not load the generated ortho')
     }
   }
 
@@ -293,6 +307,8 @@ export function ParkMapTab() {
           )}
         </div>
       )}
+
+      {parkMapParkId && <OrthoGenerator parkId={parkMapParkId} onOrthoReady={handleGeneratedOrtho} />}
 
       {orthoView && orthos[0] ? (
         <DynamicOrthoMap
