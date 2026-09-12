@@ -49,3 +49,56 @@ def update_settings(payload: SettingsUpdate):
     except Exception as exc:
         logger.exception("Failed to write settings.yaml")
         raise HTTPException(500, f"Failed to write settings: {exc}")
+
+
+# ── Thermal↔RGB rig calibration ──────────────────────────────────────────────
+
+_MAX_CALIBRATION_BYTES = 256 * 1024  # a calibration is a few hundred bytes
+
+
+def _calibration_status() -> dict:
+    """The calibration the pipeline will use (env > settings.yaml > DB)."""
+    from axalon.core.fusion_calibration import resolve_active_calibration
+
+    active = resolve_active_calibration()
+    return {
+        "configured": active.calibration is not None,
+        "source": active.source,
+        "path": active.path,
+        "error": active.error,
+        "calibration": active.calibration.summary() if active.calibration else None,
+    }
+
+
+@router.get("/settings/fusion-calibration")
+def get_fusion_calibration():
+    """Summary of the thermal→RGB calibration the pipeline will use."""
+    return _calibration_status()
+
+
+@router.post("/settings/fusion-calibration", status_code=201)
+async def upload_fusion_calibration(
+    file: UploadFile = File(..., description="Calibration JSON from scripts/calibrate_fusion.py"),
+):
+    """Validate and store a rig calibration in the database (app_config)."""
+    from axalon.core.fusion_calibration import (
+        CalibrationError,
+        loads_calibration,
+        store_calibration,
+    )
+
+    payload = await file.read(_MAX_CALIBRATION_BYTES + 1)
+    if len(payload) > _MAX_CALIBRATION_BYTES:
+        raise HTTPException(413, "Calibration file exceeds 256 KB")
+    try:
+        calibration = loads_calibration(payload)
+    except CalibrationError as exc:
+        raise HTTPException(400, f"Invalid calibration: {exc}")
+
+    session = get_session()
+    try:
+        store_calibration(session, calibration)
+    finally:
+        session.close()
+    logger.info("Stored fusion calibration for rig %s", calibration.rig_id)
+    return {"ok": True, "calibration": calibration.summary(), "active": _calibration_status()}

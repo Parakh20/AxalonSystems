@@ -15,6 +15,7 @@ from ml.src.utils import draw_detections_severity, load_bgr, get_logger
 
 from axalon.core.detector import SolarDetector
 from axalon.core.fusion import ImageFusion
+from axalon.core.fusion_calibration import resolve_active_calibration
 import cv2
 
 from axalon.core.geo import detection_to_gps, extract_gps_exif
@@ -165,15 +166,17 @@ class InspectionOrchestrator:
 
         # RGB fusion overlay
         rgb_out = None
+        fusion_mode = None
         if rgb_path and rgb_path.exists():
             rgb_bgr = load_bgr(rgb_path)
             rgb_gps = extract_gps_exif(rgb_path)
-            fused = self.fusion.align_and_overlay(
+            fused = self.fusion.align(
                 thermal_bgr, rgb_bgr, detections,
                 thermal_gps=image_gps, rgb_gps=rgb_gps
             )
+            fusion_mode = fused.mode
             rgb_out = job_dir / f"{thermal_path.stem}_rgb_annotated.jpg"
-            cv2.imwrite(str(rgb_out), fused)
+            cv2.imwrite(str(rgb_out), fused.image)
 
         summary = self.detector.detection_summary(detections)
 
@@ -191,6 +194,7 @@ class InspectionOrchestrator:
             "summary": summary,
             "annotated_thermal": str(thermal_out),
             "annotated_rgb": str(rgb_out) if rgb_out else None,
+            "fusion_mode": fusion_mode,
             "total_detections": len(detections),
         }
 
@@ -246,6 +250,18 @@ class InspectionOrchestrator:
             irradiance_wm2 = None
         total = len(pairs)
         logger.info("Starting batch: %d pairs, park=%s", total, park_id)
+
+        # Re-resolve the rig calibration per batch so an upload via the API
+        # applies to the next batch without restarting the long-lived API.
+        active_calibration = resolve_active_calibration()
+        if active_calibration.error:
+            logger.warning("Fusion calibration unusable (%s): %s",
+                           active_calibration.source, active_calibration.error)
+        self.fusion = ImageFusion(
+            mode=self.fusion.mode,
+            camera_offset=self.fusion.camera_offset,
+            calibration=active_calibration.calibration,
+        )
 
         # PHASE 1: Build park-wide panel grid from all RGB images
         layout = None
@@ -358,6 +374,11 @@ class InspectionOrchestrator:
             "raw_detections": len(all_detections),
             "summary": summary,
             "fault_tracking": fault_counts,
+            "fusion_calibration": {
+                "source": active_calibration.source,
+                "rig_id": getattr(active_calibration.calibration, "rig_id", None),
+                "error": active_calibration.error,
+            },
             "layout": layout,
             "results": all_results,
         }
