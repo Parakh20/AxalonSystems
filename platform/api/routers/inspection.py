@@ -26,9 +26,13 @@ async def inspect_pair(
     drone_model: str = Form(""),
     inspection_type: str = Form("maintenance"),
     inspection_level: str = Form("simplified"),
+    principal: Principal = Depends(current_principal),
 ):
     """Inspect a single thermal+RGB image pair."""
     park_id = _validate_park_id(park_id)
+    # Scoped users may only add data to parks they can already see; new parks
+    # are created unassigned, which is admin-only territory.
+    ensure_park_visible(principal, park_id)
 
     # Validate altitude range
     if not (1.0 <= altitude_m <= 500.0):
@@ -130,9 +134,11 @@ async def inspect_batch(
     drone_model: str = Form(""),
     inspection_type: str = Form("maintenance"),
     inspection_level: str = Form("simplified"),
+    principal: Principal = Depends(current_principal),
 ):
     """Submit a batch inspection job (runs in background)."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
 
     if not (1.0 <= altitude_m <= 500.0):
         raise HTTPException(status_code=400, detail="altitude_m must be between 1 and 500")
@@ -193,9 +199,10 @@ async def inspect_batch(
 
 
 @router.get("/status/{job_id}", response_model=JobStatusOut)
-def get_status(job_id: str):
+def get_status(job_id: str, principal: Principal = Depends(current_principal)):
     """Get the status and progress of an inspection job."""
     job_id = _validate_job_id(job_id)
+    ensure_job_visible(principal, job_id)
     job = _get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -213,9 +220,10 @@ def get_status(job_id: str):
 
 
 @router.get("/report/{job_id}")
-def download_report(job_id: str, format: str = "json"):
+def download_report(job_id: str, format: str = "json", principal: Principal = Depends(current_principal)):
     """Download the inspection report in the requested format."""
     job_id = _validate_job_id(job_id)
+    ensure_job_visible(principal, job_id)
 
     job = _get_job(job_id)
     if job is None or job.get("status") != "completed":

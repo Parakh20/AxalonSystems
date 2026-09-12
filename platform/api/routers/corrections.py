@@ -9,9 +9,10 @@ from axalon.api.schemas import CorrectionCreate
 router = APIRouter(tags=["corrections"])
 
 @router.get("/corrections/{job_id:path}", response_model=list[CorrectionOut])
-def list_corrections(job_id: str):
+def list_corrections(job_id: str, principal: Principal = Depends(current_principal)):
     """List all user correction boxes for an inspect job."""
     job_id = _validate_job_id(job_id)
+    ensure_job_visible(principal, job_id)
     session = get_session()
     try:
         rows = (
@@ -26,10 +27,11 @@ def list_corrections(job_id: str):
 
 
 @router.post("/corrections/{job_id}", status_code=201)
-def create_correction(job_id: str, body: CorrectionCreate):
+def create_correction(job_id: str, body: CorrectionCreate, principal: Principal = Depends(current_principal)):
     """Persist a user-drawn bounding box correction."""
     body = body.model_dump(exclude_unset=True)
     job_id = _validate_job_id(job_id)
+    ensure_job_visible(principal, job_id)
     class_ = str(body.get("class_", ""))[:64]
     if not class_:
         raise HTTPException(status_code=400, detail="class_ is required")
@@ -67,9 +69,10 @@ def create_correction(job_id: str, body: CorrectionCreate):
 
 
 @router.delete("/corrections/{job_id}/{correction_id}", status_code=204)
-def delete_correction(job_id: str, correction_id: int):
+def delete_correction(job_id: str, correction_id: int, principal: Principal = Depends(current_principal)):
     """Delete a user correction by ID."""
     job_id = _validate_job_id(job_id)
+    ensure_job_visible(principal, job_id, detail="Correction not found")
     session = get_session()
     try:
         c = session.query(Correction).filter(

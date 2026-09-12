@@ -9,7 +9,7 @@ from axalon.api.schemas import MissionCreate
 router = APIRouter(tags=["missions"])
 
 @router.post("/missions", status_code=201)
-def create_mission(payload: MissionCreate):
+def create_mission(payload: MissionCreate, principal: Principal = Depends(current_principal)):
     """Save a planned mission."""
     payload = payload.model_dump(exclude_unset=True)
     name = str(payload.get("name", "")).strip()
@@ -17,6 +17,9 @@ def create_mission(payload: MissionCreate):
         raise HTTPException(status_code=400, detail="name is required")
     session = get_session()
     try:
+        # Scoped users must attach missions to a park they can see, otherwise
+        # the saved mission would immediately be invisible to them.
+        ensure_park_visible(principal, payload.get("park_id") or None, session)
         m = Mission(
             name=name[:200],
             park_id=(payload.get("park_id") or None),
@@ -37,11 +40,11 @@ def create_mission(payload: MissionCreate):
 
 
 @router.get("/missions", response_model=list[MissionSummaryOut])
-def list_missions(park_id: str | None = None):
+def list_missions(park_id: str | None = None, principal: Principal = Depends(current_principal)):
     """List saved missions, optionally filtered by park_id. Excludes heavy waypoint payloads."""
     session = get_session()
     try:
-        q = session.query(Mission)
+        q = scope_missions(session, session.query(Mission), principal)
         if park_id:
             q = q.filter(Mission.park_id == park_id)
         missions = q.order_by(Mission.created_at.desc()).all()
@@ -51,12 +54,12 @@ def list_missions(park_id: str | None = None):
 
 
 @router.get("/missions/{mission_id}", response_model=MissionFullOut)
-def get_mission(mission_id: int):
+def get_mission(mission_id: int, principal: Principal = Depends(current_principal)):
     """Return one mission including its full waypoint path."""
     session = get_session()
     try:
         m = session.query(Mission).filter_by(id=mission_id).first()
-        if m is None:
+        if m is None or not park_is_visible(session, principal, m.park_id):
             raise HTTPException(status_code=404, detail="Mission not found")
         return _serialize_mission_full(m)
     finally:
@@ -64,12 +67,12 @@ def get_mission(mission_id: int):
 
 
 @router.delete("/missions/{mission_id}", status_code=204)
-def delete_mission(mission_id: int):
+def delete_mission(mission_id: int, principal: Principal = Depends(current_principal)):
     """Delete a saved mission."""
     session = get_session()
     try:
         m = session.query(Mission).filter_by(id=mission_id).first()
-        if m is None:
+        if m is None or not park_is_visible(session, principal, m.park_id):
             raise HTTPException(status_code=404, detail="Mission not found")
         session.delete(m)
         session.commit()

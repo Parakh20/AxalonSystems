@@ -9,9 +9,12 @@ from axalon.api.schemas import CommentCreate, FaultUpdate
 router = APIRouter(tags=["faults"])
 
 @router.get("/parks/{park_id}/faults", response_model=FaultsListOut)
-def list_park_faults(park_id: str, status: str | None = None):
+def list_park_faults(
+    park_id: str, status: str | None = None, principal: Principal = Depends(current_principal),
+):
     """List tracked faults for a park, optionally filtered by status."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     if status is not None and status not in _ALLOWED_FAULT_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -48,7 +51,7 @@ def list_park_faults(park_id: str, status: str | None = None):
 
 
 @router.patch("/faults/{fault_id}")
-def update_fault(fault_id: int, payload: FaultUpdate):
+def update_fault(fault_id: int, payload: FaultUpdate, principal: Principal = Depends(current_principal)):
     """Update fault status (e.g. mark resolved) or append notes."""
     payload = payload.model_dump(exclude_unset=True)
     if fault_id <= 0:
@@ -65,6 +68,7 @@ def update_fault(fault_id: int, payload: FaultUpdate):
         fault = session.query(PanelFault).filter_by(id=fault_id).first()
         if fault is None:
             raise HTTPException(status_code=404, detail="Fault not found")
+        ensure_fault_visible(principal, fault_id, session)
         if new_status:
             fault.status = new_status
         if notes is not None:
@@ -76,7 +80,7 @@ def update_fault(fault_id: int, payload: FaultUpdate):
 
 
 @router.post("/faults/{fault_id}/comments", status_code=201)
-def create_fault_comment(fault_id: int, body: CommentCreate):
+def create_fault_comment(fault_id: int, body: CommentCreate, principal: Principal = Depends(current_principal)):
     """Append a comment to a fault's thread."""
     body = body.model_dump(exclude_unset=True)
     if fault_id <= 0:
@@ -90,6 +94,7 @@ def create_fault_comment(fault_id: int, body: CommentCreate):
         fault = session.query(PanelFault).filter_by(id=fault_id).first()
         if fault is None:
             raise HTTPException(status_code=404, detail="Fault not found")
+        ensure_fault_visible(principal, fault_id, session)
         comment = FaultComment(
             fault_id=fault_id,
             author=author,
@@ -104,12 +109,13 @@ def create_fault_comment(fault_id: int, body: CommentCreate):
 
 
 @router.get("/faults/{fault_id}/comments", response_model=list[CommentOut])
-def list_fault_comments(fault_id: int):
+def list_fault_comments(fault_id: int, principal: Principal = Depends(current_principal)):
     """List all comments on a fault in chronological order."""
     if fault_id <= 0:
         raise HTTPException(status_code=400, detail="fault_id must be positive")
     session = get_session()
     try:
+        ensure_fault_visible(principal, fault_id, session)
         comments = (
             session.query(FaultComment)
             .filter(FaultComment.fault_id == fault_id)

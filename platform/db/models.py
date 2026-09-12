@@ -1,5 +1,8 @@
 """SQLAlchemy ORM models for the Axalon solar inspection platform."""
-from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, Index
+from sqlalchemy import (
+    Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
 
@@ -273,6 +276,59 @@ class TrackFile(Base):
     content_type = Column(String, nullable=True)
     size_bytes = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Users, sessions, project membership, share links (AXALON_AUTH_MODE=users) ──
+
+ROLE_ADMIN = "admin"        # everything, including user management
+ROLE_OPERATOR = "operator"  # run inspections, edit faults/missions/inventory
+ROLE_VIEWER = "viewer"      # read-only
+USER_ROLES = (ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER)
+
+
+class User(Base):
+    """A console account. Only consulted when AXALON_AUTH_MODE=users."""
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(254), nullable=False, unique=True)   # stored lower-cased
+    password_hash = Column(String(255), nullable=False)        # pbkdf2_sha256$iters$salt$hash
+    role = Column(String(16), nullable=False, default=ROLE_VIEWER)
+    disabled = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserSession(Base):
+    """Server-side login session. Only the SHA-256 of the bearer token is kept,
+    so a leaked database cannot be replayed as live sessions."""
+    __tablename__ = "user_sessions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+
+class ProjectMember(Base):
+    """Grants a non-admin user visibility of one project's parks and their data."""
+    __tablename__ = "project_members"
+    __table_args__ = (UniqueConstraint("user_id", "project_id", name="uq_project_members_user_project"),)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShareLink(Base):
+    """Revocable, expiring read-only link to one project (`?share=<token>`)."""
+    __tablename__ = "share_links"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    label = Column(String(200), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
 
 
 # Composite index to make upsert lookups fast.

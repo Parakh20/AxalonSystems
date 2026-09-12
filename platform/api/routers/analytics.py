@@ -8,7 +8,7 @@ from axalon.api.schemas.responses import OverviewOut
 router = APIRouter(tags=["analytics"])
 
 @router.get("/analytics/overview", response_model=list[OverviewOut])
-def analytics_overview():
+def analytics_overview(principal: Principal = Depends(current_principal)):
     """All parks with their severity trends in ONE call — replaces the
     frontend's per-park /park/{id}/trend fan-out on the Overview tab."""
     from sqlalchemy import text
@@ -16,7 +16,7 @@ def analytics_overview():
 
     session = get_session()
     try:
-        parks = session.query(Park).order_by(Park.id.asc()).all()
+        parks = scope_parks(session.query(Park), principal).order_by(Park.id.asc()).all()
         if not parks:
             return []
         rows = session.execute(
