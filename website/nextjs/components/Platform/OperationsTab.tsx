@@ -17,7 +17,10 @@ import {
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/components/Platform/Toast'
+import { queryKeys } from '@/lib/queryKeys'
+import { batchUploadSchema, firstError } from '@/lib/schemas/operations'
 import { api, ApiError, API_BASE } from '@/lib/api'
 import {
   useMapData,
@@ -48,6 +51,8 @@ const AnomalyMap = dynamic(() => import('@/components/Platform/AnomalyMap'), {
     </div>
   ),
 })
+
+const EMPTY_ORTHOS: OrthoMeta[] = []
 
 type JobStatus = 'queued' | 'processing' | 'completed' | 'failed'
 type Severity = 'critical' | 'high' | 'medium' | 'low'
@@ -173,9 +178,9 @@ function ReportLink({
 
 export function OperationsTab() {
   const toast = useToast()
+  const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const orthoInput = useRef<HTMLInputElement>(null)
-  const offlineToastedRef = useRef(false)
 
   const { jobs, activeJob, activeJobId, setActiveJobId, addJob } = useJob()
 
@@ -184,7 +189,6 @@ export function OperationsTab() {
   const [altitude, setAltitude] = useState(42)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
-  const [health, setHealth] = useState<Health | null>(null)
   const [message, setMessage] = useState('Ready')
   const [query, setQuery] = useState('')
   const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all')
@@ -193,7 +197,6 @@ export function OperationsTab() {
   const [basemap, setBasemap] = useState<BasemapId>(
     (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ? 'mapbox' : 'esri') as BasemapId,
   )
-  const [orthos, setOrthos] = useState<OrthoMeta[]>([])
   const [activeOrtho, setActiveOrtho] = useState<OrthoMeta | null>(null)
   const [orthoUploading, setOrthoUploading] = useState(false)
 
@@ -237,55 +240,48 @@ export function OperationsTab() {
       .slice(0, 50)
   }, [query, severityFilter, liveFindings]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Health fetch ──
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const data = await api.health()
-        if (!cancelled) {
-          setHealth(data as Health)
-          setMessage(`API online: ${(data as Health).model}`)
-          offlineToastedRef.current = false
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (!offlineToastedRef.current) {
-            toast.error(err instanceof ApiError ? err.message : `API offline at ${API_BASE}`)
-            offlineToastedRef.current = true
-          }
-          setMessage(`API offline at ${API_BASE}`)
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Health ──
+  const healthQuery = useQuery({
+    queryKey: queryKeys.ops.health,
+    queryFn: () => api.health() as Promise<Health>,
+  })
+  const health = healthQuery.data ?? null
 
-  // ── Orthos fetch ──
+  // Surface online/offline in the status line. react-query dedupes the fetch,
+  // so the old offlineToastedRef guard against repeat toasts is unnecessary.
   useEffect(() => {
-    let cancelled = false
-    setActiveOrtho(null)
-    ;(async () => {
-      try {
-        const data = await api.orthos(activeJob.parkId)
-        if (!cancelled) {
-          const raw = data as unknown as { orthos?: OrthoMeta[] } | OrthoMeta[]
-          const list = Array.isArray(raw) ? raw : ((raw as { orthos?: OrthoMeta[] }).orthos ?? [])
-          setOrthos(list)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(err instanceof ApiError ? err.message : String(err))
-          setOrthos([])
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
+    if (healthQuery.isPending) return
+    if (healthQuery.error) {
+      const err = healthQuery.error
+      setMessage(`API offline at ${API_BASE}`)
+      toast.error(err instanceof ApiError ? err.message : `API offline at ${API_BASE}`)
+      return
     }
-  }, [activeJob.parkId]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (health) setMessage(`API online: ${health.model}`)
+  }, [healthQuery.isPending, healthQuery.error, health]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Orthos ──
+  // Keyed on parkId, so switching jobs swaps cached lists instead of refetching
+  // and racing. The API has returned both a bare array and {orthos: [...]}.
+  const orthosQuery = useQuery({
+    queryKey: queryKeys.ops.orthos(activeJob.parkId),
+    queryFn: async (): Promise<OrthoMeta[]> => {
+      const raw = (await api.orthos(activeJob.parkId)) as unknown as
+        | { orthos?: OrthoMeta[] }
+        | OrthoMeta[]
+      return Array.isArray(raw) ? raw : (raw.orthos ?? [])
+    },
+  })
+  const orthos = orthosQuery.data ?? EMPTY_ORTHOS
+
+  useEffect(() => {
+    setActiveOrtho(null)
+  }, [activeJob.parkId])
+
+  useEffect(() => {
+    const err = orthosQuery.error
+    if (err) toast.error(err instanceof ApiError ? err.message : String(err))
+  }, [orthosQuery.error]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function uploadOrtho(file: File | undefined) {
     if (!file) return
@@ -300,10 +296,13 @@ export function OperationsTab() {
     try {
       const data = await api.uploadOrtho(activeJob.parkId, form)
       const ortho = data as unknown as OrthoMeta
-      setOrthos((current) => {
-        const next = current.filter((o) => o.name !== ortho.name)
-        return [...next, ortho]
-      })
+      // Write the uploaded ortho straight into the cache (replacing any entry
+      // with the same name), then let the query refetch to reconcile.
+      queryClient.setQueryData<OrthoMeta[]>(
+        queryKeys.ops.orthos(activeJob.parkId),
+        (current = []) => [...current.filter((o) => o.name !== ortho.name), ortho],
+      )
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ops.orthos(activeJob.parkId) })
       setActiveOrtho(ortho)
       setMessage(`Ortho ${ortho.name} ready · ${(ortho as Record<string, unknown>).crs}`)
     } catch (err) {
@@ -342,8 +341,18 @@ export function OperationsTab() {
       setMessage('Choose a mission ZIP first')
       return
     }
-    if (!selectedFile.name.endsWith('.zip')) {
-      setMessage('Only .zip mission folders can be submitted')
+
+    // Validate against the same contract the API enforces, so a bad park ID
+    // fails here instead of after the whole ZIP has uploaded.
+    const parsed = batchUploadSchema.safeParse({
+      park_id: parkId,
+      altitude_m: altitude,
+      file_name: selectedFile.name,
+    })
+    const problem = firstError(parsed)
+    if (problem) {
+      setMessage(problem)
+      toast.error(problem)
       return
     }
 

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { AuthGate } from '@/components/Platform/AuthGate'
+import { QueryProvider } from '@/components/Providers/QueryProvider'
 import './platform.css'
 
 export const metadata: Metadata = {
@@ -32,7 +33,9 @@ export default function PlatformLayout({
       </header>
 
       <div className="console-body">
-        <AuthGate>{children}</AuthGate>
+        <QueryProvider>
+          <AuthGate>{children}</AuthGate>
+        </QueryProvider>
       </div>
     </div>
   )
