@@ -1,7 +1,6 @@
 'use client'
 
 import { RefreshCw, Save, SlidersHorizontal } from 'lucide-react'
-import { useEffect } from 'react'
 import { useSettings } from '@/components/Platform/hooks/useSettings'
 import { AlertTestPanel } from '@/components/Platform/AlertTestPanel'
 import { FusionCalibrationPanel } from '@/components/Platform/FusionCalibrationPanel'
@@ -122,16 +121,10 @@ export function SettingsTab() {
     message: settingsMsg,
     update: updateSetting,
     save: saveSettings,
-    load,
   } = useSettings()
   const { mode, isAdmin } = useAuth()
   // settings.yaml drives the detector for every customer: admin-only with accounts on.
   const canEditSettings = mode !== 'users' || isAdmin
-
-  // Load settings on mount
-  useEffect(() => {
-    load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <section className="tab-section">

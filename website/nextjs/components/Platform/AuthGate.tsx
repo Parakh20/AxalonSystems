@@ -10,6 +10,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react'
+import { QueryClientContext } from '@tanstack/react-query'
 import { api, ApiError, CREDENTIAL_STORAGE_KEY, shareToken, type AuthMe, type AuthMode } from '@/lib/api'
 
 // 'unknown' until /auth/mode answers (or when the API is unreachable) — treated
@@ -71,6 +72,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // Bumped on sign-in/out so the console remounts and refetches with the new
   // credential instead of showing data (or 401s) from the previous one.
   const [epoch, setEpoch] = useState(0)
+  // Optional: the gate also renders outside a QueryClientProvider (tests, and
+  // any page that doesn't use react-query).
+  const queryClient = useContext(QueryClientContext)
 
   useEffect(() => {
     const stored = sessionStorage.getItem(CREDENTIAL_STORAGE_KEY)
@@ -131,8 +135,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setApiKeyState('')
     setMe(null)
     setLocked(true)
+    // Cached responses belong to the account that fetched them.
+    queryClient?.clear()
     setEpoch((n) => n + 1)
-  }, [])
+  }, [queryClient])
 
   function submitKey() {
     const trimmed = input.trim()
@@ -144,6 +150,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setLocked(false)
     setError('')
     setInput('')
+    // Same data, new credential: refetch what 401'd (or was served) without it.
+    void queryClient?.invalidateQueries()
   }
 
   const onSignedIn = useCallback(
@@ -151,9 +159,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setApiKey(token)
       setMe(signedIn)
       setLocked(false)
+      queryClient?.clear()
       setEpoch((n) => n + 1)
     },
-    [setApiKey],
+    [setApiKey, queryClient],
   )
 
   const isUsersMode = mode === 'users'

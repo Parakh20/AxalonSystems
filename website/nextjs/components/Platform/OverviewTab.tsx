@@ -1,14 +1,16 @@
 // website/nextjs/components/Platform/OverviewTab.tsx
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { BarChart3 } from 'lucide-react'
-import { api, ApiError, type OverviewBundle, type TrendPoint } from '@/lib/api'
+import { api, ApiError, type OverviewBundle, type ParkRef, type TrendPoint } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
+import { useErrorToast } from '@/components/Platform/hooks/useErrorToast'
 import { formatRevenueLoss, REVENUE_LOSS_NOTE, sumRevenueLoss } from '@/lib/thermalFormat'
 import { useParks } from '@/components/Platform/hooks/useParks'
 import { aggregatePortfolio, SEVERITIES, type PortfolioSummary, type Severity } from '@/lib/analytics'
 import { TrendChart } from '@/components/Platform/TrendChart'
-import { useToast } from '@/components/Platform/Toast'
 import { ErrorBanner } from '@/components/Platform/ErrorBanner'
 import { SkeletonBlock } from '@/components/Platform/Skeleton'
 
@@ -21,6 +23,27 @@ const SEV_COLOR: Record<Severity, string> = {
   HIGH: '#ea580c',
   MEDIUM: '#ca8a04',
   LOW: '#2563eb',
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.message : String(err)
+}
+
+/** Single aggregated call; falls back to the per-park fan-out for older APIs. */
+async function loadOverview(parks: ParkRef[]): Promise<OverviewBundle[]> {
+  try {
+    return await api.analyticsOverview()
+  } catch {
+    return Promise.all(
+      parks.map(async (park) => {
+        try {
+          return { park, trend: await api.parkTrend(park.id) }
+        } catch {
+          return { park, trend: [] as TrendPoint[] }
+        }
+      }),
+    )
+  }
 }
 
 function Kpi({ label, value, color }: { label: string; value: number | string; color?: string }) {
@@ -51,68 +74,43 @@ function SeverityBars({ bySeverity }: { bySeverity: Record<Severity, number> }) 
 }
 
 export function OverviewTab({ onTabChange }: OverviewTabProps = {}) {
-  const toast = useToast()
   const { parks, loading: parksLoading } = useParks()
-  const [summary, setSummary] = useState<PortfolioSummary | null>(null)
-  const [revenueLoss, setRevenueLoss] = useState<{ value: number | null; currency: string }>({
-    value: null,
-    currency: 'USD',
-  })
-  const [worstTrend, setWorstTrend] = useState<TrendPoint[]>([])
-  const [worstName, setWorstName] = useState<string>('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
 
-  useEffect(() => {
-    if (parksLoading) return
-    if (parks.length === 0) {
-      setSummary(null)
-      return
-    }
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    ;(async () => {
-      // Single aggregated call; fall back to the per-park fan-out for older APIs.
-      let bundles: OverviewBundle[]
-      try {
-        bundles = await api.analyticsOverview()
-      } catch {
-        bundles = await Promise.all(
-          parks.map(async (park) => {
-            try {
-              return { park, trend: await api.parkTrend(park.id) }
-            } catch {
-              return { park, trend: [] as TrendPoint[] }
-            }
-          }),
-        )
+  const overviewQuery = useQuery({
+    queryKey: queryKeys.analytics.overview(parks.map((p) => p.id)),
+    queryFn: () => loadOverview(parks),
+    enabled: !parksLoading && parks.length > 0,
+  })
+  useErrorToast(overviewQuery.error, errorMessage)
+
+  const bundles = overviewQuery.data
+  const loading = overviewQuery.isFetching
+  // A retry clears the banner while it runs, as the old manual reload did.
+  const error = overviewQuery.error && !loading ? errorMessage(overviewQuery.error) : null
+  const { refetch } = overviewQuery
+  const retry = useCallback(() => void refetch(), [refetch])
+
+  const { summary, revenueLoss, worstTrend, worstName } = useMemo(() => {
+    if (!bundles) {
+      return {
+        summary: null as PortfolioSummary | null,
+        revenueLoss: { value: null as number | null, currency: 'USD' },
+        worstTrend: [] as TrendPoint[],
+        worstName: '',
       }
-      if (cancelled) return
-      const agg = aggregatePortfolio(bundles)
-      const worst = bundles.find((b) => b.park.id === agg.worstParkId)
-      setSummary(agg)
-      setRevenueLoss({
+    }
+    const agg = aggregatePortfolio(bundles)
+    const worst = bundles.find((b) => b.park.id === agg.worstParkId)
+    return {
+      summary: agg,
+      revenueLoss: {
         value: sumRevenueLoss(bundles.map((b) => b.revenue_loss_usd)),
         currency: bundles.find((b) => b.revenue_currency)?.revenue_currency ?? 'USD',
-      })
-      setWorstTrend(worst?.trend ?? [])
-      setWorstName(worst?.park.name ?? worst?.park.id ?? '')
-      setLoading(false)
-    })().catch((err) => {
-      if (cancelled) return
-      setLoading(false)
-      const msg = err instanceof ApiError ? err.message : String(err)
-      setError(msg)
-      toast.error(msg)
-    })
-    return () => {
-      cancelled = true
+      },
+      worstTrend: worst?.trend ?? [],
+      worstName: worst?.park.name ?? worst?.park.id ?? '',
     }
-  }, [parks, parksLoading, reloadKey]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const retry = useCallback(() => setReloadKey((k) => k + 1), [])
+  }, [bundles])
 
   if (!parksLoading && parks.length === 0) {
     return (

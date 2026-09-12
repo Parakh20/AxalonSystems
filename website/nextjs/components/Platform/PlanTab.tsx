@@ -4,7 +4,10 @@
 import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useToast } from '@/components/Platform/Toast'
-import { api, ApiError, type MissionSummary } from '@/lib/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, ApiError, type MissionCreate, type MissionSummary } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
+import { useErrorToast } from '@/components/Platform/hooks/useErrorToast'
 import { DEFAULT_CAMERA, getCamera, type Camera } from '@/lib/cameras'
 import {
   generateGrid,
@@ -53,6 +56,12 @@ const DEFAULT_PARAMS: MissionParams = {
   droneHeadingDeg: 'auto',
 }
 
+const NO_MISSIONS: MissionSummary[] = []
+
+function errorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.message : String(err)
+}
+
 function downloadText(text: string, filename: string, mime: string) {
   const blob = new Blob([text], { type: mime })
   const url = URL.createObjectURL(blob)
@@ -84,7 +93,10 @@ export function PlanTab({ onRouteChange }: PlanTabProps = {}) {
   const [selectingRows, setSelectingRows] = useState(false)
   const [reinspect, setReinspect] = useState<Reinspect | null>(null)
   const [fitKey, setFitKey] = useState(0)
-  const [savedMissions, setSavedMissions] = useState<MissionSummary[]>([])
+  // Park filter applied to the saved-missions list. Captured on mount and
+  // after save/delete — not on every keystroke in the park field.
+  const [missionFilter, setMissionFilter] = useState('')
+  const queryClient = useQueryClient()
 
   const flatWaypoints = useMemo(() => {
     let base: Waypoint[] = []
@@ -167,18 +179,32 @@ export function PlanTab({ onRouteChange }: PlanTabProps = {}) {
     return polygon && polygon.length >= 3 ? Math.round(resolvedHeadingDeg(polygon, params)) : null
   }, [missionType, params, polygon])
 
-  async function refreshMissions() {
-    try {
-      const list = await api.missions(parkId || undefined)
-      setSavedMissions(list)
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : String(err))
-    }
+  const missionsQuery = useQuery({
+    queryKey: queryKeys.missions.list(missionFilter),
+    queryFn: () => api.missions(missionFilter || undefined),
+  })
+  useErrorToast(missionsQuery.error, errorMessage)
+  const savedMissions = missionsQuery.data ?? NO_MISSIONS
+
+  function refreshMissions() {
+    setMissionFilter(parkId)
+    void queryClient.invalidateQueries({ queryKey: queryKeys.missions.all })
   }
 
-  useEffect(() => {
-    refreshMissions()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const saveMutation = useMutation({
+    mutationFn: (body: MissionCreate) => api.createMission(body),
+    onSuccess: (_res, body) => {
+      toast.success(`Saved "${body.name}"`)
+      refreshMissions()
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteMission(id),
+    onSuccess: refreshMissions,
+    onError: (err) => toast.error(errorMessage(err)),
+  })
 
   function handleShapeDrawn(pts: LatLon[]) {
     setReinspect(null)
@@ -251,29 +277,23 @@ export function PlanTab({ onRouteChange }: PlanTabProps = {}) {
     setSelectingRows(false)
   }
 
-  async function handleSave() {
+  function handleSave() {
     const savePolygon = polygon ?? (reinspect ? reinspect.faults.map((f) => ({ lat: f.lat, lon: f.lon })) : null)
     if (waypoints.length < 2 || !savePolygon || !stats) {
       toast.error('Draw a survey area or load faults first')
       return
     }
-    try {
-      await api.createMission({
-        name: missionName,
-        park_id: parkId || null,
-        mission_type: missionType,
-        camera_id: camera.id,
-        params: params as unknown as Record<string, unknown>,
-        polygon: savePolygon,
-        waypoints,
-        area_ha: stats.areaHa,
-        image_count: stats.imageCount,
-      })
-      toast.success(`Saved "${missionName}"`)
-      refreshMissions()
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : String(err))
-    }
+    saveMutation.mutate({
+      name: missionName,
+      park_id: parkId || null,
+      mission_type: missionType,
+      camera_id: camera.id,
+      params: params as unknown as Record<string, unknown>,
+      polygon: savePolygon,
+      waypoints,
+      area_ha: stats.areaHa,
+      image_count: stats.imageCount,
+    })
   }
 
   async function handleLoad(id: number) {
@@ -295,13 +315,8 @@ export function PlanTab({ onRouteChange }: PlanTabProps = {}) {
     }
   }
 
-  async function handleDelete(id: number) {
-    try {
-      await api.deleteMission(id)
-      refreshMissions()
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : String(err))
-    }
+  function handleDelete(id: number) {
+    deleteMutation.mutate(id)
   }
 
   return (

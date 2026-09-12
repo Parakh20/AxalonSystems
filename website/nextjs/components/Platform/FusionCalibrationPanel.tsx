@@ -1,11 +1,16 @@
 'use client'
 
 import { Crosshair, UploadCloud } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/components/Platform/Toast'
 import { api, ApiError } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 import { calibrationSourceLabel, rmsTone } from '@/lib/calibration'
 import type { CalibrationStatus } from '@/lib/calibration'
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
 
 function formatSize(size?: [number, number]): string {
   return size ? `${size[0]}×${size[1]}` : '—'
@@ -14,45 +19,37 @@ function formatSize(size?: [number, number]): string {
 /** Thermal↔RGB rig calibration: current summary + upload of scripts/calibrate_fusion.py output. */
 export function FusionCalibrationPanel() {
   const toast = useToast()
-  const [status, setStatus] = useState<CalibrationStatus | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [loadError, setLoadError] = useState('')
+  const queryClient = useQueryClient()
 
-  useEffect(() => {
-    let cancelled = false
-    api
-      .fusionCalibration()
-      .then((s) => {
-        if (!cancelled) setStatus(s)
-      })
-      .catch((err) => {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const statusQuery = useQuery({
+    queryKey: queryKeys.settings.fusionCalibration,
+    queryFn: () => api.fusionCalibration(),
+  })
+  const status: CalibrationStatus | null = statusQuery.data ?? null
+  const loadError = statusQuery.error && !status ? errorText(statusQuery.error) : ''
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await api.uploadFusionCalibration(form)
-      setStatus(res.active)
-      setLoadError('')
+  const uploadMutation = useMutation({
+    mutationFn: (form: FormData) => api.uploadFusionCalibration(form),
+    onSuccess: (res) => {
+      // The response carries the now-active status; show it, then reconcile.
+      queryClient.setQueryData(queryKeys.settings.fusionCalibration, res.active)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.fusionCalibration })
       toast.success(`Calibration for rig "${res.calibration.rig_id}" stored`)
       if (res.active.source && res.active.source !== 'database') {
         toast.error(`Stored, but ${calibrationSourceLabel(res.active.source)} takes precedence`)
       }
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Upload failed')
-    } finally {
-      setUploading(false)
-      e.target.value = ''
-    }
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Upload failed'),
+  })
+  const uploading = uploadMutation.isPending
+
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const form = new FormData()
+    form.append('file', file)
+    uploadMutation.mutate(form)
   }
 
   const cal = status?.calibration ?? null

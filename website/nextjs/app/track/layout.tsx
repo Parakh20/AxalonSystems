@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { AuthGate } from '@/components/Platform/AuthGate'
+import { QueryProvider } from '@/components/Providers/QueryProvider'
 import '../platform/platform.css'
 import './track.css'
 
@@ -64,7 +65,10 @@ export default function TrackLayout({ children }: { children: React.ReactNode })
       </header>
 
       <div style={{ paddingTop: 48, height: '100%' }}>
-        <AuthGate>{children}</AuthGate>
+        {/* InventoryTab and the Track panels read through react-query. */}
+        <QueryProvider>
+          <AuthGate>{children}</AuthGate>
+        </QueryProvider>
       </div>
     </div>
   )

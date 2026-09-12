@@ -2,8 +2,11 @@
 
 import { History as HistoryIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useToast } from '@/components/Platform/Toast'
+import { useQuery } from '@tanstack/react-query'
 import { useParks } from '@/components/Platform/hooks/useParks'
+import { useParkSummary } from '@/components/Platform/hooks/useParkSummary'
+import { useErrorToast } from '@/components/Platform/hooks/useErrorToast'
+import { queryKeys } from '@/lib/queryKeys'
 import { TrendChart } from '@/components/Platform/TrendChart'
 import { ErrorBanner } from '@/components/Platform/ErrorBanner'
 import { SkeletonLine } from '@/components/Platform/Skeleton'
@@ -12,6 +15,13 @@ import { formatRevenueLoss, REVENUE_LOSS_NOTE } from '@/lib/thermalFormat'
 
 type SortColumn = 'date' | 'images' | 'detections' | 'critical' | 'high' | 'loss'
 type SortDirection = 'asc' | 'desc'
+
+const NO_TREND: TrendPoint[] = []
+const NO_RECURRING: RecurringPanel[] = []
+
+function errorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.message : String(err)
+}
 
 function sevCountOf(summary: Record<string, number> | undefined, key: string): number {
   const s = summary || {}
@@ -106,17 +116,9 @@ function HistoryChart({ inspections }: { inspections: InspectionRow[] }) {
 }
 
 export function HistoryTab() {
-  const toast = useToast()
   const { parks } = useParks()
 
   const [historyParkId, setHistoryParkId] = useState<string>('')
-  const [parkSummary, setParkSummary] = useState<ParkSummary | null>(null)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError] = useState<string | null>(null)
-  const [trendData, setTrendData] = useState<TrendPoint[]>([])
-  const [trendLoading, setTrendLoading] = useState(false)
-  const [recurringData, setRecurringData] = useState<RecurringPanel[]>([])
-  const [reloadKey, setReloadKey] = useState(0)
   const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection }>({
     column: 'date',
     direction: 'desc',
@@ -129,67 +131,30 @@ export function HistoryTab() {
     }
   }, [parks, historyParkId])
 
-  // Load park summary when historyParkId changes
-  useEffect(() => {
-    if (!historyParkId) return
-    setHistoryLoading(true)
-    setHistoryError(null)
-    ;(async () => {
-      try {
-        const d = await api.park(historyParkId)
-        setParkSummary(d as ParkSummary)
-      } catch (err) {
-        const msg = err instanceof ApiError ? err.message : String(err)
-        setHistoryError(msg)
-        toast.error(msg)
-        setParkSummary(null)
-      } finally {
-        setHistoryLoading(false)
-      }
-    })()
-  }, [historyParkId, reloadKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const summaryQuery = useParkSummary(historyParkId)
+  useErrorToast(summaryQuery.error, errorMessage)
+  // Skeleton only while there is nothing to show; a retry after an error also
+  // counts, so the banner gives way to the skeleton as it did before.
+  const historyLoading = summaryQuery.isFetching && !summaryQuery.data
+  const historyError = summaryQuery.error ? errorMessage(summaryQuery.error) : null
+  const parkSummary = summaryQuery.isError ? null : ((summaryQuery.data as ParkSummary | undefined) ?? null)
 
-  useEffect(() => {
-    if (!historyParkId) {
-      setTrendData([])
-      return
-    }
-    let cancelled = false
-    setTrendLoading(true)
-    api
-      .parkTrend(historyParkId)
-      .then((data) => {
-        if (!cancelled) setTrendData(data)
-      })
-      .catch((err) => {
-        if (!cancelled) toast.error(err instanceof ApiError ? err.message : String(err))
-      })
-      .finally(() => {
-        if (!cancelled) setTrendLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [historyParkId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const trendQuery = useQuery({
+    queryKey: queryKeys.parks.trend(historyParkId),
+    queryFn: () => api.parkTrend(historyParkId),
+    enabled: Boolean(historyParkId),
+  })
+  useErrorToast(trendQuery.error, errorMessage)
+  const trendData = trendQuery.data ?? NO_TREND
+  const trendLoading = trendQuery.isFetching && !trendQuery.data
 
-  useEffect(() => {
-    if (!historyParkId) {
-      setRecurringData([])
-      return
-    }
-    let cancelled = false
-    api
-      .parkRecurring(historyParkId)
-      .then((data) => {
-        if (!cancelled) setRecurringData(data)
-      })
-      .catch(() => {
-        if (!cancelled) setRecurringData([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [historyParkId])
+  // Recurring faults are optional context: a failure just hides the section.
+  const recurringQuery = useQuery({
+    queryKey: queryKeys.parks.recurring(historyParkId),
+    queryFn: () => api.parkRecurring(historyParkId),
+    enabled: Boolean(historyParkId),
+  })
+  const recurringData = recurringQuery.data ?? NO_RECURRING
 
   const inspections = parkSummary?.inspections ?? []
   const sortedInspections = useMemo(() => {
@@ -275,7 +240,7 @@ export function HistoryTab() {
         </div>
 
         {historyError && !historyLoading && (
-          <ErrorBanner message={historyError} onRetry={() => setReloadKey((k) => k + 1)} />
+          <ErrorBanner message={historyError} onRetry={() => void summaryQuery.refetch()} />
         )}
         {historyLoading && (
           <div className="table" style={{ marginTop: 16 }}>

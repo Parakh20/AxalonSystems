@@ -19,9 +19,11 @@ const OPS_TOKEN = process.env.NEXT_PUBLIC_OPS_TOKEN ?? "";
 
 const DESTRUCTIVE: CommandType[] = ["ARM", "TAKEOFF", "LAND"];
 const MAX_TRACK = 500;
+// Stable default: LiveMap rebuilds route layers whenever this identity changes.
+const NO_PLANNED_POINTS: PlannedPoint[] = [];
 
 export default function LiveOpsTab(
-  { droneId = "sitl-01", plannedPoints = [] }:
+  { droneId = "sitl-01", plannedPoints = NO_PLANNED_POINTS }:
   { droneId?: string; plannedPoints?: PlannedPoint[] }
 ) {
   const operatorId = useMemo(
@@ -82,6 +84,7 @@ export default function LiveOpsTab(
         position={telem ? { lat: telem.lat, lon: telem.lon } : null}
         headingDeg={telem?.heading_deg ?? 0}
         track={track}
+        plannedRoute={plannedPoints}
       />
 
       <div className="liveops-side">

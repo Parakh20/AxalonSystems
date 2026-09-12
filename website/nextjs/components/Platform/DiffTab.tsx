@@ -1,11 +1,14 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { api, ParkDiff, DiffPanel } from '@/lib/api'
+import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { api, DiffPanel } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 import { useParks } from '@/components/Platform/hooks/useParks'
+import { inspectionsOf, useParkSummary, type InspectionRef } from '@/components/Platform/hooks/useParkSummary'
 import { SkeletonBlock, SkeletonLine, SkeletonStyle } from '@/components/Platform/Skeleton'
 
-type InspectionRef = { id: string; flight_date?: string | null; created_at?: string | null }
+const NO_INSPECTIONS: InspectionRef[] = []
 
 function labelInspection(ins: InspectionRef): string {
   const date = ins.flight_date ?? ins.created_at
@@ -44,12 +47,8 @@ export function DiffTab() {
   const { parks, loading: parksLoading } = useParks()
 
   const [parkId, setParkId] = useState<string>('')
-  const [inspections, setInspections] = useState<InspectionRef[]>([])
   const [inspectionA, setInspectionA] = useState<string>('')
   const [inspectionB, setInspectionB] = useState<string>('')
-  const [diff, setDiff] = useState<ParkDiff | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [fetchError, setFetchError] = useState<string | null>(null)
   const [selectedPanel, setSelectedPanel] = useState<DiffPanel | null>(null)
 
   // Auto-select first park when parks load
@@ -59,69 +58,51 @@ export function DiffTab() {
     }
   }, [parks, parksLoading, parkId])
 
-  // Fetch inspections when park changes
+  // Inspection list comes from the park summary shared with History/Park Map.
+  // A failed load just leaves the pickers empty.
+  const summaryQuery = useParkSummary(parkId)
+  const inspections = summaryQuery.isError ? NO_INSPECTIONS : inspectionsOf(summaryQuery.data)
+
+  // Default to the two most recent inspections — once per park, so a later
+  // background refetch never overrides what the user picked.
+  const defaultedParkRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!parkId) return
-    let cancelled = false
-
-    async function fetchInspections() {
-      try {
-        const raw = await api.park(parkId)
-        if (cancelled) return
-
-        // The park summary may contain an `inspections` array
-        const ins: InspectionRef[] = Array.isArray((raw as { inspections?: unknown }).inspections)
-          ? ((raw as { inspections: InspectionRef[] }).inspections)
-          : []
-
-        setInspections(ins)
-        setDiff(null)
-        setSelectedPanel(null)
-        setFetchError(null)
-
-        // Default to two most recent
-        if (ins.length >= 2) {
-          setInspectionA(ins[ins.length - 2].id)
-          setInspectionB(ins[ins.length - 1].id)
-        } else if (ins.length === 1) {
-          setInspectionA(ins[0].id)
-          setInspectionB('')
-        } else {
-          setInspectionA('')
-          setInspectionB('')
-        }
-      } catch (err) {
-        if (cancelled) return
-        setInspections([])
-        setInspectionA('')
-        setInspectionB('')
-      }
-    }
-
-    fetchInspections()
-    return () => { cancelled = true }
-  }, [parkId])
-
-  // Fetch diff when both inspections are selected
-  const fetchDiff = useCallback(async () => {
-    if (!parkId || !inspectionA || !inspectionB) return
-    setLoading(true)
-    setFetchError(null)
-    setDiff(null)
+    if (!parkId || summaryQuery.isFetching) return
+    if (!summaryQuery.isSuccess && !summaryQuery.isError) return
+    if (defaultedParkRef.current === parkId) return
+    defaultedParkRef.current = parkId
     setSelectedPanel(null)
-    try {
-      const result = await api.parkDiff(parkId, inspectionA, inspectionB)
-      setDiff(result)
-    } catch (err) {
-      setFetchError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
+    if (inspections.length >= 2) {
+      setInspectionA(inspections[inspections.length - 2].id)
+      setInspectionB(inspections[inspections.length - 1].id)
+    } else if (inspections.length === 1) {
+      setInspectionA(inspections[0].id)
+      setInspectionB('')
+    } else {
+      setInspectionA('')
+      setInspectionB('')
     }
-  }, [parkId, inspectionA, inspectionB])
+  }, [parkId, summaryQuery.isFetching, summaryQuery.isSuccess, summaryQuery.isError, inspections])
 
+  const diffEnabled = Boolean(parkId && inspectionA && inspectionB)
+  const diffQuery = useQuery({
+    queryKey: queryKeys.parks.diff(parkId, inspectionA, inspectionB),
+    queryFn: () => api.parkDiff(parkId, inspectionA, inspectionB),
+    enabled: diffEnabled,
+  })
+  const loading = diffEnabled && diffQuery.isFetching
+  const fetchError =
+    diffEnabled && diffQuery.error && !loading
+      ? diffQuery.error instanceof Error
+        ? diffQuery.error.message
+        : String(diffQuery.error)
+      : null
+  const diff = diffEnabled && !diffQuery.isError ? (diffQuery.data ?? null) : null
+
+  // A new comparison starts with nothing selected.
   useEffect(() => {
-    fetchDiff()
-  }, [fetchDiff])
+    setSelectedPanel(null)
+  }, [parkId, inspectionA, inspectionB])
 
   const selectRow = selectedPanel
   const totalNew = diff?.summary.new ?? 0
