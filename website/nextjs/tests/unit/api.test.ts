@@ -61,4 +61,23 @@ describe('api client', () => {
     expect(calledUrl).toContain('/park/PARK%20A/grid')
     expect(calledUrl).toContain('inspection_id=batch-zz')
   })
+
+  test('testAlert POSTs /alerts/test and returns per-channel results', async () => {
+    const body = {
+      configured: true,
+      min_severity: 'CRITICAL',
+      channels: {
+        webhook: { status: 'sent', detail: 'HTTP 200' },
+        email: { status: 'not_configured', detail: '' },
+      },
+    }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(body), { status: 200 })
+    )
+    const res = await api.testAlert()
+    expect(fetchSpy.mock.calls[0][0] as string).toContain('/alerts/test')
+    expect((fetchSpy.mock.calls[0][1] as RequestInit).method).toBe('POST')
+    expect(res.channels.webhook.status).toBe('sent')
+    expect(res.configured).toBe(true)
+  })
 })

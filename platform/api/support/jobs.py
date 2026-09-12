@@ -13,6 +13,7 @@ import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from axalon.core.alerts import notify_inspection_complete
 from axalon.db.models import Correction, Job as DbJob
 from axalon.db.session import get_session
 from axalon.reporting.geojson_writer import write_geojson
@@ -215,6 +216,23 @@ def _run_batch_job(
             state="failed",
             message="Inspection failed. Check server logs for details.",
         )
+        return
+
+    _send_job_alerts(job_id, result)
+
+
+def _send_job_alerts(job_id: str, result: dict) -> None:
+    """Fire fault alerts for a job whose success is already committed.
+
+    Runs outside the job's try block so an alerting bug can never flip a
+    succeeded job to failed. The per-channel outcome is logged rather than
+    written to Job.message, because the console renders a non-null message as
+    the job's error.
+    """
+    try:
+        notify_inspection_complete(job_id, result)
+    except Exception:
+        logger.exception("Alerting failed for job %s (job result unaffected)", job_id)
 
 
 __all__ = [
