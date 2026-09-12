@@ -7,18 +7,19 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from axalon.db.models import Base
+from axalon.db.url import resolve_db_url
 
 _engine = None
 _SessionLocal = None
 _lock = threading.Lock()
 
 
-def init_db(db_url: str = "sqlite:///axalon.db") -> None:
+def init_db(db_url: str | None = None) -> None:
     """Initialize engine and create all tables. Call once at startup."""
     global _engine, _SessionLocal
-    db_url = db_url or os.getenv("AXALON_DB_URL", "sqlite:///axalon.db")
-    if db_url == "sqlite:///axalon.db":
-        db_url = os.getenv("AXALON_DB_URL", db_url)
+    # resolve_db_url() anchors a relative SQLite path to the repo root, so the
+    # API finds the same file regardless of the directory uvicorn is started in.
+    db_url = resolve_db_url(db_url)
 
     is_sqlite = db_url.startswith("sqlite")
     # check_same_thread is a SQLite-only connect arg; Postgres/MySQL reject it.

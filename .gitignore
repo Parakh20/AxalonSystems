@@ -101,6 +101,9 @@ android-sdk/
 
 # Axalon platform — runtime artifacts
 axalon.db
+# SQLite WAL sidecar files (PRAGMA journal_mode=WAL in platform/db/session.py)
+axalon.db-shm
+axalon.db-wal
 axalon_systems.egg-info/
 logs/
 output/
@@ -146,3 +149,4 @@ ml/data/_staging/
 ml/checkpoints/candidates/
 ml/checkpoints/*_legacy.pt
 /runs/
+.gstack/

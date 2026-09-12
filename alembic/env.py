@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -14,9 +13,10 @@ if config.config_file_name:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from axalon.db.models import Base  # noqa: E402
+from axalon.db.url import resolve_db_url  # noqa: E402
 
 target_metadata = Base.metadata
-_DB_URL = os.environ.get("AXALON_DB_URL", "sqlite:///axalon.db")
+_DB_URL = resolve_db_url()
 
 
 def run_migrations_offline() -> None:

@@ -6,7 +6,6 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
 import 'leaflet-draw/dist/leaflet.draw.css'
-import * as esri from 'esri-leaflet'
 import type { LatLon, Waypoint, MissionStats, MissionType } from '@/lib/missionGeometry'
 
 // Mapbox temporarily disabled — fall back to the previous Esri World Imagery
@@ -18,7 +17,9 @@ const SAT_URL = MAPBOX_TOKEN
   ? `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`
   : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
-const SAT_ATTR = MAPBOX_TOKEN ? '© Mapbox © OpenStreetMap' : 'Tiles © Esri'
+const SAT_ATTR = MAPBOX_TOKEN
+  ? '© Mapbox © OpenStreetMap'
+  : 'Tiles © Esri — Source: Esri, DigitalGlobe, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
 // Esri World Imagery often serves "Map data not yet available" placeholders at
 // z19+ outside dense coverage areas. Cap native fetches at 18 and let Leaflet
 // upscale so operators can still zoom closer without losing the image.
@@ -130,12 +131,17 @@ export default function PlanMap({
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return
     const map = L.map(mapDivRef.current, { center: [18.5204, 73.8567], zoom: 16, maxZoom: SAT_MAX_ZOOM })
-    if (USE_MAPBOX) {
-      L.tileLayer(SAT_URL, { attribution: SAT_ATTR, maxZoom: SAT_MAX_ZOOM, maxNativeZoom: SAT_MAX_NATIVE_ZOOM }).addTo(map)
-    } else {
-      // Esri World Imagery via the official esri-leaflet basemap layer
-      esri.basemapLayer('Imagery', { maxZoom: SAT_MAX_ZOOM, maxNativeZoom: SAT_MAX_NATIVE_ZOOM } as any).addTo(map)
-    }
+    // Plain tile layer for both providers. SAT_URL already points at the same
+    // Esri World Imagery endpoint esri-leaflet's basemapLayer('Imagery') uses,
+    // and basemapLayer additionally fires an XHR for dynamic attribution whose
+    // callback calls map.getBounds() with no liveness check — switching away
+    // from the Plan tab before it lands threw "Cannot read properties of
+    // undefined (reading '_leaflet_pos')". It also logs a deprecation warning.
+    L.tileLayer(SAT_URL, {
+      attribution: SAT_ATTR,
+      maxZoom: SAT_MAX_ZOOM,
+      maxNativeZoom: SAT_MAX_NATIVE_ZOOM,
+    }).addTo(map)
 
     const drawn = new L.FeatureGroup()
     map.addLayer(drawn)

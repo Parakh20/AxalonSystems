@@ -26,7 +26,30 @@ from axalon.api.routers import (
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _run_alembic_migrations()
-    session = get_session()
+    _requeue_stale_jobs()
+    try:
+        _cleanup_old_results()
+    except Exception:
+        # Same reasoning as _requeue_stale_jobs: housekeeping must never be the
+        # reason the API refuses to start.
+        logger.exception("Startup: results cleanup failed")
+    yield
+
+
+def _requeue_stale_jobs() -> None:
+    """Re-queue jobs left 'running' by a previous process.
+
+    Never raises. An unreachable database used to propagate out of lifespan and
+    abort startup, so a single stale connection string took the whole API down
+    and every request returned 503 with no way to see why. Logging and carrying
+    on keeps the app serving, and /health reports db:"error" so the cause is
+    visible instead of opaque.
+    """
+    try:
+        session = get_session()
+    except Exception:
+        logger.exception("Startup: database unreachable — continuing without re-queue")
+        return
     try:
         stale = session.query(DbJob).filter(DbJob.state == "running").all()
         for job in stale:
@@ -35,10 +58,11 @@ async def lifespan(_app: FastAPI):
         session.commit()
         if stale:
             logger.info("Re-queued %s interrupted job(s)", len(stale))
+    except Exception:
+        session.rollback()
+        logger.exception("Startup: could not re-queue interrupted jobs")
     finally:
         session.close()
-    _cleanup_old_results()
-    yield
 
 
 app = FastAPI(
@@ -61,9 +85,17 @@ _CORS_ORIGINS = [
     o.strip() for o in os.getenv("AXALON_CORS_ORIGINS", "").split(",") if o.strip()
 ] or _DEFAULT_CORS_ORIGINS
 
+# Any loopback port counts as a dev origin. Without this, running the Next.js dev
+# server on anything but :3000/:3001 (port already taken, parallel worktree, a
+# second UI) fails every request with an opaque CORS error instead of a 4xx.
+# Safe: allow_credentials is False and auth is a Bearer header, never a cookie,
+# so a cross-origin page gains nothing it could not already request directly.
+_CORS_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+
 app.include_router(agents_router)
 app.add_middleware(
-    CORSMiddleware, allow_origins=_CORS_ORIGINS, allow_credentials=False,
+    CORSMiddleware, allow_origins=_CORS_ORIGINS,
+    allow_origin_regex=_CORS_ORIGIN_REGEX, allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["*"],
 )
 

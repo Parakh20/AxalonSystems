@@ -36,6 +36,11 @@ export async function fetchIceServers(
   opsToken: string,
   name: string
 ): Promise<RTCIceServer[]> {
+  // No relay configured (NEXT_PUBLIC_RELAY_HTTP_URL unset in local dev and in any
+  // deployment without the drone relay): an empty base made the URL relative, so
+  // the request hit the Next.js origin and 404'd on every "Start video" click.
+  // Public STUN is the documented fallback, so go straight to it.
+  if (!relayHttpUrl) return PUBLIC_STUN;
   try {
     const res = await fetch(
       `${relayHttpUrl}/turn-credentials?token=${encodeURIComponent(opsToken)}&name=${encodeURIComponent(name)}`

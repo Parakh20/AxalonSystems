@@ -152,7 +152,9 @@ def require_auth(creds: HTTPAuthorizationCredentials | None = Security(_bearer))
 
 def _run_alembic_migrations() -> None:
     """Run Alembic migrations for persistent DBs; tests still use create_all()."""
-    db_url = os.environ.get("AXALON_DB_URL", "sqlite:///axalon.db")
+    from axalon.db.url import resolve_db_url
+
+    db_url = resolve_db_url()
     if ":memory:" in db_url or os.environ.get("PYTEST_CURRENT_TEST"):
         return
     try:

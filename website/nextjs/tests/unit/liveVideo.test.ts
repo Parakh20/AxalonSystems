@@ -17,7 +17,7 @@ describe("signal helpers", () => {
     const env = buildSignalEnvelope("ice", "op-1", {
       candidate: { candidate: "c", sdpMLineIndex: 0 },
     });
-    expect(env.signal.candidate.sdpMLineIndex).toBe(0);
+    expect(env.signal.candidate?.sdpMLineIndex).toBe(0);
   });
 
   it("parses a signal frame", () => {
