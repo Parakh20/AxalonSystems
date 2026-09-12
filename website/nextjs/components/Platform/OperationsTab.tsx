@@ -19,6 +19,7 @@ import dynamic from 'next/dynamic'
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/components/Platform/Toast'
+import { CanWrite } from '@/components/Platform/AuthGate'
 import { queryKeys } from '@/lib/queryKeys'
 import { batchUploadSchema, firstError } from '@/lib/schemas/operations'
 import { api, ApiError, API_BASE } from '@/lib/api'
@@ -433,6 +434,7 @@ export function OperationsTab() {
                 </div>
                 <p>GPS-tagged anomaly markers on every image position.</p>
               </div>
+              <CanWrite>
               <div className="map-actions">
                 <input
                   ref={orthoInput}
@@ -451,6 +453,7 @@ export function OperationsTab() {
                   {orthoUploading ? 'Uploading…' : 'Upload ortho'}
                 </button>
               </div>
+              </CanWrite>
             </div>
             {mapData && (
               <AnomalyMap
@@ -598,6 +601,7 @@ export function OperationsTab() {
             </div>
           </section>
 
+          <CanWrite>
           <section className="panel">
             <div className="panel-head compact">
               <div>
@@ -654,6 +658,7 @@ export function OperationsTab() {
               Submit batch
             </button>
           </section>
+          </CanWrite>
 
           <section className="panel">
             <div className="panel-head compact">

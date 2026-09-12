@@ -3,6 +3,7 @@
 
 import { useState } from 'react'
 import { Download, Save, Trash2, Upload } from 'lucide-react'
+import { CanWrite } from '@/components/Platform/AuthGate'
 import type { Camera } from '@/lib/cameras'
 import { CAMERAS } from '@/lib/cameras'
 import type { MissionParams, MissionType, MissionStats } from '@/lib/missionGeometry'
@@ -429,9 +430,11 @@ export default function PlanSidebar(props: Props) {
             <div key={m.id} className="queue-item" style={{ marginBottom: 4 }}>
               <div className="queue-row" onClick={() => onLoadMission(m.id)} style={{ cursor: 'pointer' }}>
                 <strong>{m.name}</strong>
-                <button className="secondary" style={{ padding: 2 }} onClick={(e) => { e.stopPropagation(); onDeleteMission(m.id) }}>
-                  <Trash2 size={12} />
-                </button>
+                <CanWrite>
+                  <button className="secondary" style={{ padding: 2 }} onClick={(e) => { e.stopPropagation(); onDeleteMission(m.id) }}>
+                    <Trash2 size={12} />
+                  </button>
+                </CanWrite>
               </div>
               <div className="queue-row sub">
                 <span className="muted">{m.mission_type} · {m.area_ha?.toFixed(1) ?? '–'} ha</span>
@@ -458,9 +461,11 @@ export default function PlanSidebar(props: Props) {
           <button className="primary" style={{ width: '100%', marginBottom: 6 }} disabled={!canExport} onClick={() => onExport(exportFormat)}>
             <Download size={15} /> Export {exportLabel}
           </button>
-          <button className="secondary" style={{ width: '100%' }} disabled={!canExport} onClick={onSave}>
-            <Save size={15} /> Save Mission
-          </button>
+          <CanWrite>
+            <button className="secondary" style={{ width: '100%' }} disabled={!canExport} onClick={onSave}>
+              <Save size={15} /> Save Mission
+            </button>
+          </CanWrite>
         </div>
       </section>
     </aside>

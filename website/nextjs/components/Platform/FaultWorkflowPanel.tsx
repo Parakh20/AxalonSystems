@@ -17,6 +17,7 @@ import {
 import { queryKeys } from '@/lib/queryKeys'
 import { FieldError } from '@/components/Platform/FieldError'
 import { useToast } from '@/components/Platform/Toast'
+import { CanWrite, useAuth } from '@/components/Platform/AuthGate'
 
 function errMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -67,8 +68,11 @@ export function FaultWorkflowPanel({ fault, onClose }: Props) {
         </p>
       )}
 
-      {fault.status !== 'resolved' && <AssignForm key={`assign-${fault.id}`} fault={fault} onSaved={invalidate} />}
-      <StatusForm key={`status-${fault.id}-${fault.status}`} fault={fault} onSaved={invalidate} />
+      {/* Viewers and share-link visitors get the read-only view; the API refuses writes regardless. */}
+      <CanWrite>
+        {fault.status !== 'resolved' && <AssignForm key={`assign-${fault.id}`} fault={fault} onSaved={invalidate} />}
+        <StatusForm key={`status-${fault.id}-${fault.status}`} fault={fault} onSaved={invalidate} />
+      </CanWrite>
       <ProofPhotos fault={fault} onChanged={invalidate} />
     </section>
   )
@@ -186,6 +190,7 @@ function StatusForm({ fault, onSaved }: { fault: PanelFault; onSaved: () => void
 function ProofPhotos({ fault, onChanged }: { fault: PanelFault; onChanged: () => void }) {
   const toast = useToast()
   const queryClient = useQueryClient()
+  const { canWrite } = useAuth()
   const inputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [fileError, setFileError] = useState<string | undefined>()
@@ -236,22 +241,26 @@ function ProofPhotos({ fault, onChanged }: { fault: PanelFault; onChanged: () =>
     <div className="fault-photos">
       <div className="fault-photos-head">
         <span>Repair proof ({photos.length})</span>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => inputRef.current?.click()}
-          disabled={isUploading}
-        >
-          <Camera size={14} /> {isUploading ? 'Uploading…' : 'Add photo'}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          hidden
-          accept="image/jpeg,image/png,image/webp"
-          aria-label="Upload proof photo"
-          onChange={handleFile}
-        />
+        {canWrite && (
+          <>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => inputRef.current?.click()}
+              disabled={isUploading}
+            >
+              <Camera size={14} /> {isUploading ? 'Uploading…' : 'Add photo'}
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              hidden
+              accept="image/jpeg,image/png,image/webp"
+              aria-label="Upload proof photo"
+              onChange={handleFile}
+            />
+          </>
+        )}
       </div>
       <FieldError message={fileError} />
       {photosQuery.error && <FieldError message={`Could not load photos — ${errMessage(photosQuery.error)}`} />}
@@ -263,14 +272,16 @@ function ProofPhotos({ fault, onChanged }: { fault: PanelFault; onChanged: () =>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={api.faultPhotoUrl(fault.id, p.id)} alt={`Proof photo ${p.original_name}`} loading="lazy" />
               </a>
-              <button
-                type="button"
-                className="inv-icon-btn"
-                onClick={() => handleDelete(p.id)}
-                aria-label={`Delete photo ${p.original_name}`}
-              >
-                <Trash2 size={12} />
-              </button>
+              {canWrite && (
+                <button
+                  type="button"
+                  className="inv-icon-btn"
+                  onClick={() => handleDelete(p.id)}
+                  aria-label={`Delete photo ${p.original_name}`}
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
             </li>
           ))}
         </ul>

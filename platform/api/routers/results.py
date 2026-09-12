@@ -7,9 +7,10 @@ from axalon.api.deps import *  # noqa: F401,F403
 router = APIRouter(tags=["results"])
 
 @router.get("/results/{job_id}/{filename}")
-def serve_result_image(job_id: str, filename: str):
+def serve_result_image(job_id: str, filename: str, principal: Principal = Depends(current_principal)):
     """Serve an annotated image from a completed job's output directory."""
     job_id = _validate_job_id(job_id)
+    ensure_job_visible(principal, job_id, detail="Image not found")
     filename = _safe_filename(filename, "")
     if not filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -24,7 +25,7 @@ def serve_result_image(job_id: str, filename: str):
 
 
 @router.get("/image/{job_id}/{filename}")
-def get_job_image(job_id: str, filename: str):
+def get_job_image(job_id: str, filename: str, principal: Principal = Depends(current_principal)):
     """Serve an annotated thermal/RGB image produced by the pipeline.
 
     Strictly bounded:
@@ -33,6 +34,7 @@ def get_job_image(job_id: str, filename: str):
       - filename must end in one of the orchestrator's known suffixes
     """
     job_id = _validate_job_id(job_id)
+    ensure_job_visible(principal, job_id, detail="Image not found")
     if not _FILENAME_RE.match(filename) or not filename.endswith(_IMAGE_SUFFIXES):
         raise HTTPException(status_code=400, detail="Invalid image filename")
 

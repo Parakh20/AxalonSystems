@@ -25,6 +25,8 @@ import { DiffTab } from '@/components/Platform/DiffTab'
 import { PlanTab } from '@/components/Platform/PlanTab'
 import { OverviewTab } from '@/components/Platform/OverviewTab'
 import { AssetsTab } from '@/components/Platform/AssetsTab'
+import { useAuth } from '@/components/Platform/AuthGate'
+import { RailAccount } from '@/components/Platform/RailAccount'
 
 const LiveOpsTab = dynamic(() => import('@/components/Platform/LiveOpsTab'), { ssr: false })
 
@@ -53,6 +55,9 @@ function PlatformShell() {
   // Lives here, not in PlanTab: tabs unmount on switch, so the route must
   // outlive PlanTab to still be there when the operator opens Live Ops.
   const [plannedRoute, setPlannedRoute] = useState<PlannedPoint[]>([])
+  // Inspect and Live Ops exist only to create data or fly the drone — viewers and
+  // share-link visitors never see them (the API refuses them regardless).
+  const { canWrite } = useAuth()
 
   return (
     <main className="ax-page">
@@ -94,16 +99,18 @@ function PlatformShell() {
               <LayoutDashboard size={16} />
               <span>Operations</span>
             </button>
-            <button
-              type="button"
-              className={`rail-link ${tab === 'inspect' ? 'active' : ''}`}
-              onClick={() => setTab('inspect')}
-              title="Inspect"
-              aria-label="Inspect"
-            >
-              <ImageIcon size={16} />
-              <span>Inspect</span>
-            </button>
+            {canWrite && (
+              <button
+                type="button"
+                className={`rail-link ${tab === 'inspect' ? 'active' : ''}`}
+                onClick={() => setTab('inspect')}
+                title="Inspect"
+                aria-label="Inspect"
+              >
+                <ImageIcon size={16} />
+                <span>Inspect</span>
+              </button>
+            )}
             <button
               type="button"
               className={`rail-link ${tab === 'history' ? 'active' : ''}`}
@@ -147,17 +154,19 @@ function PlatformShell() {
               <Navigation2 size={16} />
               <span>Plan</span>
             </button>
-            <button
-              type="button"
-              className={`rail-link ${tab === 'liveops' ? 'active' : ''}`}
-              onClick={() => setTab('liveops')}
-              title="Live Ops"
-              aria-label="Live Ops"
-              data-testid="tab-liveops"
-            >
-              <Radio size={16} />
-              <span>Live Ops</span>
-            </button>
+            {canWrite && (
+              <button
+                type="button"
+                className={`rail-link ${tab === 'liveops' ? 'active' : ''}`}
+                onClick={() => setTab('liveops')}
+                title="Live Ops"
+                aria-label="Live Ops"
+                data-testid="tab-liveops"
+              >
+                <Radio size={16} />
+                <span>Live Ops</span>
+              </button>
+            )}
             <div className="rail-group">Manage</div>
             <button
               type="button"
@@ -189,6 +198,7 @@ function PlatformShell() {
               Detector online
             </div>
             <div className="rail-foot-line">YOLO11 · 11 fault classes</div>
+            <RailAccount />
           </div>
         </aside>
 
@@ -196,13 +206,13 @@ function PlatformShell() {
         <div className="wrap tab-content platform-container">
           {tab === 'overview' && <OverviewTab onTabChange={setTab} />}
           {tab === 'operations' && <OperationsTab />}
-          {tab === 'inspect' && <InspectTab />}
+          {tab === 'inspect' && canWrite && <InspectTab />}
           {tab === 'history' && <HistoryTab />}
           {tab === 'settings' && <SettingsTab />}
           {tab === 'parkmap' && <ParkMapTab />}
           {tab === 'diff' && <DiffTab />}
           {tab === 'plan' && <PlanTab onRouteChange={setPlannedRoute} />}
-          {tab === 'liveops' && <LiveOpsTab droneId="drone-01" plannedPoints={plannedRoute} />}
+          {tab === 'liveops' && canWrite && <LiveOpsTab droneId="drone-01" plannedPoints={plannedRoute} />}
           {tab === 'assets' && <AssetsTab />}
         </div>
       </div>

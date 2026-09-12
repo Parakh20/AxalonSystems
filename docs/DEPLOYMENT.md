@@ -136,6 +136,10 @@ docker compose down -v  # also deletes the persisted DB volume
 | `PORT` | API | `8000` | uvicorn listen port. Set to `7860` on the HF Space |
 | `AXALON_DB_URL` | API | repo-root SQLite; `sqlite:////app/data/axalon.db` in Docker | SQLAlchemy database URL. Production must use durable Postgres |
 | `AXALON_API_KEY` | API | empty | When set, every endpoint except `/health` requires this Bearer key |
+| `AXALON_AUTH_MODE` | API | unset | `off` (keyless) \| `apikey` (shared `AXALON_API_KEY`) \| `users` (accounts). Unset = `apikey` if `AXALON_API_KEY` is set, else `off`. Unknown values fail closed to `users` |
+| `AXALON_BOOTSTRAP_ADMIN_EMAIL` | API | empty | Users mode: creates this admin on startup when no users exist |
+| `AXALON_BOOTSTRAP_ADMIN_PASSWORD` | API | empty | Users mode: bootstrap admin password (10+ chars). Remove after first boot |
+| `AXALON_SESSION_TTL_HOURS` | API | `12` | Users mode: login session lifetime |
 | `AXALON_CORS_ORIGINS` | API | localhost + `axalonsystems.com` | Comma-separated list of allowed origins (replaces the defaults) |
 | `AXALON_OUTPUT_DIR` | API | `output` (`/app/data/output` in Docker) | Generated reports and job artifacts |
 | `AXALON_RESULTS_TTL_HOURS` | API | `0` (off) | Delete job results older than this many hours |
@@ -215,3 +219,19 @@ The e2e GitHub Actions job needs `ml/checkpoints/best.pt` for real inference. Th
 tracked in Git LFS, so run `git lfs pull` before the e2e job. If the weights are unavailable,
 CI creates a zero-byte placeholder and runs the Playwright flow with `PLAYWRIGHT_CI=1`. In that
 mode a failed batch counts as an acceptable end state for the UI smoke test.
+
+## Auth
+
+`AXALON_API_KEY` alone gives shared-key auth: every endpoint except `/health` needs
+`Authorization: Bearer <key>`, and the console shows an unlock dialog after a `401`.
+
+### User accounts (`AXALON_AUTH_MODE=users`)
+
+- Roles: `admin` (everything, incl. users, projects, settings, agents), `operator` (inspections, faults, missions, orthos, inventory, share links for their projects), `viewer` (read-only).
+- Non-admins only see parks — and their inspections, faults, missions, orthos, analytics — in projects they are members of. Parks without a project are admin-only. Out-of-scope ids return `404`.
+- `POST /auth/login {email, password}` returns an opaque session token (stored SHA-256-hashed server-side); send it as `Authorization: Bearer <token>`. `POST /auth/logout`, `GET /auth/me`, public `GET /auth/mode`.
+- Admin: `/users` CRUD (role, disabled, password reset, `project_ids`). Disabling a user or resetting their password ends their sessions.
+- Share links: `POST /share-links {project_id, label, expires_in_days}` returns the token once; `?share=<token>` on any request (or `/platform?share=<token>` in the browser) gives read-only access to that project until it expires or is revoked (`DELETE /share-links/{id}`).
+- Login is throttled in-process: 5 failures per email and 20 per client IP per 15 minutes.
+- First boot: set the two `AXALON_BOOTSTRAP_ADMIN_*` vars, sign in, create real accounts in Settings → Users & sharing, then remove the bootstrap vars.
+- Known limitation: a non-admin cannot start the first inspection of a brand-new park (it would be created without a project); an admin runs it or assigns the park first.

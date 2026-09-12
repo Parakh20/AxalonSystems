@@ -15,10 +15,12 @@ from axalon.api.schemas.missions import MissionCreate
 from axalon.api.schemas.corrections import CorrectionCreate
 from axalon.api.schemas.park import ParkUpdate
 from axalon.api.schemas.settings import SettingsUpdate
+from axalon.api.schemas.auth import ShareLinkCreate, UserCreate, UserLogin, UserUpdate
 
 __all__ = [
     "ComponentBody", "PrototypeBody", "AssignmentBody", "OrderBody",
     "ProjectBody", "LoginRequest", "PasswordSetRequest", "NoteBody",
     "FaultUpdate", "CommentCreate", "MissionCreate", "CorrectionCreate",
     "ParkUpdate", "SettingsUpdate",
+    "ShareLinkCreate", "UserCreate", "UserLogin", "UserUpdate",
 ]

@@ -41,6 +41,13 @@ def temp_db(monkeypatch, tmp_path) -> Path:
     yield db_path
 
 
+@pytest.fixture(autouse=True)
+def _default_auth_mode(monkeypatch):
+    """Tests default to the historical keyless behaviour unless they opt in, so
+    a developer shell with AXALON_AUTH_MODE exported cannot change results."""
+    monkeypatch.delenv("AXALON_AUTH_MODE", raising=False)
+
+
 @pytest.fixture
 def client(temp_db) -> TestClient:
     """FastAPI TestClient bound to a fresh in-test DB."""
@@ -98,3 +105,88 @@ def _load_fake_nodeodm():
 def odm_fakes():
     """The fake_nodeodm module: FakeNodeODM, FakeResponse, connection_error."""
     return _load_fake_nodeodm()
+
+
+# ── Users-mode auth fixtures ─────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _fast_isolated_auth(monkeypatch):
+    """Keep auth tests fast and independent.
+
+    Production hashes user passwords with 600k PBKDF2 rounds; tests only need
+    the format, not the cost. The login limiter is process-global, so each test
+    starts from a clean slate.
+    """
+    from axalon.core import auth as _auth
+    monkeypatch.setattr(_auth, "USER_PBKDF2_ITERATIONS", 1_000)
+    _auth.login_limiter.reset()
+    yield
+    _auth.login_limiter.reset()
+
+
+@pytest.fixture
+def users_mode(monkeypatch):
+    """Switch the API into AXALON_AUTH_MODE=users for one test."""
+    monkeypatch.setenv("AXALON_AUTH_MODE", "users")
+    monkeypatch.delenv("AXALON_API_KEY", raising=False)
+    return "users"
+
+
+PASSWORD = "correct-horse-battery"
+
+
+@pytest.fixture
+def make_user(db_session):
+    """Factory: create a user directly in the DB and return its id."""
+    from axalon.core.auth import create_user
+
+    def _make(email: str, role: str, password: str = PASSWORD, project_ids=()) -> int:
+        user = create_user(
+            db_session, email=email, password=password, role=role, project_ids=project_ids,
+        )
+        return user.id
+    return _make
+
+
+@pytest.fixture
+def login(client):
+    """Log in through the API and return ready-to-use auth headers."""
+    def _login(email: str, password: str = PASSWORD) -> dict:
+        r = client.post("/auth/login", json={"email": email, "password": password})
+        assert r.status_code == 200, r.text
+        return {"Authorization": f"Bearer {r.json()['token']}"}
+    return _login
+
+
+@pytest.fixture
+def two_projects(db_session):
+    """Two projects with one park each plus an unassigned park. Every park gets
+    an inspection, job, fault, comment, correction and mission so each scoped
+    endpoint has something that could leak."""
+    from axalon.db.models import (
+        Correction, FaultComment, Inspection, Job, Mission, PanelFault, Park, Project,
+    )
+
+    p1, p2 = Project(name="North"), Project(name="South")
+    db_session.add_all([p1, p2])
+    db_session.commit()
+    ids: dict = {"p1": p1.id, "p2": p2.id}
+    for park_id, project_id, tag in (
+        ("PARK_A", p1.id, "a"), ("PARK_B", p2.id, "b"), ("PARK_X", None, "x"),
+    ):
+        db_session.add(Park(id=park_id, name=park_id, project_id=project_id))
+        db_session.commit()
+        job_id = f"batch-{tag}000001"
+        db_session.add(Inspection(id=job_id, park_id=park_id, flight_date="2026-01-01"))
+        db_session.add(Job(id=job_id, park_id=park_id, state="succeeded", total=1, processed=1))
+        fault = PanelFault(park_id=park_id, panel_id="R1-C1", class_="cell", severity="MEDIUM")
+        mission = Mission(name=f"mission-{tag}", park_id=park_id)
+        db_session.add_all([fault, mission])
+        db_session.commit()
+        db_session.add(FaultComment(fault_id=fault.id, body="seen"))
+        db_session.add(Correction(job_id=job_id, class_="cell", bbox_norm="[0,0,1,1]"))
+        db_session.commit()
+        ids[f"job_{tag}"] = job_id
+        ids[f"fault_{tag}"] = fault.id
+        ids[f"mission_{tag}"] = mission.id
+    return ids

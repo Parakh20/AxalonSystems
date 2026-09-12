@@ -123,6 +123,7 @@ def export_work_orders(
     format: str = "csv",
     status: str | None = None,
     assignee: str | None = None,
+    principal: Principal = Depends(current_principal),
 ):
     """Download a park's work orders.
 
@@ -130,6 +131,7 @@ def export_work_orders(
     - `status`: comma-separated statuses (default open,assigned,in_progress)
     - `assignee`: case-insensitive exact match
     """
+    ensure_park_visible(principal, park_id)
     park_id = _validate_park_id(park_id)
     fmt = (format or "").strip().lower()
     if fmt not in ("csv", "xlsx"):

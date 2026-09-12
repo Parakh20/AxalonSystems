@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, FolderKanban, Plus, Trash2 } from 'lucide-re
 import { api, ApiError, type Project, type ProjectDetail } from '@/lib/api'
 import { useParks } from '@/components/Platform/hooks/useParks'
 import { useToast } from '@/components/Platform/Toast'
+import { useAuth } from '@/components/Platform/AuthGate'
 import { ErrorBanner } from '@/components/Platform/ErrorBanner'
 import { SkeletonLine } from '@/components/Platform/Skeleton'
 
@@ -20,6 +21,7 @@ function ProjectCard({
   onChanged: () => void
 }) {
   const toast = useToast()
+  const { canWrite, canManageProjects } = useAssetPermissions()
   const { parks } = useParks()
   const [isOpen, setIsOpen] = useState(false)
   const [detail, setDetail] = useState<ProjectDetail | null>(null)
@@ -97,12 +99,20 @@ function ProjectCard({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button type="button" className={`inv-status inv-status-${project.status === 'active' ? 'active' : 'retired'}`} onClick={toggleStatus} title="Toggle status">
+          <button
+            type="button"
+            className={`inv-status inv-status-${project.status === 'active' ? 'active' : 'retired'}`}
+            onClick={canManageProjects ? toggleStatus : undefined}
+            disabled={!canManageProjects}
+            title={canManageProjects ? 'Toggle status' : project.status}
+          >
             {project.status}
           </button>
-          <button type="button" className="inv-icon-btn" onClick={remove} title="Delete project">
-            <Trash2 size={14} />
-          </button>
+          {canManageProjects && (
+            <button type="button" className="inv-icon-btn" onClick={remove} title="Delete project">
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -132,15 +142,19 @@ function ProjectCard({
                   <span>{s.inspection_count}</span>
                   <span>{s.mission_count}</span>
                   <span>{s.last_inspection_date ?? '—'}</span>
-                  <button type="button" className="inv-icon-btn" onClick={() => unassign(s.id)} title="Remove from project">
-                    <Trash2 size={13} />
-                  </button>
+                  {canManageProjects ? (
+                    <button type="button" className="inv-icon-btn" onClick={() => unassign(s.id)} title="Remove from project">
+                      <Trash2 size={13} />
+                    </button>
+                  ) : (
+                    <span />
+                  )}
                 </div>
               ))}
             </div>
           )}
 
-          {assignable.length > 0 && (
+          {canWrite && assignable.length > 0 && (
             <div className="inv-assign-form" style={{ marginTop: 8 }}>
               <select value={assignParkId} onChange={(e) => setAssignParkId(e.target.value)}>
                 <option value="">Add a site to this project…</option>
@@ -159,8 +173,16 @@ function ProjectCard({
   )
 }
 
+/** Project create/delete/status are admin-only once accounts are on; moving a
+ * site between a user's own projects is an operator action. */
+function useAssetPermissions() {
+  const { canWrite, mode, isAdmin } = useAuth()
+  return { canWrite, canManageProjects: mode !== 'users' || isAdmin }
+}
+
 export function AssetsTab() {
   const toast = useToast()
+  const { canManageProjects } = useAssetPermissions()
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -215,14 +237,16 @@ export function AssetsTab() {
         </div>
       </header>
 
-      <div className="inv-form">
-        <input placeholder="New project name *" value={name} onChange={(e) => setName(e.target.value)} />
-        <input placeholder="Client" value={client} onChange={(e) => setClient(e.target.value)} />
-        <input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <div className="inv-form-actions">
-          <button type="button" className="primary" onClick={create}><Plus size={14} /> Create project</button>
+      {canManageProjects && (
+        <div className="inv-form">
+          <input placeholder="New project name *" value={name} onChange={(e) => setName(e.target.value)} />
+          <input placeholder="Client" value={client} onChange={(e) => setClient(e.target.value)} />
+          <input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <div className="inv-form-actions">
+            <button type="button" className="primary" onClick={create}><Plus size={14} /> Create project</button>
+          </div>
         </div>
-      </div>
+      )}
 
       {loadError && !isLoading && <ErrorBanner message={loadError} onRetry={reload} />}
       {isLoading && (

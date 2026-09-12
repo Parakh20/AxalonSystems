@@ -8,7 +8,7 @@ from axalon.api.schemas.responses import JobMapOut
 router = APIRouter(tags=["map"])
 
 @router.get("/map/{job_id}", response_model=JobMapOut)
-def get_job_map(job_id: str):
+def get_job_map(job_id: str, principal: Principal = Depends(current_principal)):
     """Return combined GPS map data for a batch job.
 
     Aggregates every image's capture position + every anomaly's GPS into a
@@ -17,6 +17,7 @@ def get_job_map(job_id: str):
     populated.
     """
     job_id = _validate_job_id(job_id)
+    ensure_job_visible(principal, job_id)
     job = _get_job(job_id)
     report = _read_inspection_report(job_id)
 

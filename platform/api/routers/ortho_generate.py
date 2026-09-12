@@ -104,9 +104,10 @@ def _source_job_images(park_id: str, source_job_id: str, sensor: str) -> Path:
 
 
 @router.get("/parks/{park_id}/orthos/generate")
-def list_ortho_generation_jobs(park_id: str):
+def list_ortho_generation_jobs(park_id: str, principal: Principal = Depends(current_principal)):
     """Recent orthomosaic generation jobs for a park, newest first."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     session = get_session()
     try:
         jobs = (
@@ -131,11 +132,15 @@ async def generate_ortho(
     orthophoto_resolution_cm: float = Form(2.0),
     fast_orthophoto: bool = Form(True),
     dsm: bool = Form(False),
+    principal: Principal = Depends(current_principal),
 ):
     """Queue a NodeODM task that stitches images into a GeoTIFF orthomosaic."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     if get_odm_client() is None:
         raise HTTPException(status_code=503, detail=NOT_CONFIGURED_MESSAGE)
+    if source_job_id:
+        ensure_job_visible(principal, source_job_id)
 
     has_upload = images is not None and bool(images.filename)
     if has_upload == bool(source_job_id):
@@ -185,15 +190,17 @@ async def generate_ortho(
 
 
 @router.get("/parks/{park_id}/orthos/generate/{job_id}")
-def get_ortho_generation_status(park_id: str, job_id: str):
+def get_ortho_generation_status(park_id: str, job_id: str, principal: Principal = Depends(current_principal)):
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     return serialize_odm_job(_load_park_odm_job(park_id, job_id))
 
 
 @router.delete("/parks/{park_id}/orthos/generate/{job_id}")
-def cancel_ortho_generation(park_id: str, job_id: str):
+def cancel_ortho_generation(park_id: str, job_id: str, principal: Principal = Depends(current_principal)):
     """Cancel a queued or running generation and its NodeODM task."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     job = _load_park_odm_job(park_id, job_id)
     if not cancel_odm_job(job.id):
         raise HTTPException(status_code=409, detail=f"Job already {job.state}")

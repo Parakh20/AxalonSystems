@@ -10,13 +10,13 @@ from axalon.api.support.revenue import REVENUE_CURRENCY, revenue_loss_by_inspect
 router = APIRouter(tags=["park"])
 
 @router.get("/park/{park_id}", response_model=ParkSummaryOut)
-def get_park_summary(park_id: str):
+def get_park_summary(park_id: str, principal: Principal = Depends(current_principal)):
     """Get park summary + inspection history from DB."""
     park_id = _validate_park_id(park_id)
     session = get_session()
     try:
         park = session.query(Park).filter_by(id=park_id).first()
-        if park is None:
+        if park is None or not principal.can_see_project(park.project_id):
             raise HTTPException(status_code=404, detail="Park not found")
         inspections = (
             session.query(Inspection)
@@ -60,14 +60,18 @@ def get_park_summary(park_id: str):
 
 
 @router.get("/park/{park_id}/grid", response_model=GridOut)
-def get_park_grid(park_id: str, inspection_id: str | None = None):
+def get_park_grid(
+    park_id: str,
+    inspection_id: str | None = None,
+    principal: Principal = Depends(current_principal),
+):
     """Per-panel grid summary for a park's most recent (or specified) inspection."""
     from axalon.park.grid import build_grid
 
     session = get_session()
     try:
         park = session.query(Park).filter(Park.id == park_id).first()
-        if park is None:
+        if park is None or not principal.can_see_project(park.project_id):
             raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
 
         if inspection_id:
@@ -126,7 +130,7 @@ def get_park_grid(park_id: str, inspection_id: str | None = None):
 
 
 @router.get("/park/{park_id}/trend", response_model=list[TrendOut])
-def get_park_trend(park_id: str):
+def get_park_trend(park_id: str, principal: Principal = Depends(current_principal)):
     """Per-inspection severity count trend for a park, oldest first."""
     from sqlalchemy import text
     from axalon.park.trend import build_trend
@@ -135,7 +139,7 @@ def get_park_trend(park_id: str):
     session = get_session()
     try:
         park = session.query(Park).filter(Park.id == park_id).first()
-        if park is None:
+        if park is None or not principal.can_see_project(park.project_id):
             raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
         rows = session.execute(
             text("""
@@ -159,7 +163,9 @@ def get_park_trend(park_id: str):
 
 
 @router.get("/park/{park_id}/recurring", response_model=list[RecurringOut])
-def get_park_recurring(park_id: str, min_inspections: int = 2):
+def get_park_recurring(
+    park_id: str, min_inspections: int = 2, principal: Principal = Depends(current_principal),
+):
     """Panels with anomalies in at least min_inspections inspections."""
     from sqlalchemy import text
     from axalon.park.recurring import build_recurring
@@ -169,7 +175,7 @@ def get_park_recurring(park_id: str, min_inspections: int = 2):
     session = get_session()
     try:
         park = session.query(Park).filter(Park.id == park_id).first()
-        if park is None:
+        if park is None or not principal.can_see_project(park.project_id):
             raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
         rows = session.execute(
             text("""
@@ -199,7 +205,10 @@ def get_park_recurring(park_id: str, min_inspections: int = 2):
 
 
 @router.get("/park/{park_id}/diff", response_model=ParkDiffOut)
-def diff_park_inspections(park_id: str, inspection_a: str, inspection_b: str):
+def diff_park_inspections(
+    park_id: str, inspection_a: str, inspection_b: str,
+    principal: Principal = Depends(current_principal),
+):
     """Compare two inspections of the same park, returning a rich per-panel diff.
 
     Query params:
@@ -215,9 +224,9 @@ def diff_park_inspections(park_id: str, inspection_a: str, inspection_b: str):
 
     session = get_session()
     try:
-        # 1. Validate park exists
+        # 1. Validate park exists (and is visible to the caller)
         park = session.query(Park).filter(Park.id == park_id).first()
-        if park is None:
+        if park is None or not principal.can_see_project(park.project_id):
             raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
 
         # 2. Validate both inspections exist for this park
@@ -344,11 +353,11 @@ def diff_park_inspections(park_id: str, inspection_a: str, inspection_b: str):
 
 
 @router.get("/parks", response_model=ParksOut)
-def list_parks():
-    """List all parks from DB."""
+def list_parks(principal: Principal = Depends(current_principal)):
+    """List parks from DB — only those the caller may see."""
     session = get_session()
     try:
-        parks = session.query(Park).all()
+        parks = scope_parks(session.query(Park), principal).all()
         return {
             "parks": [
                 {"id": p.id, "name": p.name, "mode": p.mode,
@@ -362,17 +371,21 @@ def list_parks():
 
 
 @router.patch("/park/{park_id}")
-def update_park(park_id: str, payload: ParkUpdate):
+def update_park(park_id: str, payload: ParkUpdate, principal: Principal = Depends(current_principal)):
     """Assign/unassign a park to a project (and rename)."""
     payload = payload.model_dump(exclude_unset=True)
     park_id = _validate_park_id(park_id)
     session = get_session()
     try:
         park = session.query(Park).filter_by(id=park_id).first()
-        if park is None:
+        if park is None or not principal.can_see_project(park.project_id):
             raise HTTPException(status_code=404, detail=f"Park {park_id!r} not found")
         if "project_id" in payload:
             project_id = payload.get("project_id")
+            # A scoped user may only move a park between their own projects —
+            # unassigning (None) would also put it out of their reach.
+            if principal.is_restricted and not principal.can_see_project(project_id):
+                raise HTTPException(status_code=404, detail="Project not found")
             if project_id is not None:
                 proj = session.query(Project).filter_by(id=int(project_id)).first()
                 if proj is None:

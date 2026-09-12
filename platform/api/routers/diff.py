@@ -8,7 +8,7 @@ from axalon.api.schemas.responses import InspectionDiffOut
 router = APIRouter(tags=["diff"])
 
 @router.get("/parks/{park_id}/inspections/{a}/diff/{b}", response_model=InspectionDiffOut)
-def diff_inspections(park_id: str, a: str, b: str):
+def diff_inspections(park_id: str, a: str, b: str, principal: Principal = Depends(current_principal)):
     """Compare two inspections of the same park.
 
     Returns three lists keyed by (panel_id, class):
@@ -21,6 +21,7 @@ def diff_inspections(park_id: str, a: str, b: str):
     b = _validate_job_id(b)
     session = get_session()
     try:
+        ensure_park_visible(principal, park_id, session)
         for insp_id in (a, b):
             if session.query(Inspection).filter_by(id=insp_id, park_id=park_id).first() is None:
                 raise HTTPException(

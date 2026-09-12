@@ -65,9 +65,12 @@ def _serialize_with_counts(session, fault: PanelFault) -> dict:
 
 
 @router.get("/parks/{park_id}/faults", response_model=FaultsListOut)
-def list_park_faults(park_id: str, status: str | None = None):
+def list_park_faults(
+    park_id: str, status: str | None = None, principal: Principal = Depends(current_principal),
+):
     """List tracked faults for a park, optionally filtered by status."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     if status is not None and status not in _ALLOWED_FAULT_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -139,7 +142,7 @@ def _apply_fields(fault: PanelFault, payload: dict) -> None:
 
 
 @router.patch("/faults/{fault_id}", response_model=FaultOut)
-def update_fault(fault_id: int, payload: FaultUpdate):
+def update_fault(fault_id: int, payload: FaultUpdate, principal: Principal = Depends(current_principal)):
     """Update a fault's workflow: status, assignee, due date, priority, notes.
 
     Unknown values → 400; transitions or ownership rules that don't hold → 422.
@@ -155,6 +158,7 @@ def update_fault(fault_id: int, payload: FaultUpdate):
     session = get_session()
     try:
         fault = _get_fault_or_404(session, fault_id)
+        ensure_fault_visible(principal, fault_id, session)
         _apply_fields(fault, payload)
         try:
             if new_status:
@@ -170,7 +174,7 @@ def update_fault(fault_id: int, payload: FaultUpdate):
 
 
 @router.post("/faults/{fault_id}/comments", status_code=201)
-def create_fault_comment(fault_id: int, body: CommentCreate):
+def create_fault_comment(fault_id: int, body: CommentCreate, principal: Principal = Depends(current_principal)):
     """Append a comment to a fault's thread."""
     body = body.model_dump(exclude_unset=True)
     _require_positive(fault_id)
@@ -181,6 +185,7 @@ def create_fault_comment(fault_id: int, body: CommentCreate):
     session = get_session()
     try:
         _get_fault_or_404(session, fault_id)
+        ensure_fault_visible(principal, fault_id, session)
         comment = FaultComment(
             fault_id=fault_id,
             author=author,
@@ -195,11 +200,12 @@ def create_fault_comment(fault_id: int, body: CommentCreate):
 
 
 @router.get("/faults/{fault_id}/comments", response_model=list[CommentOut])
-def list_fault_comments(fault_id: int):
+def list_fault_comments(fault_id: int, principal: Principal = Depends(current_principal)):
     """List all comments on a fault in chronological order."""
     _require_positive(fault_id)
     session = get_session()
     try:
+        ensure_fault_visible(principal, fault_id, session)
         comments = (
             session.query(FaultComment)
             .filter(FaultComment.fault_id == fault_id)
@@ -249,12 +255,15 @@ def _local_photo_path(stored_name: str) -> Path:
 
 
 @router.post("/faults/{fault_id}/photos", status_code=201, response_model=FaultPhotoOut)
-def upload_fault_photo(fault_id: int, file: UploadFile = File(...)):
+def upload_fault_photo(
+    fault_id: int, file: UploadFile = File(...), principal: Principal = Depends(current_principal),
+):
     """Attach a repair proof photo (JPEG/PNG/WebP, ≤ 15 MB) to a fault."""
     _require_positive(fault_id)
     session = get_session()
     try:
         _get_fault_or_404(session, fault_id)
+        ensure_fault_visible(principal, fault_id, session)
         content, original, content_type = _read_validated_photo(file)
         stored_name = f"fault-photos/{fault_id}/{uuid.uuid4().hex[:12]}_{original}"
 
@@ -286,11 +295,12 @@ def upload_fault_photo(fault_id: int, file: UploadFile = File(...)):
 
 
 @router.get("/faults/{fault_id}/photos", response_model=list[FaultPhotoOut])
-def list_fault_photos(fault_id: int):
+def list_fault_photos(fault_id: int, principal: Principal = Depends(current_principal)):
     _require_positive(fault_id)
     session = get_session()
     try:
         _get_fault_or_404(session, fault_id)
+        ensure_fault_visible(principal, fault_id, session)
         photos = (
             session.query(FaultPhoto)
             .filter(FaultPhoto.fault_id == fault_id)
@@ -310,10 +320,11 @@ def _get_photo_or_404(session, fault_id: int, photo_id: int) -> FaultPhoto:
 
 
 @router.get("/faults/{fault_id}/photos/{photo_id}")
-def get_fault_photo(fault_id: int, photo_id: int):
+def get_fault_photo(fault_id: int, photo_id: int, principal: Principal = Depends(current_principal)):
     """Serve a proof photo inline (only types validated at upload are ever served)."""
     session = get_session()
     try:
+        ensure_fault_visible(principal, fault_id, session)
         photo = _get_photo_or_404(session, fault_id, photo_id)
         headers = {
             "Content-Disposition": f'inline; filename="{photo.original_name}"',
@@ -335,9 +346,10 @@ def get_fault_photo(fault_id: int, photo_id: int):
 
 
 @router.delete("/faults/{fault_id}/photos/{photo_id}", status_code=204)
-def delete_fault_photo(fault_id: int, photo_id: int):
+def delete_fault_photo(fault_id: int, photo_id: int, principal: Principal = Depends(current_principal)):
     session = get_session()
     try:
+        ensure_fault_visible(principal, fault_id, session)
         photo = _get_photo_or_404(session, fault_id, photo_id)
         store = get_track_store()
         try:

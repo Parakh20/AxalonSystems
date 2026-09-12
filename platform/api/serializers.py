@@ -20,6 +20,7 @@ __all__ = [
     "_serialize_order", "_clean_name", "_non_negative_int", "_serialize_project",
     "_project_sites", "_serialize_note", "_serialize_track_file",
     "_serialize_detection_temps",
+    "_serialize_user", "_serialize_share_link",
 ]
 
 
@@ -269,4 +270,34 @@ def _serialize_track_file(f: TrackFile) -> dict:
         "content_type": f.content_type,
         "size_bytes": f.size_bytes,
         "created_at": f.created_at.isoformat() if f.created_at else None,
+    }
+
+
+def _serialize_user(u: User, project_ids: list[int]) -> dict:
+    """Public shape of an account — deliberately has no credential fields."""
+    return {
+        "id": u.id,
+        "email": u.email,
+        "role": u.role,
+        "disabled": bool(u.disabled),
+        "project_ids": list(project_ids),
+        "created_at": u.created_at.isoformat() if u.created_at else None,
+    }
+
+
+def _serialize_share_link(link: ShareLink, now=None) -> dict:
+    """Share link metadata. The token is only ever returned once, at creation."""
+    from datetime import datetime
+
+    now = now or datetime.utcnow()
+    return {
+        "id": link.id,
+        "project_id": link.project_id,
+        "label": link.label,
+        "created_by": link.created_by,
+        "created_at": link.created_at.isoformat() if link.created_at else None,
+        "expires_at": link.expires_at.isoformat() if link.expires_at else None,
+        "revoked_at": link.revoked_at.isoformat() if link.revoked_at else None,
+        "revoked": link.revoked_at is not None,
+        "expired": bool(link.expires_at and link.expires_at <= now),
     }

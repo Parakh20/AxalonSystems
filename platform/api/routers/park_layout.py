@@ -22,9 +22,10 @@ _MAX_LAYOUT_BYTES = 20 * 1024 * 1024  # ~100k polygon panels as GeoJSON
 
 
 @router.get("/park/{park_id}/layout")
-def get_park_layout(park_id: str, full: bool = False):
+def get_park_layout(park_id: str, full: bool = False, principal: Principal = Depends(current_principal)):
     """Whether the park uses a manual layout (and its summary) or auto-grid."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     session = get_session()
     try:
         doc = load_park_layout_doc(session, park_id)
@@ -51,9 +52,11 @@ def get_park_layout(park_id: str, full: bool = False):
 async def upload_park_layout(
     park_id: str,
     file: UploadFile = File(..., description="Layout JSON (axalon-park-layout) or GeoJSON FeatureCollection"),
+    principal: Principal = Depends(current_principal),
 ):
     """Validate and store a manual layout; replaces any existing one."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     payload = await file.read(_MAX_LAYOUT_BYTES + 1)
     if len(payload) > _MAX_LAYOUT_BYTES:
         raise HTTPException(413, "Layout file exceeds 20 MB")
@@ -71,9 +74,10 @@ async def upload_park_layout(
 
 
 @router.delete("/park/{park_id}/layout")
-def remove_park_layout(park_id: str):
+def remove_park_layout(park_id: str, principal: Principal = Depends(current_principal)):
     """Drop the manual layout so the park falls back to auto-grid."""
     park_id = _validate_park_id(park_id)
+    ensure_park_visible(principal, park_id)
     session = get_session()
     try:
         deleted = delete_park_layout(session, park_id)

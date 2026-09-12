@@ -18,11 +18,17 @@ _PBKDF2_ITERATIONS = 200_000
 _ALGO = "pbkdf2_sha256"
 
 
-def hash_password(plaintext: str, *, salt: bytes | None = None) -> str:
-    """Return a self-describing `pbkdf2_sha256$iters$salt$hash` string."""
+def hash_password(
+    plaintext: str, *, salt: bytes | None = None, iterations: int = _PBKDF2_ITERATIONS,
+) -> str:
+    """Return a self-describing `pbkdf2_sha256$iters$salt$hash` string.
+
+    The iteration count is embedded, so callers can raise it (user accounts use
+    a higher cost) without breaking verification of existing hashes.
+    """
     salt = salt or secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", plaintext.encode(), salt, _PBKDF2_ITERATIONS)
-    return f"{_ALGO}${_PBKDF2_ITERATIONS}${salt.hex()}${digest.hex()}"
+    digest = hashlib.pbkdf2_hmac("sha256", plaintext.encode(), salt, iterations)
+    return f"{_ALGO}${iterations}${salt.hex()}${digest.hex()}"
 
 
 def verify_hash(plaintext: str, encoded: str) -> bool:

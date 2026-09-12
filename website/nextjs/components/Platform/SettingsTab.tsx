@@ -5,6 +5,8 @@ import { useEffect } from 'react'
 import { useSettings } from '@/components/Platform/hooks/useSettings'
 import { AlertTestPanel } from '@/components/Platform/AlertTestPanel'
 import { FusionCalibrationPanel } from '@/components/Platform/FusionCalibrationPanel'
+import { useAuth } from '@/components/Platform/AuthGate'
+import { UsersSharingPanel } from '@/components/Platform/UsersSharingPanel'
 
 function Chip({
   label,
@@ -122,6 +124,9 @@ export function SettingsTab() {
     save: saveSettings,
     load,
   } = useSettings()
+  const { mode, isAdmin } = useAuth()
+  // settings.yaml drives the detector for every customer: admin-only with accounts on.
+  const canEditSettings = mode !== 'users' || isAdmin
 
   // Load settings on mount
   useEffect(() => {
@@ -152,8 +157,13 @@ export function SettingsTab() {
         </div>
       </header>
 
-      <AlertTestPanel />
-      <FusionCalibrationPanel />
+      {/* Both POST to admin-only endpoints in users mode; hide them from everyone else. */}
+      {canEditSettings && (
+        <>
+          <AlertTestPanel />
+          <FusionCalibrationPanel />
+        </>
+      )}
 
       {settingsBusy && !settings && <div className="empty">Loading settings…</div>}
       {settings && (
@@ -180,19 +190,37 @@ export function SettingsTab() {
             </section>
           ))}
 
-          <div className="settings-actions">
-            <span className="save-msg">{settingsMsg}</span>
-            <button
-              type="button"
-              className="primary"
-              disabled={!settingsDirty || settingsBusy}
-              onClick={saveSettings}
-            >
-              {settingsBusy ? <RefreshCw size={17} /> : <Save size={17} />}
-              Save changes
-            </button>
-          </div>
+          {canEditSettings ? (
+            <div className="settings-actions">
+              <span className="save-msg">{settingsMsg}</span>
+              <button
+                type="button"
+                className="primary"
+                disabled={!settingsDirty || settingsBusy}
+                onClick={saveSettings}
+              >
+                {settingsBusy ? <RefreshCw size={17} /> : <Save size={17} />}
+                Save changes
+              </button>
+            </div>
+          ) : (
+            <div className="settings-actions">
+              <span className="save-msg">Read-only — only an admin can change settings.</span>
+            </div>
+          )}
         </div>
+      )}
+
+      {isAdmin && (
+        <>
+          <header className="cmdbar">
+            <div className="cmdbar-titles">
+              <div className="eyebrow">accounts · project access · share links</div>
+              <h1>Users &amp; sharing</h1>
+            </div>
+          </header>
+          <UsersSharingPanel />
+        </>
       )}
     </section>
   )

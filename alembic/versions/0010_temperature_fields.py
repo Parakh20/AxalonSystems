@@ -1,7 +1,7 @@
 """detections radiometric temperature columns (max/ref temp, ΔT)
 
 Revision ID: 0010
-Revises: 0008
+Revises: 0009
 
 Nullable: images without a `_temp.raw` companion carry no temperatures.
 Idempotent because `axalon.db.migrate.run_migrations` adds the same columns on
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '0010'
-down_revision = '0008'
+down_revision = '0009'
 branch_labels = None
 depends_on = None
 
