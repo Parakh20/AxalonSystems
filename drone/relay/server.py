@@ -41,15 +41,23 @@ async def _keepalive(ws: WebSocket, interval_s: float) -> None:
             return  # socket gone; the receive loop handles cleanup
 
 
-def create_app() -> FastAPI:
+def create_app(*, cors: bool = True) -> FastAPI:
+    """Build the relay app.
+
+    cors=False when mounted inside another app (the platform API mounts it at
+    /relay): the host's CORS middleware already covers these routes, and a second
+    CORSMiddleware would emit a duplicate Access-Control-Allow-Origin header,
+    which browsers reject.
+    """
     app = FastAPI(title="Axalon Drone Relay")
-    # Browsers call GET /turn-credentials cross-origin from the website.
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins(),
-        allow_methods=["GET", "HEAD", "OPTIONS"],
-        allow_headers=["*"],
-    )
+    if cors:
+        # Browsers call GET /turn-credentials cross-origin from the website.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins(),
+            allow_methods=["GET", "HEAD", "OPTIONS"],
+            allow_headers=["*"],
+        )
     mgr = RelayManager()
     lock = ControlLock()
     ping_every = ping_interval_s()

@@ -24,6 +24,7 @@ from axalon.api.routers import (
     settings, share_links, track, users, work_orders,
 )
 from axalon.api.support.odm_jobs import resume_odm_jobs
+from drone.relay.server import create_app as create_relay_app
 from axalon.api.support.principal import (
     ALWAYS_PUBLIC_PATHS, NOT_AUTHENTICATED, SYSTEM_PRINCIPAL, USERS_PUBLIC_PATHS,
     access_policy, apikey_matches, request_token, resolve_users_principal,
@@ -150,8 +151,12 @@ async def auth_middleware(request, call_next):
     """
     if request.method == "OPTIONS":
         return await call_next(request)
-    mode = auth_mode()
     path = request.url.path
+    if path == RELAY_PREFIX or path.startswith(RELAY_PREFIX + "/"):
+        # The mounted drone relay authenticates drones and operators with its own
+        # tokens (DRONE_TOKENS / OPS_TOKEN); API keys and user sessions don't apply.
+        return await call_next(request)
+    mode = auth_mode()
 
     if mode == MODE_USERS:
         principal = await run_in_threadpool(
@@ -216,3 +221,11 @@ _ROUTER_POLICIES = (   # original registration order preserved
 )
 for _module, _policy in _ROUTER_POLICIES:
     app.include_router(_module.router, dependencies=[Depends(_policy)] if _policy else [])
+
+# ── Drone relay ──────────────────────────────────────────────────────────────
+# Served from this app because new Hugging Face Docker Spaces need a paid plan:
+# the relay rides the API Space's container and TLS at wss://<api host>/relay/ws/…
+# Relay state (connections, control lock) is in-process, so this assumes one
+# worker, which the Space runs.
+RELAY_PREFIX = "/relay"
+app.mount(RELAY_PREFIX, create_relay_app(cors=False))

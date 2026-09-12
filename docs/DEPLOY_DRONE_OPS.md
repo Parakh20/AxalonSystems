@@ -52,7 +52,31 @@
 - Keep-alive cron to avoid Oracle Always-Free idle reclaim:
   `*/15 * * * * curl -s https://relay.axalonsystems.com/health >/dev/null`
 
-### Relay (Hugging Face Docker Space) — free, always-reachable HTTPS
+### Relay (mounted in the API Space) — current production
+
+**This is how production runs today.** Hugging Face now requires a paid plan to create
+new Docker Spaces (`402 Payment Required`), so the relay is not its own Space. The
+platform API mounts it at `/relay` (`platform/api/app.py`), inside the existing
+`parakh20/axalon-api` Space:
+
+| Setting | Where | Value |
+|---|---|---|
+| `DRONE_TOKENS` | API Space secret | `drone-01:<token>` |
+| `OPS_TOKEN` | API Space secret | operator token |
+| `NEXT_PUBLIC_RELAY_WS_URL` | Vercel `axalon-systems` (Production) | `wss://parakh20-axalon-api.hf.space/relay` |
+| `NEXT_PUBLIC_RELAY_HTTP_URL` | Vercel `axalon-systems` (Production) | `https://parakh20-axalon-api.hf.space/relay` |
+| `NEXT_PUBLIC_OPS_TOKEN` | Vercel `axalon-systems` (Production) | same as `OPS_TOKEN` |
+| `RELAY_WS_URL` | Jetson agent env | `wss://parakh20-axalon-api.hf.space/relay` |
+| `DRONE_ID` / `DRONE_TOKEN` | Jetson agent env | must match an entry in `DRONE_TOKENS` |
+
+- The API's key/users auth skips `/relay/*`; the relay checks its own tokens.
+- The API's CORS middleware covers `/relay` (the mounted relay is built with `cors=False`).
+- Relay state is in-process: one uvicorn worker only.
+- Caveats: the free Space sleeps after ~48 h without traffic (the drone's heartbeats keep
+  it awake while flying), and a heavy inspection batch shares the same CPU as telemetry.
+  No TURN on Hugging Face, so video falls back to public STUN.
+
+### Relay (standalone Hugging Face Docker Space) — needs a paid plan for new Spaces
 
 Use this when there is no always-on VM/tunnel origin (e.g. `relay.axalonsystems.com`
 returning Cloudflare 530). HF terminates TLS and proxies WebSockets; the relay keeps
