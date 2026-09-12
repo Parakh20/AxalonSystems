@@ -79,3 +79,22 @@ def batch_fixture(client, sample_mission_zip):
             time.sleep(0.5)
         return job_id
     return _run
+
+
+# ── NodeODM fake (no network) ────────────────────────────────────────────────
+def _load_fake_nodeodm():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "fake_nodeodm", Path(__file__).with_name("fake_nodeodm.py"),
+    )
+    module = importlib.util.module_from_spec(spec)
+    import sys
+    sys.modules["fake_nodeodm"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def odm_fakes():
+    """The fake_nodeodm module: FakeNodeODM, FakeResponse, connection_error."""
+    return _load_fake_nodeodm()

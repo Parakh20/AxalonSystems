@@ -45,12 +45,14 @@ _STATUS_TO_STATE = {
     "completed": "succeeded",
     "succeeded": "succeeded",
     "failed": "failed",
+    "cancelled": "cancelled",
 }
 _STATE_TO_STATUS = {
     "queued": "queued",
     "running": "processing",
     "succeeded": "completed",
     "failed": "failed",
+    "cancelled": "cancelled",
 }
 
 

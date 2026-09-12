@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
 from axalon.api.schemas.responses import HealthOut
+from axalon.api.support.odm_jobs import odm_capability
 
 router = APIRouter(tags=["health"])
 
@@ -27,4 +28,5 @@ def health():
         "version": "1.0.0",
         "db": db_status,
         "parks_in_db": park_count,
+        "capabilities": {"odm": odm_capability()},
     }

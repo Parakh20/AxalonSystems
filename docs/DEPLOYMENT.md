@@ -35,7 +35,53 @@ Open `http://localhost:3000/platform`.
 | `AXALON_TRACK_BUCKET` | API | `track-files` | Supabase Storage bucket name for `/track` uploads |
 | `AXALON_DB_URL` | API | `sqlite:////app/data/axalon.db` in Docker | SQLAlchemy database URL |
 | `AXALON_OUTPUT_DIR` | API | `/app/data/output` in Docker | Generated reports and job artifacts |
+| `AXALON_NODEODM_URL` | API | empty | Base URL of a NodeODM server (e.g. `http://nodeodm:3000`). Enables in-platform orthomosaic generation; when unset the feature is disabled and `/health` reports `capabilities.odm.configured: false` |
+| `AXALON_NODEODM_TOKEN` | API | empty | Optional NodeODM access token (NodeODM started with `--token`). Sent as the `token` query parameter; server-side only |
 | `NEXT_PUBLIC_AXALON_API_URL` | Next.js | `http://localhost:8000` | API base URL used by the browser |
+
+## Orthomosaic Generation (NodeODM)
+
+The Park Map's **Generate orthomosaic** button stitches drone images into a GeoTIFF on an
+[OpenDroneMap NodeODM](https://github.com/OpenDroneMap/NodeODM) server, then registers the result
+exactly like a manually uploaded ortho (tiles and fault overlays work unchanged).
+
+Run NodeODM next to the API:
+
+```bash
+# NodeODM listens on 3000 inside the container; publish it on 3001 locally so it
+# does not collide with the Next.js UI on 3000.
+docker run -d --name nodeodm -p 3001:3000 opendronemap/nodeodm
+export AXALON_NODEODM_URL=http://localhost:3001
+# Optional: docker run ... opendronemap/nodeodm --token s3cret  and
+# export AXALON_NODEODM_TOKEN=s3cret
+```
+
+On a dedicated host the stock command is `docker run -p 3000:3000 opendronemap/nodeodm`. Keep
+NodeODM on a private network — only the API talks to it.
+
+Input and behaviour:
+
+- Operators upload a ZIP (≤ 2 GB, same limits as batch uploads) or reuse the images of an existing
+  inspection job. One camera per ortho: `rgb/` is preferred, `thermal/` is used when it is the only
+  set, and flat folders are split by `_T`/`_V` style names.
+- At least 5 images must carry GPS EXIF, otherwise the job fails before anything is sent to NodeODM.
+- Default task options: `fast-orthophoto` on (solar parks are planar), `orthophoto-resolution` 2 cm/px,
+  `dsm` off, `skip-3dmodel`, `auto-boundary`.
+- Jobs are ordinary `jobs` rows (`odm-…`). Status is polled every 15 s; cancelling removes the NodeODM
+  task. After an API restart, jobs already on NodeODM resume polling; jobs interrupted before
+  submission are marked failed and must be restarted. Resumption assumes a single API worker process.
+
+Hardware expectations (NodeODM, fast-orthophoto):
+
+| Images (20 MP) | RAM | CPU | Disk (scratch) | Typical time |
+|---|---|---|---|---|
+| ≤ 200 | 8 GB | 4 cores | 20 GB | 10–30 min |
+| 200–1,000 | 16–32 GB | 8 cores | 50–100 GB | 1–3 h |
+| 1,000–3,000 | 64 GB+ | 16 cores | 200 GB+ | several hours |
+
+Full (non-fast) reconstructions need roughly 2× the RAM and time. Radiometric 640×512 thermal
+frames stitch poorly on their own — fly RGB alongside thermal and generate the ortho from RGB. NodeODM
+does not run on the free Hugging Face Space; point `AXALON_NODEODM_URL` at a separate VM.
 
 ## Auth
 

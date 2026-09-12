@@ -1,3 +1,5 @@
+import type { OdmJob } from '@/lib/odm'
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_AXALON_API_URL || 'http://localhost:8000'
 
@@ -13,16 +15,22 @@ export class ApiError extends Error {
 }
 
 const REQUEST_TIMEOUT_MS = 20_000
+/** Image ZIPs for orthomosaic generation run to gigabytes; 20 s would abort them. */
+const ODM_UPLOAD_TIMEOUT_MS = 30 * 60_000
 
 function isHtmlBody(text: string): boolean {
   const t = text.trimStart()
   return t.startsWith('<!DOCTYPE') || t.startsWith('<html')
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): Promise<T> {
   let res: Response
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const storedKey =
       typeof sessionStorage !== 'undefined'
@@ -38,7 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (err) {
     const isTimeout = err instanceof Error && err.name === 'AbortError'
     const msg = isTimeout
-      ? `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s — the backend may be starting up`
+      ? `Request timed out after ${timeoutMs / 1000}s — the backend may be starting up`
       : `Network error contacting ${API_BASE}${path}`
     throw new ApiError(0, String(err), msg)
   } finally {
@@ -451,6 +459,25 @@ export const api = {
       method: 'POST',
       body: form,
     }),
+  orthoGenerationJobs: (parkId: string) =>
+    request<{ jobs?: OdmJob[] }>(`/parks/${encodeURIComponent(parkId)}/orthos/generate`).then(
+      (resp) => resp.jobs ?? [],
+    ),
+  generateOrtho: (parkId: string, form: FormData) =>
+    request<OdmJob>(
+      `/parks/${encodeURIComponent(parkId)}/orthos/generate`,
+      { method: 'POST', body: form },
+      ODM_UPLOAD_TIMEOUT_MS,
+    ),
+  orthoGenerationStatus: (parkId: string, jobId: string) =>
+    request<OdmJob>(
+      `/parks/${encodeURIComponent(parkId)}/orthos/generate/${encodeURIComponent(jobId)}`,
+    ),
+  cancelOrthoGeneration: (parkId: string, jobId: string) =>
+    request<OdmJob>(
+      `/parks/${encodeURIComponent(parkId)}/orthos/generate/${encodeURIComponent(jobId)}`,
+      { method: 'DELETE' },
+    ),
   getSettings: () => request<SettingsBlob>('/settings'),
   putSettings: (blob: SettingsBlob) =>
     request<SettingsBlob>('/settings', {

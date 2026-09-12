@@ -33,7 +33,6 @@ async def upload_ortho(
                 if total > _MAX_ORTHO_BYTES:
                     raise HTTPException(status_code=413, detail="Orthomosaic exceeds 4 GB limit")
                 out.write(chunk)
-        tmp_target.replace(target)
     except HTTPException:
         tmp_target.unlink(missing_ok=True)
         raise
@@ -43,16 +42,7 @@ async def upload_ortho(
         raise HTTPException(status_code=500, detail="Failed to store uploaded file")
 
     # Validate it's actually a readable georeferenced raster
-    try:
-        meta = _ortho_metadata(park_id, target)
-    except HTTPException:
-        target.unlink(missing_ok=True)
-        raise
-    except Exception:
-        target.unlink(missing_ok=True)
-        logger.exception("Uploaded file is not a valid GeoTIFF")
-        raise HTTPException(status_code=400, detail="File is not a valid georeferenced TIFF")
-
+    meta = _register_ortho(park_id, name, tmp_target)
     return meta
 
 
