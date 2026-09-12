@@ -133,3 +133,51 @@ def test_inspect_pair_persists_to_db(orchestrator, tmp_path):
     assert len(dets) == 1
     assert dets[0].severity == "CRITICAL"
     session.close()
+
+
+def _write_geotagged_thermal(path, heading: float | None) -> None:
+    """100x100 JPEG with GPS EXIF (image centre 19.0N 72.0E) and optional GPSImgDirection."""
+    import piexif
+    from PIL import Image
+
+    gps_ifd = {
+        piexif.GPSIFD.GPSLatitudeRef: b"N",
+        piexif.GPSIFD.GPSLatitude: ((19, 1), (0, 1), (0, 100)),
+        piexif.GPSIFD.GPSLongitudeRef: b"E",
+        piexif.GPSIFD.GPSLongitude: ((72, 1), (0, 1), (0, 100)),
+        piexif.GPSIFD.GPSAltitude: (4000, 100),
+    }
+    if heading is not None:
+        gps_ifd[piexif.GPSIFD.GPSImgDirectionRef] = b"T"
+        gps_ifd[piexif.GPSIFD.GPSImgDirection] = (int(heading * 100), 100)
+    Image.new("RGB", (100, 100)).save(str(path), "jpeg", exif=piexif.dump({"GPS": gps_ifd}))
+
+
+def test_inspect_pair_gps_uses_image_heading(orchestrator, tmp_path):
+    """A fault at the top of the frame lands north with no heading, east at heading 90°."""
+    import math
+
+    # Arrange — fresh detection dict per call; bbox centre (50, 10) is 40 px above image centre
+    orchestrator.detector.predict.side_effect = lambda *_a, **_k: [{
+        "class": "hot-spot-high", "class_id": 10, "severity": "CRITICAL",
+        "confidence": 0.9, "bbox": [45, 5, 55, 15], "bbox_norm": [0.5, 0.1, 0.1, 0.1],
+        "color_bgr": (0, 0, 255), "gps": None,
+    }]
+    north_up = tmp_path / "thermal_north.jpg"
+    east_up = tmp_path / "thermal_east.jpg"
+    _write_geotagged_thermal(north_up, heading=None)
+    _write_geotagged_thermal(east_up, heading=90.0)
+
+    # Act
+    gps_north = orchestrator.inspect_pair(thermal_path=north_up)["detections"][0]["gps"]
+    gps_east = orchestrator.inspect_pair(thermal_path=east_up)["detections"][0]["gps"]
+
+    # Assert — no heading metadata: falls back to 0, offset is due north
+    assert gps_north["lat"] > 19.0
+    assert gps_north["lon"] == pytest.approx(72.0, abs=1e-9)
+    # Heading 90: the same offset rotated due east, same distance
+    assert gps_east["lat"] == pytest.approx(19.0, abs=1e-9)
+    assert gps_east["lon"] > 72.0
+    north_m = math.radians(gps_north["lat"] - 19.0) * 6_371_000.0
+    east_m = math.radians(gps_east["lon"] - 72.0) * 6_371_000.0 * math.cos(math.radians(19.0))
+    assert east_m == pytest.approx(north_m, rel=1e-6)

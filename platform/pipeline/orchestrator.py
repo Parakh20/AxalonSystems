@@ -115,12 +115,14 @@ class InspectionOrchestrator:
         thermal_bgr = load_bgr(thermal_path)
         img_h, img_w = thermal_bgr.shape[:2]
 
-        # GPS enrichment
+        # GPS enrichment — rotate pixel offsets by the camera heading when the
+        # image carries one; without it we can only assume north-up.
         image_gps = extract_gps_exif(thermal_path)
         for det in detections:
             if image_gps:
                 det["gps"] = detection_to_gps(
-                    det["bbox"], img_w, img_h, image_gps, altitude_m
+                    det["bbox"], img_w, img_h, image_gps, altitude_m,
+                    heading_deg=image_gps.get("heading", 0.0),
                 )
 
         # Temperature enrichment — requires _temp.raw companion from iTL612R Pro
