@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import type { PlannedPoint } from '@/lib/missionToWaypoints'
 import dynamic from 'next/dynamic'
 import {
   LayoutDashboard,
@@ -49,6 +50,9 @@ export default function PlatformPage() {
 
 function PlatformShell() {
   const [tab, setTab] = useState<Tab>('operations')
+  // Lives here, not in PlanTab: tabs unmount on switch, so the route must
+  // outlive PlanTab to still be there when the operator opens Live Ops.
+  const [plannedRoute, setPlannedRoute] = useState<PlannedPoint[]>([])
 
   return (
     <main className="ax-page">
@@ -197,8 +201,8 @@ function PlatformShell() {
           {tab === 'settings' && <SettingsTab />}
           {tab === 'parkmap' && <ParkMapTab />}
           {tab === 'diff' && <DiffTab />}
-          {tab === 'plan' && <PlanTab />}
-          {tab === 'liveops' && <LiveOpsTab droneId="drone-01" />}
+          {tab === 'plan' && <PlanTab onRouteChange={setPlannedRoute} />}
+          {tab === 'liveops' && <LiveOpsTab droneId="drone-01" plannedPoints={plannedRoute} />}
           {tab === 'assets' && <AssetsTab />}
         </div>
       </div>

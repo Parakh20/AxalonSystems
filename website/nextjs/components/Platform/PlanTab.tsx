@@ -2,7 +2,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useToast } from '@/components/Platform/Toast'
 import { api, ApiError, type MissionSummary } from '@/lib/api'
 import { DEFAULT_CAMERA, getCamera, type Camera } from '@/lib/cameras'
@@ -27,6 +27,7 @@ import { planReinspection, faultsFromMapData, type FaultPoint } from '@/lib/rein
 import { applyTerrainOffsets, fetchElevations, terrainDeltaRange } from '@/lib/terrain'
 import type { Severity } from '@/lib/analytics'
 import PlanSidebar from '@/components/Platform/PlanSidebar'
+import { plannerToPlannedPoints, type PlannedPoint } from '@/lib/missionToWaypoints'
 
 const PlanMap = dynamic(() => import('@/components/Platform/PlanMap'), {
   ssr: false,
@@ -66,7 +67,12 @@ function downloadText(text: string, filename: string, mime: string) {
 
 type Reinspect = { faults: FaultPoint[]; minSeverity: Severity }
 
-export function PlanTab() {
+type PlanTabProps = {
+  /** Receives the current route (terrain offsets applied) for Live Ops upload. */
+  onRouteChange?: (points: PlannedPoint[]) => void
+}
+
+export function PlanTab({ onRouteChange }: PlanTabProps = {}) {
   const toast = useToast()
   const [missionName, setMissionName] = useState('New Mission')
   const [parkId, setParkId] = useState('')
@@ -111,6 +117,19 @@ export function PlanTab() {
     () => (terrainActive && terrainElevations ? applyTerrainOffsets(flatWaypoints, terrainElevations) : flatWaypoints),
     [flatWaypoints, terrainElevations, terrainActive],
   )
+
+  // Stage the route for Live Ops. The tab unmounts on every tab switch and
+  // remounts with an empty route, so an empty route is only reported once this
+  // mount has reported a real one (i.e. the operator cleared it). Otherwise
+  // opening Plan to look at something would wipe the route already staged —
+  // and React StrictMode's double effect run would do the same in dev.
+  const hasReportedRoute = useRef(false)
+  useEffect(() => {
+    if (!onRouteChange) return
+    if (waypoints.length === 0 && !hasReportedRoute.current) return
+    hasReportedRoute.current = waypoints.length > 0
+    onRouteChange(plannerToPlannedPoints(waypoints))
+  }, [waypoints, onRouteChange])
 
   const terrainDelta = useMemo(() => {
     if (!terrainActive) return null
