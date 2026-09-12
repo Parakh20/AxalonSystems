@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { UsersSharingPanel } from '@/components/Platform/UsersSharingPanel'
-import { ToastProvider } from '@/components/Platform/Toast'
+import { withQueryClient } from './queryWrapper'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status })
@@ -39,11 +39,7 @@ function mockBackend() {
 }
 
 function renderPanel() {
-  return render(
-    <ToastProvider>
-      <UsersSharingPanel />
-    </ToastProvider>,
-  )
+  return render(<UsersSharingPanel />, { wrapper: withQueryClient() })
 }
 
 afterEach(() => {
@@ -104,5 +100,51 @@ describe('UsersSharingPanel', () => {
     await waitFor(() =>
       expect(fetchSpy.mock.calls.some(([u, i]) => String(u).includes('/share-links/5') && i?.method === 'DELETE')).toBe(true),
     )
+  })
+
+  test('the user list is refetched after adding someone', async () => {
+    const created = { ...users[1], id: 3, email: 'new@axalon.test' }
+    let hasNewUser = false
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/users') && method === 'POST') {
+        hasNewUser = true
+        return json(created, 201)
+      }
+      if (url.endsWith('/users')) return json(hasNewUser ? [...users, created] : users)
+      if (url.endsWith('/projects')) return json(projects)
+      if (url.endsWith('/share-links')) return json(links)
+      return json({ detail: 'unmocked' }, 404)
+    })
+    renderPanel()
+    await screen.findByText('op@axalon.test')
+    fireEvent.change(screen.getByLabelText(/new user email/i), { target: { value: 'new@axalon.test' } })
+    fireEvent.change(screen.getByLabelText(/initial password/i), { target: { value: 'long-enough-pw' } })
+    fireEvent.click(screen.getByRole('button', { name: /add user/i }))
+
+    expect(await screen.findByRole('cell', { name: 'new@axalon.test' })).toBeInTheDocument()
+  })
+
+  test('a revoked link is refetched from the server', async () => {
+    let revoked = false
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url.includes('/share-links/5') && method === 'DELETE') {
+        revoked = true
+        return new Response(null, { status: 204 })
+      }
+      if (url.endsWith('/share-links')) return json(revoked ? [{ ...links[0], revoked: true }] : links)
+      if (url.endsWith('/users')) return json(users)
+      if (url.endsWith('/projects')) return json(projects)
+      return json({ detail: 'unmocked' }, 404)
+    })
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: /revoke client preview/i }))
+
+    expect(await screen.findByText('revoked')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /revoke client preview/i })).not.toBeInTheDocument()
   })
 })

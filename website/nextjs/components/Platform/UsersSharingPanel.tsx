@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link2, Trash2, UserPlus, Users } from 'lucide-react'
 import {
   api,
@@ -10,9 +11,14 @@ import {
   type ShareLink,
   type UserRole,
 } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
 import { useToast } from '@/components/Platform/Toast'
+import { useErrorToast } from '@/components/Platform/hooks/useErrorToast'
 
 const ROLES: UserRole[] = ['admin', 'operator', 'viewer']
+const NO_USERS: AuthUser[] = []
+const NO_PROJECTS: Project[] = []
+const NO_LINKS: ShareLink[] = []
 
 function errMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -62,42 +68,48 @@ function toggled(ids: number[], id: number): number[] {
 /** Admin-only account and share-link management (AXALON_AUTH_MODE=users). */
 export function UsersSharingPanel() {
   const toast = useToast()
-  const [users, setUsers] = useState<AuthUser[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
-  const [links, setLinks] = useState<ShareLink[]>([])
+  const queryClient = useQueryClient()
 
-  const load = useCallback(async () => {
-    try {
-      const [u, p, l] = await Promise.all([api.users(), api.projects(), api.shareLinks()])
-      setUsers(u)
-      setProjects(p)
-      setLinks(l)
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const usersQuery = useQuery({ queryKey: queryKeys.accounts.users, queryFn: () => api.users() })
+  // Same cache entry as the Assets tab, so projects created there show up here.
+  const projectsQuery = useQuery({ queryKey: queryKeys.projects.list, queryFn: () => api.projects() })
+  const linksQuery = useQuery({ queryKey: queryKeys.accounts.shareLinks, queryFn: () => api.shareLinks() })
+  useErrorToast(usersQuery.error, errMessage)
+  useErrorToast(projectsQuery.error, errMessage)
+  useErrorToast(linksQuery.error, errMessage)
+  const users = usersQuery.data ?? NO_USERS
+  const projects = projectsQuery.data ?? NO_PROJECTS
+  const links = linksQuery.data ?? NO_LINKS
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const refreshUsers = () => void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.users })
 
-  async function patchUser(user: AuthUser, body: Parameters<typeof api.updateUser>[1]) {
-    try {
-      const updated = await api.updateUser(user.id, body)
-      setUsers((all) => all.map((u) => (u.id === updated.id ? updated : u)))
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+  const patchMutation = useMutation({
+    mutationFn: ({ user, body }: { user: AuthUser; body: Parameters<typeof api.updateUser>[1] }) =>
+      api.updateUser(user.id, body),
+    onSuccess: (updated) => {
+      // The PATCH response is the row's new server state: apply it now so
+      // the role select doesn't snap back while the list refetches.
+      queryClient.setQueryData<AuthUser[]>(queryKeys.accounts.users, (all = []) =>
+        all.map((u) => (u.id === updated.id ? updated : u)),
+      )
+      refreshUsers()
+    },
+    onError: (err) => toast.error(errMessage(err)),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (user: AuthUser) => api.deleteUser(user.id),
+    onSuccess: refreshUsers,
+    onError: (err) => toast.error(errMessage(err)),
+  })
+
+  function patchUser(user: AuthUser, body: Parameters<typeof api.updateUser>[1]) {
+    patchMutation.mutate({ user, body })
   }
 
-  async function removeUser(user: AuthUser) {
+  function removeUser(user: AuthUser) {
     if (!window.confirm(`Delete ${user.email}? Their sessions end immediately.`)) return
-    try {
-      await api.deleteUser(user.id)
-      setUsers((all) => all.filter((u) => u.id !== user.id))
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+    removeMutation.mutate(user)
   }
 
   const projectName = (id: number) => projects.find((p) => p.id === id)?.name ?? `#${id}`
@@ -176,37 +188,36 @@ export function UsersSharingPanel() {
             </tbody>
           </table>
         </div>
-        <AddUserForm projects={projects} onAdded={(u) => setUsers((all) => [...all, u])} />
+        <AddUserForm projects={projects} onAdded={refreshUsers} />
       </section>
 
-      <SharePanel projects={projects} links={links} projectName={projectName} onChanged={load} />
+      <SharePanel projects={projects} links={links} projectName={projectName} />
     </div>
   )
 }
 
-function AddUserForm({ projects, onAdded }: { projects: Project[]; onAdded: (user: AuthUser) => void }) {
+function AddUserForm({ projects, onAdded }: { projects: Project[]; onAdded: () => void }) {
   const toast = useToast()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<UserRole>('viewer')
   const [projectIds, setProjectIds] = useState<number[]>([])
-  const [busy, setBusy] = useState(false)
-
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    setBusy(true)
-    try {
-      const created = await api.createUser({ email: email.trim(), password, role, project_ids: projectIds })
-      onAdded(created)
+  const createMutation = useMutation({
+    mutationFn: () => api.createUser({ email: email.trim(), password, role, project_ids: projectIds }),
+    onSuccess: (created) => {
+      onAdded()
       setEmail('')
       setPassword('')
       setProjectIds([])
       toast.success(`Added ${created.email}`)
-    } catch (err) {
-      toast.error(errMessage(err))
-    } finally {
-      setBusy(false)
-    }
+    },
+    onError: (err) => toast.error(errMessage(err)),
+  })
+  const busy = createMutation.isPending
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    createMutation.mutate()
   }
 
   return (
@@ -254,47 +265,53 @@ function SharePanel({
   projects,
   links,
   projectName,
-  onChanged,
 }: {
   projects: Project[]
   links: ShareLink[]
   projectName: (id: number) => string
-  onChanged: () => void
 }) {
   const toast = useToast()
+  const queryClient = useQueryClient()
   const [projectId, setProjectId] = useState('')
   const [label, setLabel] = useState('')
   const [days, setDays] = useState(7)
   const [newUrl, setNewUrl] = useState('')
 
-  async function create(event: FormEvent) {
+  const refreshLinks = () => void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.shareLinks })
+
+  const createMutation = useMutation({
+    mutationFn: (body: { project_id: number; label?: string; expires_in_days: number }) =>
+      api.createShareLink(body),
+    onSuccess: (link) => {
+      setNewUrl(`${window.location.origin}/platform?share=${encodeURIComponent(link.token)}`)
+      setLabel('')
+      refreshLinks()
+    },
+    onError: (err) => toast.error(errMessage(err)),
+  })
+
+  const revokeMutation = useMutation({
+    mutationFn: (link: ShareLink) => api.revokeShareLink(link.id),
+    onSuccess: refreshLinks,
+    onError: (err) => toast.error(errMessage(err)),
+  })
+
+  function create(event: FormEvent) {
     event.preventDefault()
     if (!projectId) {
       toast.error('Choose a project to share')
       return
     }
-    try {
-      const link = await api.createShareLink({
-        project_id: Number(projectId),
-        label: label.trim() || undefined,
-        expires_in_days: days,
-      })
-      setNewUrl(`${window.location.origin}/platform?share=${encodeURIComponent(link.token)}`)
-      setLabel('')
-      onChanged()
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+    createMutation.mutate({
+      project_id: Number(projectId),
+      label: label.trim() || undefined,
+      expires_in_days: days,
+    })
   }
 
-  async function revoke(link: ShareLink) {
+  function revoke(link: ShareLink) {
     if (!window.confirm('Revoke this link? Anyone using it loses access immediately.')) return
-    try {
-      await api.revokeShareLink(link.id)
-      onChanged()
-    } catch (err) {
-      toast.error(errMessage(err))
-    }
+    revokeMutation.mutate(link)
   }
 
   return (
