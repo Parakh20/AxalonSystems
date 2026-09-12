@@ -121,6 +121,13 @@ export type JobStatus = {
   message?: string
   [k: string]: unknown
 }
+export type AlertChannelStatus = 'sent' | 'failed' | 'skipped' | 'not_configured'
+export type AlertChannelResult = { status: AlertChannelStatus; detail: string }
+export type AlertTestResult = {
+  configured: boolean
+  min_severity: Severity
+  channels: Record<'webhook' | 'email', AlertChannelResult>
+}
 export type ParkRef = { id: string; name?: string }
 export type ParkSummary = Record<string, unknown>
 export type MapData = Record<string, unknown>
@@ -458,6 +465,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ settings: blob }),
     }),
+  testAlert: () => request<AlertTestResult>('/alerts/test', { method: 'POST' }),
   parkDiff: (parkId: string, inspectionA: string, inspectionB: string) =>
     request<ParkDiff>(
       `/park/${encodeURIComponent(parkId)}/diff?inspection_a=${encodeURIComponent(inspectionA)}&inspection_b=${encodeURIComponent(inspectionB)}`,

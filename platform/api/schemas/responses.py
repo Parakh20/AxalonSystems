@@ -260,3 +260,14 @@ class HealthOut(_Out):
 class SettingsOut(_Out):
     settings: Any | None = None
     path: str | None = None
+
+
+class AlertChannelOut(_Out):
+    status: str
+    detail: str = ""
+
+
+class AlertTestOut(_Out):
+    configured: bool
+    min_severity: str
+    channels: dict[str, AlertChannelOut]

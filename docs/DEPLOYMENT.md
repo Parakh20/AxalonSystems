@@ -35,7 +35,19 @@ Open `http://localhost:3000/platform`.
 | `AXALON_TRACK_BUCKET` | API | `track-files` | Supabase Storage bucket name for `/track` uploads |
 | `AXALON_DB_URL` | API | `sqlite:////app/data/axalon.db` in Docker | SQLAlchemy database URL |
 | `AXALON_OUTPUT_DIR` | API | `/app/data/output` in Docker | Generated reports and job artifacts |
+| `AXALON_ALERT_MIN_SEVERITY` | API | `CRITICAL` | Lowest fault severity (`CRITICAL`\|`HIGH`\|`MEDIUM`\|`LOW`) that triggers an alert when an inspection job completes. Invalid values fall back to `CRITICAL` |
+| `AXALON_ALERT_WEBHOOK_URL` | API | empty | Webhook alert channel: POSTs JSON (park, job/inspection id, per-severity counts, top faults, link). Includes a `text` field, so a Slack incoming-webhook URL works as-is. 8 s timeout, one retry. Treat as a secret |
+| `AXALON_SMTP_HOST` | API | empty | SMTP server for email alerts. Email is enabled when this, `AXALON_ALERT_EMAIL_FROM` and `AXALON_ALERT_EMAIL_TO` are all set |
+| `AXALON_SMTP_PORT` | API | `587` | SMTP port |
+| `AXALON_SMTP_USER` | API | empty | SMTP login user (login skipped when empty) |
+| `AXALON_SMTP_PASSWORD` | API | empty | SMTP login password. Secret |
+| `AXALON_SMTP_STARTTLS` | API | `true` | Upgrade the SMTP connection with STARTTLS; set `false` only for a local relay |
+| `AXALON_ALERT_EMAIL_FROM` | API | empty | Sender address for alert emails |
+| `AXALON_ALERT_EMAIL_TO` | API | empty | Comma-separated recipient addresses for alert emails |
+| `AXALON_PUBLIC_BASE_URL` | API | empty | Public console origin (e.g. `https://axalonsystems.com`); when set, alerts link to `<base>/platform?job=<id>` |
 | `NEXT_PUBLIC_AXALON_API_URL` | Next.js | `http://localhost:8000` | API base URL used by the browser |
+
+Alerts are best-effort: they are sent after the job's success is committed, every failure is caught and logged (`Alerts for job …: webhook=sent, email=failed`), and a broken channel never fails an inspection. Use **Settings → Send test alert** (`POST /alerts/test`) to verify delivery.
 
 ## Auth
 
