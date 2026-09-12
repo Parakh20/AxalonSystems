@@ -133,7 +133,23 @@ class FaultOut(_Out):
     max_confidence: float | None = None
     notes: str | None = None
     comment_count: int | None = None
+    assignee: str | None = None
+    due_date: str | None = None
+    priority: str | None = None
+    priority_override: str | None = None
+    resolved_at: str | None = None
+    resolution_note: str | None = None
+    photo_count: int | None = None
     # "class", first/last_seen_*, last_bbox, last_gps flow via extra="allow"
+
+
+class FaultPhotoOut(_Out):
+    id: int
+    fault_id: int | None = None
+    original_name: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    created_at: str | None = None
 
 
 class CommentOut(_Out):

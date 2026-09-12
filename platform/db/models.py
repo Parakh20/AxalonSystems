@@ -1,5 +1,5 @@
 """SQLAlchemy ORM models for the Axalon solar inspection platform."""
-from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Float, Text, Date, DateTime, ForeignKey, Index
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
 
@@ -9,6 +9,11 @@ Base = declarative_base()
 FAULT_OPEN = "open"          # seen in the most recent inspection
 FAULT_STALE = "stale"        # was open, not seen in the most recent inspection (awaiting confirmation)
 FAULT_RESOLVED = "resolved"  # user-confirmed fix or auto-resolved after N missed inspections
+# Repair workflow states (O&M dispatch) — layered on top of the detection states.
+FAULT_ASSIGNED = "assigned"        # a named person/crew owns the repair
+FAULT_IN_PROGRESS = "in_progress"  # repair work has started on site
+
+FAULT_STATUSES = (FAULT_OPEN, FAULT_STALE, FAULT_ASSIGNED, FAULT_IN_PROGRESS, FAULT_RESOLVED)
 
 
 # Allowed values for Project.status
@@ -90,7 +95,7 @@ class PanelFault(Base):
     class_ = Column("class", String, nullable=False)         # canonical class name
     class_id = Column(Integer, nullable=True)
     severity = Column(String, nullable=True)                # worst severity ever seen
-    status = Column(String, default=FAULT_OPEN, index=True) # open | stale | resolved
+    status = Column(String, default=FAULT_OPEN, index=True) # one of FAULT_STATUSES
     occurrences = Column(Integer, default=1)                # number of inspections this fault appeared in
     max_confidence = Column(Float, default=0.0)
     first_seen_inspection_id = Column(String, ForeignKey("inspections.id"), nullable=True)
@@ -100,8 +105,27 @@ class PanelFault(Base):
     last_bbox = Column(Text, nullable=True)                 # JSON last bbox (for UI preview)
     last_gps = Column(Text, nullable=True)                  # JSON last GPS
     notes = Column(Text, nullable=True)                     # operator notes
+    # ── Repair workflow ──
+    assignee = Column(String(200), nullable=True)           # free-text name or email
+    due_date = Column(Date, nullable=True)
+    priority = Column(String(16), nullable=True)            # override; NULL → derived from severity
+    resolved_at = Column(DateTime, nullable=True)           # set on → resolved, cleared on reopen
+    resolution_note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class FaultPhoto(Base):
+    """Repair proof photo attached to a PanelFault, stored in the object store
+    (or on local disk when none is configured)."""
+    __tablename__ = "fault_photos"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fault_id = Column(Integer, ForeignKey("panel_faults.id"), nullable=False, index=True)
+    original_name = Column(String(200), nullable=False)     # sanitized upload filename
+    stored_name = Column(String(400), nullable=False)       # object key, e.g. fault-photos/12/<uuid>_x.jpg
+    content_type = Column(String(64), nullable=False)
+    size_bytes = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Correction(Base):

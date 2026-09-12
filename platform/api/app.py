@@ -19,7 +19,7 @@ from axalon.api.deps import (
 from axalon.api.agents_router import router as agents_router
 from axalon.api.routers import (
     alerts, analytics, corrections, diff, faults, health, inspection, inventory,
-    map, missions, ortho, park, projects, results, settings, track,
+    map, missions, ortho, park, projects, results, settings, track, work_orders,
 )
 
 
@@ -96,7 +96,7 @@ app.include_router(agents_router)
 app.add_middleware(
     CORSMiddleware, allow_origins=_CORS_ORIGINS,
     allow_origin_regex=_CORS_ORIGIN_REGEX, allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allow_headers=["*"],
 )
 
 _REQUEST_TIMEOUT_S = 120
@@ -126,6 +126,6 @@ async def timeout_middleware(request, call_next):
 # ── Domain routers ──────────────────────────────────────────────────────────────
 for _module in (
     alerts, analytics, corrections, diff, faults, health, inspection, inventory,
-    map, missions, ortho, park, projects, results, settings, track,
+    map, missions, ortho, park, projects, results, settings, track, work_orders,
 ):
     app.include_router(_module.router)

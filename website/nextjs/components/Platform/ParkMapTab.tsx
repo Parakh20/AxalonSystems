@@ -8,6 +8,7 @@ import { useParks } from '@/components/Platform/hooks/useParks'
 import { api, ApiError } from '@/lib/api'
 import { ParkMapGrid } from '@/components/Platform/ParkMapGrid'
 import { ParkPanelDetail } from '@/components/Platform/ParkPanelDetail'
+import { ParkFaultsPanel } from '@/components/Platform/ParkFaultsPanel'
 import type { GridPanel, OrthoMeta, ParkGrid } from '@/lib/api'
 
 export function ParkMapTab() {
@@ -319,6 +320,14 @@ export function ParkMapTab() {
             />
           </div>
         </div>
+      )}
+
+      {parkMapParkId && (
+        <ParkFaultsPanel
+          parkId={parkMapParkId}
+          panelId={parkMapSelectedPanel?.panel_id ?? null}
+          onClearPanel={() => setParkMapSelectedPanel(null)}
+        />
       )}
     </section>
   )
