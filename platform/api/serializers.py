@@ -10,6 +10,7 @@ import json
 from fastapi import HTTPException
 
 from axalon.core.fault_workflow import effective_priority
+from axalon.core.temp_extractor import TEMP_FIELDS
 from axalon.db.models import *  # noqa: F401,F403
 
 __all__ = [
@@ -18,7 +19,18 @@ __all__ = [
     "_serialize_component", "_serialize_assignment", "_serialize_prototype",
     "_serialize_order", "_clean_name", "_non_negative_int", "_serialize_project",
     "_project_sites", "_serialize_note", "_serialize_track_file",
+    "_serialize_detection_temps",
 ]
+
+
+def _serialize_detection_temps(d) -> dict:
+    """Temperature fields of a Detection row (or detection dict), all nullable.
+
+    Every key is always present so the UI can distinguish "no radiometric data"
+    (None) from a missing field.
+    """
+    get = d.get if isinstance(d, dict) else (lambda k: getattr(d, k, None))
+    return {field: get(field) for field in TEMP_FIELDS}
 
 
 def _serialize_correction(c: Correction) -> dict:

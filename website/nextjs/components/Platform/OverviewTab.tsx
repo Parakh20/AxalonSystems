@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
-import { api, ApiError, type TrendPoint } from '@/lib/api'
+import { api, ApiError, type OverviewBundle, type TrendPoint } from '@/lib/api'
+import { formatRevenueLoss, REVENUE_LOSS_NOTE, sumRevenueLoss } from '@/lib/thermalFormat'
 import { useParks } from '@/components/Platform/hooks/useParks'
 import { aggregatePortfolio, SEVERITIES, type PortfolioSummary, type Severity } from '@/lib/analytics'
 import { TrendChart } from '@/components/Platform/TrendChart'
@@ -53,6 +54,10 @@ export function OverviewTab({ onTabChange }: OverviewTabProps = {}) {
   const toast = useToast()
   const { parks, loading: parksLoading } = useParks()
   const [summary, setSummary] = useState<PortfolioSummary | null>(null)
+  const [revenueLoss, setRevenueLoss] = useState<{ value: number | null; currency: string }>({
+    value: null,
+    currency: 'USD',
+  })
   const [worstTrend, setWorstTrend] = useState<TrendPoint[]>([])
   const [worstName, setWorstName] = useState<string>('')
   const [loading, setLoading] = useState(false)
@@ -70,7 +75,7 @@ export function OverviewTab({ onTabChange }: OverviewTabProps = {}) {
     setError(null)
     ;(async () => {
       // Single aggregated call; fall back to the per-park fan-out for older APIs.
-      let bundles: { park: (typeof parks)[number]; trend: TrendPoint[] }[]
+      let bundles: OverviewBundle[]
       try {
         bundles = await api.analyticsOverview()
       } catch {
@@ -88,6 +93,10 @@ export function OverviewTab({ onTabChange }: OverviewTabProps = {}) {
       const agg = aggregatePortfolio(bundles)
       const worst = bundles.find((b) => b.park.id === agg.worstParkId)
       setSummary(agg)
+      setRevenueLoss({
+        value: sumRevenueLoss(bundles.map((b) => b.revenue_loss_usd)),
+        currency: bundles.find((b) => b.revenue_currency)?.revenue_currency ?? 'USD',
+      })
       setWorstTrend(worst?.trend ?? [])
       setWorstName(worst?.park.name ?? worst?.park.id ?? '')
       setLoading(false)
@@ -140,6 +149,25 @@ export function OverviewTab({ onTabChange }: OverviewTabProps = {}) {
           <Kpi label="Inspections" value={summary?.inspectionCount ?? (loading ? '…' : 0)} />
           <Kpi label="Total faults" value={summary?.totalFaults ?? (loading ? '…' : 0)} />
           <Kpi label="Critical" value={summary?.bySeverity.CRITICAL ?? (loading ? '…' : 0)} color={SEV_COLOR.CRITICAL} />
+          {formatRevenueLoss(revenueLoss.value, revenueLoss.currency) && (
+            <div className="panel" style={{ flex: '1 1 180px', padding: '12px 14px' }}>
+              <div style={{ fontSize: 12, color: '#64748b' }}>Est. revenue loss / day</div>
+              <div
+                style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-mono)',
+                  fontVariantNumeric: 'tabular-nums',
+                  color: revenueLoss.value ? 'var(--th-high)' : '#0f172a',
+                }}
+              >
+                {formatRevenueLoss(revenueLoss.value, revenueLoss.currency)}
+              </div>
+              <p className="estimate-note" title={REVENUE_LOSS_NOTE}>
+                Estimate · latest inspection per park
+              </p>
+            </div>
+          )}
         </div>
       )}
 

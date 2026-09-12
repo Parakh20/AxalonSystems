@@ -7,9 +7,10 @@ import { useParks } from '@/components/Platform/hooks/useParks'
 import { TrendChart } from '@/components/Platform/TrendChart'
 import { ErrorBanner } from '@/components/Platform/ErrorBanner'
 import { SkeletonLine } from '@/components/Platform/Skeleton'
-import { api, ApiError, type RecurringPanel, type TrendPoint } from '@/lib/api'
+import { api, ApiError, type RecurringPanel, type RevenueLoss, type TrendPoint } from '@/lib/api'
+import { formatRevenueLoss, REVENUE_LOSS_NOTE } from '@/lib/thermalFormat'
 
-type SortColumn = 'date' | 'images' | 'detections' | 'critical' | 'high'
+type SortColumn = 'date' | 'images' | 'detections' | 'critical' | 'high' | 'loss'
 type SortDirection = 'asc' | 'desc'
 
 function sevCountOf(summary: Record<string, number> | undefined, key: string): number {
@@ -17,7 +18,7 @@ function sevCountOf(summary: Record<string, number> | undefined, key: string): n
   return Number(s[key] ?? s[key.toUpperCase()] ?? s[key.toLowerCase()] ?? 0)
 }
 
-type InspectionRow = {
+type InspectionRow = RevenueLoss & {
   id: number
   flight_date?: string
   total_images?: number
@@ -204,6 +205,8 @@ export function HistoryTab() {
           return sevCountOf(ins.summary, 'CRITICAL')
         case 'high':
           return sevCountOf(ins.summary, 'HIGH')
+        case 'loss':
+          return ins.revenue_loss_usd ?? 0
       }
     }
     const factor = sort.direction === 'asc' ? 1 : -1
@@ -298,15 +301,18 @@ export function HistoryTab() {
           <>
             <HistoryChart inspections={parkSummary.inspections} />
             <div className="table" style={{ marginTop: 16 }}>
-              <div className="table-head hist-head sortable">
+              <div className="table-head hist-head with-loss sortable">
                 <span onClick={() => toggleSort('date')}>Date {sortArrow('date')}</span>
                 <span onClick={() => toggleSort('images')}>Images {sortArrow('images')}</span>
                 <span onClick={() => toggleSort('detections')}>Detections {sortArrow('detections')}</span>
                 <span onClick={() => toggleSort('critical')}>Critical {sortArrow('critical')}</span>
                 <span onClick={() => toggleSort('high')}>High {sortArrow('high')}</span>
+                <span onClick={() => toggleSort('loss')} title={REVENUE_LOSS_NOTE}>
+                  Est. loss/day {sortArrow('loss')}
+                </span>
               </div>
               {sortedInspections.map((ins) => (
-                <div className="hist-row" key={ins.id}>
+                <div className="hist-row with-loss" key={ins.id}>
                   <span>
                     {ins.flight_date
                       ? new Date(ins.flight_date).toLocaleString()
@@ -318,12 +324,20 @@ export function HistoryTab() {
                     <strong style={{ color: '#991b1b' }}>{sevCountOf(ins.summary, 'CRITICAL')}</strong>
                   </span>
                   <span style={{ color: '#cc5500' }}>{sevCountOf(ins.summary, 'HIGH')}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatRevenueLoss(ins.revenue_loss_usd, ins.revenue_currency) ?? '—'}
+                  </span>
                 </div>
               ))}
               {sortedInspections.length === 0 && (
                 <div className="empty">No inspections yet for this park.</div>
               )}
             </div>
+            {sortedInspections.length > 0 && (
+              <p className="estimate-note">
+                Est. loss/day is an estimate — {REVENUE_LOSS_NOTE.replace(/^Estimate: /, '')}
+              </p>
+            )}
             <section style={{ marginTop: 24 }}>
               <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 8px' }}>Anomaly Trend</h2>
               {trendLoading ? (

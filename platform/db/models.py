@@ -77,6 +77,14 @@ class Detection(Base):
     confidence = Column(Float, nullable=True)
     bbox = Column(Text, nullable=True)              # JSON "[x1,y1,x2,y2]"
     gps = Column(Text, nullable=True)               # JSON '{"lat":28.4,"lon":77.1}' or null
+    # Radiometric temperatures (°C) — only set when the thermal image had a
+    # `_temp.raw` companion (iTL612R Pro MATRIX-TEMP). ΔT drives IEC 62446-3 CoA.
+    min_temp = Column(Float, nullable=True)
+    max_temp = Column(Float, nullable=True)
+    avg_temp = Column(Float, nullable=True)
+    reference_temp = Column(Float, nullable=True)      # frame median ≈ healthy module
+    delta_t_measured = Column(Float, nullable=True)    # max_temp − reference_temp
+    delta_t_normalized = Column(Float, nullable=True)  # ΔT scaled to 1000 W/m²
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

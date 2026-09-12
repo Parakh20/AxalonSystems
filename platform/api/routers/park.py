@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
 from axalon.api.schemas.responses import GridOut, ParkDiffOut, ParksOut, ParkSummaryOut, RecurringOut, TrendOut
 from axalon.api.schemas import ParkUpdate
+from axalon.api.support.revenue import REVENUE_CURRENCY, revenue_loss_by_inspection
 
 router = APIRouter(tags=["park"])
 
@@ -23,6 +24,7 @@ def get_park_summary(park_id: str):
             .order_by(Inspection.created_at.desc())
             .all()
         )
+        losses = revenue_loss_by_inspection(session, [insp.id for insp in inspections])
         return {
             "park_id": park_id,
             "name": park.name,
@@ -46,6 +48,9 @@ def get_park_summary(park_id: str):
                     "irradiance_wm2": insp.irradiance_wm2,
                     "wind_speed_bft": insp.wind_speed_bft,
                     "cloud_coverage_okta": insp.cloud_coverage_okta,
+                    # Estimate only — see compute_revenue_loss for assumptions.
+                    "revenue_loss_usd": losses.get(insp.id),
+                    "revenue_currency": REVENUE_CURRENCY,
                 }
                 for insp in inspections
             ],
@@ -112,6 +117,7 @@ def get_park_grid(park_id: str, inspection_id: str | None = None):
                 "thermal_filename": f"{d.image_id}.jpg" if d.image_id else None,
                 "bbox": bbox,
                 "gps": gps,
+                **_serialize_detection_temps(d),
             })
 
         return build_grid(detections=detections, park=park, inspection_id=insp.id)

@@ -10,6 +10,7 @@ from __future__ import annotations
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
+from axalon.core.temp_extractor import TEMP_FIELDS
 from axalon.db.models import Base
 
 
@@ -66,5 +67,15 @@ def run_migrations(engine: Engine) -> list[str]:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE panel_faults ADD COLUMN {column} {ddl}"))
                 actions.append(f"added panel_faults.{column}")
+
+    # Add nullable radiometric temperature columns (older DBs predate them).
+    if _table_exists(engine, "detections"):
+        for column in TEMP_FIELDS:
+            if _has_column(engine, "detections", column):
+                continue
+            with engine.begin() as conn:
+                # Column names come from a fixed internal tuple, never user input.
+                conn.execute(text(f"ALTER TABLE detections ADD COLUMN {column} FLOAT"))
+            actions.append(f"added detections.{column}")
 
     return actions

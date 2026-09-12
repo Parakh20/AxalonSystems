@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from axalon.api.deps import *  # noqa: F401,F403
 from axalon.api.schemas.responses import OverviewOut
+from axalon.api.support.revenue import REVENUE_CURRENCY, revenue_loss_by_inspection
 
 router = APIRouter(tags=["analytics"])
 
@@ -36,10 +37,18 @@ def analytics_overview():
         rows_by_park: dict[str, list] = {}
         for row in rows:
             rows_by_park.setdefault(row.park_id, []).append(row)
+        trends = {p.id: build_trend(rows_by_park.get(p.id, [])) for p in parks}
+        # Revenue loss is reported for each park's latest inspection — the same
+        # "current state" the frontend derives from the last trend point.
+        latest_ids = {pid: trend[-1]["inspection_id"] for pid, trend in trends.items() if trend}
+        losses = revenue_loss_by_inspection(session, list(latest_ids.values()))
         return [
             {
                 "park": {"id": p.id, "name": p.name},
-                "trend": build_trend(rows_by_park.get(p.id, [])),
+                "trend": trends[p.id],
+                # Estimate only — see compute_revenue_loss for assumptions.
+                "revenue_loss_usd": losses.get(latest_ids.get(p.id)),
+                "revenue_currency": REVENUE_CURRENCY,
             }
             for p in parks
         ]

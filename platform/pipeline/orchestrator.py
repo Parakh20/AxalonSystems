@@ -23,7 +23,12 @@ from axalon.park.locator import PANEL_ID_UNKNOWN, locate_faults
 from axalon.db.session import init_db, get_session
 from axalon.db.models import Park, Inspection, Detection as DbDetection
 from axalon.pipeline.ingest import find_image_pairs, load_mission_metadata, validate_pair
-from axalon.core.temp_extractor import load_temp_matrix, compute_delta_t, normalize_delta_t
+from axalon.core.temp_extractor import (
+    TEMP_FIELDS,
+    compute_delta_t,
+    load_temp_matrix,
+    normalize_delta_t,
+)
 from axalon.pipeline.tracking import dedup_detections, reconcile_inspection
 
 logger = get_logger("axalon.orchestrator")
@@ -134,6 +139,7 @@ class InspectionOrchestrator:
                     det["min_temp"] = temps["min_temp"]
                     det["max_temp"] = temps["max_temp"]
                     det["avg_temp"] = temps["avg_temp"]
+                    det["reference_temp"] = temps["reference_temp"]
                     det["delta_t_measured"] = temps["delta_t_measured"]
                     det["irradiance_wm2"] = irradiance_wm2
                     if temps["delta_t_measured"] is not None and irradiance_wm2:
@@ -211,6 +217,7 @@ class InspectionOrchestrator:
                         confidence=det.get("confidence"),
                         bbox=json.dumps(det.get("bbox")),
                         gps=json.dumps(det.get("gps")) if det.get("gps") else None,
+                        **{field: det.get(field) for field in TEMP_FIELDS},
                     )
                     session.add(db_det)
                 session.commit()
