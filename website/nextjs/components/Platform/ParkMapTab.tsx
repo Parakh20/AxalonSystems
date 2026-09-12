@@ -8,6 +8,7 @@ import { useParks } from '@/components/Platform/hooks/useParks'
 import { api, ApiError } from '@/lib/api'
 import { ParkMapGrid } from '@/components/Platform/ParkMapGrid'
 import { ParkPanelDetail } from '@/components/Platform/ParkPanelDetail'
+import { ParkLayoutControl } from '@/components/Platform/ParkLayoutControl'
 import type { GridPanel, OrthoMeta, ParkGrid } from '@/lib/api'
 
 export function ParkMapTab() {
@@ -267,6 +268,7 @@ export function ParkMapTab() {
             />
             {orthoUploading ? 'Uploading...' : 'Upload Ortho'}
           </label>
+          <ParkLayoutControl parkId={parkMapParkId} />
           {parkMapGrid && (
             <button
               data-testid="parkmap-export-png"
