@@ -160,6 +160,11 @@ docker compose down -v  # also deletes the persisted DB volume
 | `AXALON_PUBLIC_BASE_URL` | API | empty | Public console origin (e.g. `https://axalonsystems.com`); when set, alerts link to `<base>/platform?job=<id>` |
 | `AXALON_NODEODM_URL` | API | empty | Base URL of a NodeODM server (e.g. `http://nodeodm:3000`). Enables in-platform orthomosaic generation; when unset the feature is disabled and `/health` reports `capabilities.odm.configured: false` |
 | `AXALON_NODEODM_TOKEN` | API | empty | Optional NodeODM access token (NodeODM started with `--token`). Sent as the `token` query parameter; server-side only |
+| `SENTRY_DSN` | API | empty | Enables Sentry error monitoring and tracing. Query-string credentials (`api_key`, `token`, `share`) are masked and frame locals are not sent. Treat as a secret |
+| `SENTRY_ENVIRONMENT` | API | `production` | Sentry environment tag |
+| `SENTRY_TRACES_SAMPLE_RATE` | API | `0.1` | Fraction of requests traced (1.0 exhausts the free quota quickly) |
+| `SENTRY_PROFILE_SAMPLE_RATE` | API | `0` | Fraction of traced sessions profiled |
+| `SENTRY_SEND_PII` | API | `false` | `true` also sends client IPs and request bodies |
 | `NEXT_PUBLIC_AXALON_API_URL` | Next.js | `http://localhost:8000` | API base URL used by the browser (build-time) |
 | `NEXT_PUBLIC_AXALON_API_KEY` | Next.js | empty | Bearer key sent by the UI. Must match `AXALON_API_KEY` |
 

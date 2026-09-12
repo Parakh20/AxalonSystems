@@ -10,6 +10,7 @@
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 python-multipart>=0.0.9          # FastAPI file upload support
+sentry-sdk[fastapi]>=2.35.0       # Error monitoring + tracing (enabled by SENTRY_DSN)
 requests>=2.31.0                 # Supabase Storage client (track file library)
 azure-storage-blob>=12.19.0       # Azure Blob Storage client (track file library)
 

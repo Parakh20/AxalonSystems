@@ -25,6 +25,7 @@ from axalon.api.routers import (
 )
 from axalon.api.support.odm_jobs import resume_odm_jobs
 from drone.relay.server import create_app as create_relay_app
+from axalon.core.observability import init_sentry
 from axalon.api.support.principal import (
     ALWAYS_PUBLIC_PATHS, NOT_AUTHENTICATED, SYSTEM_PRINCIPAL, USERS_PUBLIC_PATHS,
     access_policy, apikey_matches, request_token, resolve_users_principal,
@@ -98,6 +99,10 @@ def _requeue_stale_jobs() -> None:
     finally:
         session.close()
 
+
+# Before FastAPI() so the SDK's FastAPI/Starlette integrations hook in. No-op
+# without SENTRY_DSN (local dev, tests).
+init_sentry()
 
 app = FastAPI(
     title="Axalon Solar Inspection API",
