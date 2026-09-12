@@ -22,7 +22,7 @@ from axalon.core.geo import detection_to_gps, extract_gps_exif
 from axalon.park.layout import ParkLayoutDetector
 from axalon.park.locator import MANUAL_MODE, PANEL_ID_UNKNOWN, locate_faults
 from axalon.park.manual_layout import LayoutError, load_park_layout
-from axalon.db.session import init_db, get_session
+from axalon.db.session import get_engine, get_session, init_db
 from axalon.db.models import Park, Inspection, Detection as DbDetection
 from axalon.pipeline.ingest import find_image_pairs, load_mission_metadata, validate_pair
 from axalon.core.temp_extractor import (
@@ -120,7 +120,7 @@ class InspectionOrchestrator:
         device: str = "0",
         output_dir: str | Path = "output",
         park_mode: str = "auto",
-        db_url: str = "sqlite:///axalon.db",
+        db_url: str | None = None,
     ) -> None:
         self.detector = SolarDetector(
             **({"weights_path": weights_path} if weights_path is not None else {}),
@@ -130,7 +130,13 @@ class InspectionOrchestrator:
         self.fusion = ImageFusion(mode="auto")
         self.output_dir = Path(output_dir)
         self.park_mode = park_mode
-        init_db(db_url)
+        if db_url is None:
+            # Use the app's configured database (AXALON_DB_URL). init_db() would
+            # rebuild the process-wide engine, and the API constructs this lazily
+            # on the first batch job — repointing every later write mid-job.
+            get_engine()
+        else:
+            init_db(db_url)
         self.layout_detector = ParkLayoutDetector()
 
     def inspect_pair(
