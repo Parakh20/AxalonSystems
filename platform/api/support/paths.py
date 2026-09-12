@@ -17,4 +17,8 @@ ORTHO_DIR.mkdir(parents=True, exist_ok=True)
 TRACK_FILES_DIR = OUTPUT_DIR / "track_files"
 TRACK_FILES_DIR.mkdir(parents=True, exist_ok=True)
 
-__all__ = ["OUTPUT_DIR", "ORTHO_DIR", "TRACK_FILES_DIR"]
+# Local fallback for repair proof photos when no object store is configured.
+FAULT_PHOTOS_DIR = OUTPUT_DIR / "fault_photos"
+FAULT_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+
+__all__ = ["OUTPUT_DIR", "ORTHO_DIR", "TRACK_FILES_DIR", "FAULT_PHOTOS_DIR"]

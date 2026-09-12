@@ -24,13 +24,17 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint('id'),
     )
-    op.add_column('parks', sa.Column('project_id', sa.Integer(), nullable=True))
-    op.create_index('ix_parks_project_id', 'parks', ['project_id'])
-    op.create_foreign_key('fk_parks_project_id', 'parks', 'projects', ['project_id'], ['id'])
+    # batch_alter_table: SQLite cannot ALTER constraints in place (it rebuilds the
+    # table); on PostgreSQL this emits the same plain ALTER statements as before.
+    with op.batch_alter_table('parks') as batch:
+        batch.add_column(sa.Column('project_id', sa.Integer(), nullable=True))
+        batch.create_index('ix_parks_project_id', ['project_id'])
+        batch.create_foreign_key('fk_parks_project_id', 'projects', ['project_id'], ['id'])
 
 
 def downgrade() -> None:
-    op.drop_constraint('fk_parks_project_id', 'parks', type_='foreignkey')
-    op.drop_index('ix_parks_project_id', 'parks')
-    op.drop_column('parks', 'project_id')
+    with op.batch_alter_table('parks') as batch:
+        batch.drop_constraint('fk_parks_project_id', type_='foreignkey')
+        batch.drop_index('ix_parks_project_id')
+        batch.drop_column('project_id')
     op.drop_table('projects')

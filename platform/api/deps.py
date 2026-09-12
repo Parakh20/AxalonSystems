@@ -56,9 +56,12 @@ from axalon.core.app_config import (
 from axalon.core.object_store import get_track_store
 from axalon.db.models import (
     COMPONENT_CATEGORIES,
+    FAULT_ASSIGNED,
+    FAULT_IN_PROGRESS,
     FAULT_OPEN,
     FAULT_RESOLVED,
     FAULT_STALE,
+    FAULT_STATUSES,
     NOTE_KINDS,
     ORDER_STATUSES,
     PROJECT_STATUSES,
@@ -68,6 +71,7 @@ from axalon.db.models import (
     Correction,
     Detection as DbDetection,
     FaultComment,
+    FaultPhoto,
     Inspection,
     InventoryComponent,
     Job as DbJob,
@@ -130,7 +134,7 @@ from axalon.api.support.orthos import (
     _ortho_path,
     _validate_ortho_name,
 )
-from axalon.api.support.paths import ORTHO_DIR, OUTPUT_DIR, TRACK_FILES_DIR
+from axalon.api.support.paths import FAULT_PHOTOS_DIR, ORTHO_DIR, OUTPUT_DIR, TRACK_FILES_DIR
 from axalon.api.support.security import (
     _ALLOWED_IMAGE_EXTS,
     _FILENAME_RE,
@@ -186,7 +190,7 @@ def _check_iec_warnings(site_meta: dict) -> list[str]:
 
 _SETTINGS_PATH = Path(__file__).resolve().parents[1] / "config" / "settings.yaml"
 
-_ALLOWED_FAULT_STATUSES = {FAULT_OPEN, FAULT_STALE, FAULT_RESOLVED}
+_ALLOWED_FAULT_STATUSES = set(FAULT_STATUSES)
 
 _IMAGE_SUFFIXES = ("_annotated.jpg", "_rgb_annotated.jpg")
 
@@ -220,11 +224,16 @@ __all__ = [
     "Correction",
     "DbDetection",
     "DbJob",
+    "FAULT_ASSIGNED",
+    "FAULT_IN_PROGRESS",
     "FAULT_OPEN",
+    "FAULT_PHOTOS_DIR",
     "FAULT_RESOLVED",
     "FAULT_STALE",
+    "FAULT_STATUSES",
     "FastAPI",
     "FaultComment",
+    "FaultPhoto",
     "File",
     "FileResponse",
     "Form",

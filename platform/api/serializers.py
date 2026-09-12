@@ -9,10 +9,11 @@ import json
 
 from fastapi import HTTPException
 
+from axalon.core.fault_workflow import effective_priority
 from axalon.db.models import *  # noqa: F401,F403
 
 __all__ = [
-    "_serialize_correction", "_serialize_fault", "_serialize_comment",
+    "_serialize_correction", "_serialize_fault", "_serialize_comment", "_serialize_fault_photo",
     "_serialize_mission_summary", "_serialize_mission_full", "_assigned_qty",
     "_serialize_component", "_serialize_assignment", "_serialize_prototype",
     "_serialize_order", "_clean_name", "_non_negative_int", "_serialize_project",
@@ -36,7 +37,7 @@ def _serialize_correction(c: Correction) -> dict:
     }
 
 
-def _serialize_fault(f: PanelFault, comment_count: int = 0) -> dict:
+def _serialize_fault(f: PanelFault, comment_count: int = 0, photo_count: int = 0) -> dict:
     return {
         "id": f.id,
         "park_id": f.park_id,
@@ -55,6 +56,25 @@ def _serialize_fault(f: PanelFault, comment_count: int = 0) -> dict:
         "last_gps": json.loads(f.last_gps) if f.last_gps else None,
         "notes": f.notes,
         "comment_count": comment_count,
+        "assignee": f.assignee,
+        "due_date": f.due_date.isoformat() if f.due_date else None,
+        "priority": effective_priority(f),
+        "priority_override": f.priority,
+        "resolved_at": f.resolved_at.isoformat() if f.resolved_at else None,
+        "resolution_note": f.resolution_note,
+        "photo_count": photo_count,
+        "updated_at": f.updated_at.isoformat() if f.updated_at else None,
+    }
+
+
+def _serialize_fault_photo(p: FaultPhoto) -> dict:
+    return {
+        "id": p.id,
+        "fault_id": p.fault_id,
+        "original_name": p.original_name,
+        "content_type": p.content_type,
+        "size_bytes": p.size_bytes,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
 

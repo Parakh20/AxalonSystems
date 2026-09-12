@@ -382,6 +382,87 @@ export type NoteCreate = Partial<Omit<TrackNote, 'id' | 'created_at' | 'updated_
   title: string
 }
 
+// ── Fault repair workflow ─────────────────────────────────────────────────────
+
+export type FaultStatus = 'open' | 'stale' | 'assigned' | 'in_progress' | 'resolved'
+export type FaultPriority = 'urgent' | 'high' | 'medium' | 'low'
+
+export type PanelFault = {
+  id: number
+  park_id: string
+  panel_id: string
+  class: string
+  class_id: number | null
+  severity: Severity | null
+  status: FaultStatus
+  occurrences: number
+  max_confidence: number
+  first_seen_inspection_id: string | null
+  last_seen_inspection_id: string | null
+  first_seen_date: string | null
+  last_seen_date: string | null
+  last_bbox: number[] | null
+  last_gps: { lat: number; lon: number } | null
+  notes: string | null
+  comment_count: number
+  assignee: string | null
+  due_date: string | null
+  /** Effective priority: the override, else derived from the class severity. */
+  priority: FaultPriority | null
+  priority_override: FaultPriority | null
+  resolved_at: string | null
+  resolution_note: string | null
+  photo_count: number
+  updated_at: string | null
+}
+
+export type FaultsList = {
+  park_id: string
+  total: number
+  counts_by_status: Record<FaultStatus, number>
+  faults: PanelFault[]
+}
+
+/** PATCH /faults/{id}. `null` clears assignee, due_date or the priority override. */
+export type FaultUpdate = {
+  status?: FaultStatus
+  notes?: string
+  assignee?: string | null
+  due_date?: string | null
+  priority?: FaultPriority | null
+  resolution_note?: string | null
+}
+
+export type FaultPhoto = {
+  id: number
+  fault_id: number
+  original_name: string
+  content_type: string
+  size_bytes: number
+  created_at: string | null
+}
+
+export type WorkOrderFormat = 'csv' | 'xlsx'
+
+export type WorkOrderFilters = {
+  status?: FaultStatus[]
+  assignee?: string
+}
+
+function storedApiKey(): string {
+  return typeof sessionStorage !== 'undefined'
+    ? (sessionStorage.getItem('axalon_api_key') ?? (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? ''))
+    : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
+}
+
+/** Query string for the work-order export (format + optional filters). */
+export function workOrdersQuery(format: WorkOrderFormat, filters: WorkOrderFilters = {}): string {
+  const params = new URLSearchParams({ format })
+  if (filters.status?.length) params.set('status', filters.status.join(','))
+  if (filters.assignee?.trim()) params.set('assignee', filters.assignee.trim())
+  return params.toString()
+}
+
 function jsonInit(method: string, body: unknown): RequestInit {
   return {
     method,
@@ -544,5 +625,43 @@ export const api = {
         : (process.env.NEXT_PUBLIC_AXALON_API_KEY ?? '')
     const keyParam = storedKey ? `?api_key=${encodeURIComponent(storedKey)}` : ''
     return `${API_BASE}/track/files/${id}${keyParam}`
+  },
+
+  // Fault repair workflow
+  parkFaults: (parkId: string, status?: FaultStatus) =>
+    request<FaultsList>(
+      `/parks/${encodeURIComponent(parkId)}/faults${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+    ),
+  updateFault: (id: number, body: FaultUpdate) =>
+    request<PanelFault>(`/faults/${id}`, jsonInit('PATCH', body)),
+  faultPhotos: (faultId: number) => request<FaultPhoto[]>(`/faults/${faultId}/photos`),
+  uploadFaultPhoto: (faultId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<FaultPhoto>(`/faults/${faultId}/photos`, { method: 'POST', body: form })
+  },
+  deleteFaultPhoto: (faultId: number, photoId: number) =>
+    request<void>(`/faults/${faultId}/photos/${photoId}`, { method: 'DELETE' }),
+  /** <img src> for a proof photo — images can't send headers, so the key rides the query. */
+  faultPhotoUrl: (faultId: number, photoId: number) => {
+    const key = storedApiKey()
+    const keyParam = key ? `?api_key=${encodeURIComponent(key)}` : ''
+    return `${API_BASE}/faults/${faultId}/photos/${photoId}${keyParam}`
+  },
+  workOrders: async (
+    parkId: string,
+    format: WorkOrderFormat,
+    filters: WorkOrderFilters = {},
+  ): Promise<Blob> => {
+    const key = storedApiKey()
+    const res = await fetch(
+      `${API_BASE}/parks/${encodeURIComponent(parkId)}/work-orders?${workOrdersQuery(format, filters)}`,
+      { headers: key ? { Authorization: `Bearer ${key}` } : {} },
+    )
+    if (!res.ok) {
+      const body = await res.text()
+      throw new ApiError(res.status, body)
+    }
+    return res.blob()
   },
 }

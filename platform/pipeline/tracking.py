@@ -18,9 +18,14 @@ from typing import Iterable
 from axalon.db.models import (
     Detection as DbDetection,
     PanelFault,
+    FAULT_ASSIGNED,
+    FAULT_IN_PROGRESS,
     FAULT_OPEN,
     FAULT_STALE,
 )
+
+# Repair work in these states survives re-detection (the crew hasn't finished).
+_DISPATCHED_STATUSES = (FAULT_ASSIGNED, FAULT_IN_PROGRESS)
 
 # Severity rank — higher is worse. Used to keep the worst severity ever
 # observed on a given (panel, class) pair.
@@ -201,7 +206,11 @@ def reconcile_inspection(
                 recurring_count += 1
             fault.last_seen_inspection_id = inspection_id
             fault.last_seen_date = flight_date or fault.last_seen_date
-            fault.status = FAULT_OPEN
+            # Seen again: stale → open and a "fixed" fault recurs → reopen, but
+            # never clobber repair work that is already dispatched or underway.
+            if fault.status not in _DISPATCHED_STATUSES:
+                fault.status = FAULT_OPEN
+                fault.resolved_at = None
             fault.max_confidence = max(fault.max_confidence or 0.0, conf)
             if _SEVERITY_RANK.get(sev, 0) > _SEVERITY_RANK.get(fault.severity or "LOW", 0):
                 fault.severity = sev

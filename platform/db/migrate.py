@@ -25,6 +25,16 @@ def _table_exists(engine: Engine, table: str) -> bool:
     return inspect(engine).has_table(table)
 
 
+# (column, portable DDL type) — valid on both SQLite and PostgreSQL.
+_PANEL_FAULT_WORKFLOW_COLUMNS = (
+    ("assignee", "VARCHAR(200)"),
+    ("due_date", "DATE"),
+    ("priority", "VARCHAR(16)"),
+    ("resolved_at", "TIMESTAMP"),
+    ("resolution_note", "TEXT"),
+)
+
+
 def run_migrations(engine: Engine) -> list[str]:
     """Apply local schema migrations. Returns a list of actions taken.
 
@@ -48,5 +58,13 @@ def run_migrations(engine: Engine) -> list[str]:
             conn.execute(text("ALTER TABLE parks ADD COLUMN project_id INTEGER REFERENCES projects(id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_parks_project_id ON parks(project_id)"))
         actions.append("added parks.project_id")
+
+    # Repair-workflow columns on panel_faults (alembic 0008 for managed DBs).
+    if _table_exists(engine, "panel_faults"):
+        for column, ddl in _PANEL_FAULT_WORKFLOW_COLUMNS:
+            if not _has_column(engine, "panel_faults", column):
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE panel_faults ADD COLUMN {column} {ddl}"))
+                actions.append(f"added panel_faults.{column}")
 
     return actions
