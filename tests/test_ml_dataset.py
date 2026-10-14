@@ -1,6 +1,10 @@
 """
 ML dataset feature tests — run with:
-    /home/parakh/miniconda3/bin/python3.13 tests/test_ml_dataset.py
+    PYTHONSAFEPATH=1 python tests/test_ml_dataset.py
+
+Tests marked needs_datasets=True read the raw source datasets under
+ml/Datasets/ (gitignored, downloaded separately); they are reported as SKIP
+when that directory is absent, e.g. on a fresh clone or in CI.
 
 Uses a fresh sys.path so platform/ doesn't shadow stdlib platform module.
 """
@@ -24,16 +28,37 @@ _ROOT = os.path.abspath(os.path.join(_HERE, ".."))
 sys.path = [_ROOT] + [p for p in sys.path if os.path.abspath(p) != _ROOT]
 
 from pathlib import Path
+
 from collections import Counter
 
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
+SKIP = "\033[93mSKIP\033[0m"
 
 _results: list[tuple[str, bool, str]] = []
+_skipped: list[str] = []
+_DATASETS_DIR = Path(_ROOT) / "ml" / "Datasets"
 
 
-def test(name: str):
+def _raw_datasets_present() -> bool:
+    """True when the three raw source datasets are unpacked under ml/Datasets/."""
+    ism_metadata = _DATASETS_DIR / (
+        "InfraredSolarModules/2020-02-14_InfraredSolarModules/"
+        "InfraredSolarModules/module_metadata.json"
+    )
+    return (
+        ism_metadata.is_file()
+        and (_DATASETS_DIR / "archive.zip").is_file()
+        and any(_DATASETS_DIR.glob("Photovoltaic module dataset*.zip"))
+    )
+
+
+def test(name: str, needs_datasets: bool = False):
     def decorator(fn):
+        if needs_datasets and not _raw_datasets_present():
+            _skipped.append(name)
+            print(f"  [{SKIP}] {name}: raw datasets not present at ml/Datasets/")
+            return fn
         try:
             fn()
             _results.append((name, True, ""))
@@ -195,17 +220,17 @@ def _():
 # ═══════════════════════════════════════════════════════════════════════════
 print("\n── Section 3: ISM dataset scanning ─────────────────────────────────")
 
-@test("ISM metadata file exists")
+@test("ISM metadata file exists", needs_datasets=True)
 def _():
     assert ISM_METADATA.exists(), f"Not found: {ISM_METADATA}"
 
-@test("ISM images directory exists with 20 000 images")
+@test("ISM images directory exists with 20 000 images", needs_datasets=True)
 def _():
     assert ISM_IMAGES.exists()
     count = len(list(ISM_IMAGES.iterdir()))
     assert count == 20000, f"Expected 20000 images, found {count}"
 
-@test("ISM metadata has 20 000 entries with correct keys")
+@test("ISM metadata has 20 000 entries with correct keys", needs_datasets=True)
 def _():
     data = json.loads(ISM_METADATA.read_text())
     assert len(data) == 20000
@@ -213,20 +238,20 @@ def _():
     assert "image_filepath" in sample
     assert "anomaly_class" in sample
 
-@test("ISM class distribution covers all 12 source classes")
+@test("ISM class distribution covers all 12 source classes", needs_datasets=True)
 def _():
     data = json.loads(ISM_METADATA.read_text())
     classes_found = set(v["anomaly_class"] for v in data.values())
     assert classes_found == set(ISM_CLASSES_MAP.keys()), \
         f"Missing: {set(ISM_CLASSES_MAP.keys()) - classes_found}"
 
-@test("collect_ism_pairs scans 20 000 images correctly")
+@test("collect_ism_pairs scans 20 000 images correctly", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(tmpdir))
     assert len(pairs) == 20000, f"Expected 20000, got {len(pairs)}"
 
-@test("collect_ism_pairs writes valid YOLO whole-image labels")
+@test("collect_ism_pairs writes valid YOLO whole-image labels", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         lbl_dir = Path(tmpdir)
@@ -239,14 +264,14 @@ def _():
             assert cx == 0.5 and cy == 0.5 and w == 1.0 and h == 1.0
             assert 0 <= cid <= 10
 
-@test("collect_ism_pairs: majority_class_id is valid canonical id (0-10)")
+@test("collect_ism_pairs: majority_class_id is valid canonical id (0-10)", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(tmpdir))
         bad = [(img, maj) for img, _, maj in pairs if not (0 <= maj <= 10)]
         assert not bad, f"Invalid majority class ids: {bad[:3]}"
 
-@test("collect_ism_pairs: all 11 canonical classes appear")
+@test("collect_ism_pairs: all 11 canonical classes appear", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(tmpdir))
@@ -260,7 +285,7 @@ def _():
 # ═══════════════════════════════════════════════════════════════════════════
 print("\n── Section 4: stratified_split ──────────────────────────────────────")
 
-@test("stratified_split sizes sum to total")
+@test("stratified_split sizes sum to total", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(tmpdir))
@@ -268,7 +293,7 @@ def _():
     assert len(train) + len(val) + len(test) == len(pairs), \
         f"{len(train)}+{len(val)}+{len(test)} ≠ {len(pairs)}"
 
-@test("stratified_split train fraction ~75%")
+@test("stratified_split train fraction ~75%", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(tmpdir))
@@ -276,7 +301,7 @@ def _():
     ratio = len(train) / len(pairs)
     assert 0.73 < ratio < 0.77, f"Train ratio = {ratio:.3f}"
 
-@test("stratified_split val fraction ~15%")
+@test("stratified_split val fraction ~15%", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(tmpdir))
@@ -284,7 +309,7 @@ def _():
     ratio = len(val) / len(pairs)
     assert 0.13 < ratio < 0.17, f"Val ratio = {ratio:.3f}"
 
-@test("stratified_split is deterministic (seed=42)")
+@test("stratified_split is deterministic (seed=42)", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(tmpdir))
@@ -292,7 +317,7 @@ def _():
     t2, v2, te2 = stratified_split(pairs, seed=42)
     assert [p[0] for p in t1] == [p[0] for p in t2]
 
-@test("stratified_split class distribution preserved in train set")
+@test("stratified_split class distribution preserved in train set", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         pairs = collect_ism_pairs(ISM_IMAGES, ISM_METADATA, generated_labels_dir=Path(tmpdir))
@@ -350,7 +375,7 @@ PVMD_ZIP = ROOT / (
     "fault detection.zip"
 )
 
-@test("extract_archive_zip produces ImageSet with train/valid/test")
+@test("extract_archive_zip produces ImageSet with train/valid/test", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         out = extract_archive_zip(ARCHIVE_ZIP, Path(tmpdir))
@@ -360,7 +385,7 @@ def _():
         train_imgs = list((out / "train" / "images").glob("*.jpg"))
         assert len(train_imgs) == 6924, f"Expected 6924 train images, got {len(train_imgs)}"
 
-@test("extract_archive_zip is idempotent (second call is a no-op, same result)")
+@test("extract_archive_zip is idempotent (second call is a no-op, same result)", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         out1 = extract_archive_zip(ARCHIVE_ZIP, Path(tmpdir))
@@ -369,7 +394,7 @@ def _():
         train_imgs = list((out2 / "train" / "images").glob("*.jpg"))
         assert len(train_imgs) == 6924
 
-@test("extract_pvmd produces Cracks/Hotspots/Shadings folders")
+@test("extract_pvmd produces Cracks/Hotspots/Shadings folders", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         out = extract_pvmd(PVMD_ZIP, Path(tmpdir))
@@ -379,7 +404,7 @@ def _():
         cracks = list((out / "Cracks").glob("*.jpeg"))
         assert len(cracks) == 350, f"Expected 350 Cracks images, got {len(cracks)}"
 
-@test("extract_pvmd is idempotent")
+@test("extract_pvmd is idempotent", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as tmpdir:
         out1 = extract_pvmd(PVMD_ZIP, Path(tmpdir))
@@ -402,14 +427,14 @@ def _():
     for src, dst in PVMD_CLASSES_MAP.items():
         assert dst in CLASS2ID, f"PVMD: {src!r} -> {dst!r} not in CANONICAL_CLASSES"
 
-@test("collect_pvmd_pairs scans all 1000 PVMD images")
+@test("collect_pvmd_pairs scans all 1000 PVMD images", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as extract_tmp, tempfile.TemporaryDirectory() as lbl_tmp:
         pvmd_root = extract_pvmd(PVMD_ZIP, Path(extract_tmp))
         pairs = collect_pvmd_pairs(pvmd_root, generated_labels_dir=Path(lbl_tmp))
         assert len(pairs) == 1000, f"Expected 1000, got {len(pairs)}"
 
-@test("collect_pvmd_pairs writes valid whole-image YOLO labels")
+@test("collect_pvmd_pairs writes valid whole-image YOLO labels", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as extract_tmp, tempfile.TemporaryDirectory() as lbl_tmp:
         pvmd_root = extract_pvmd(PVMD_ZIP, Path(extract_tmp))
@@ -436,7 +461,7 @@ def _():
     merged = collect_all_pairs(a, b)
     assert len(merged) == 5
 
-@test("write_merged_dataset writes <split>/images and <split>/labels (matches thermal_dataset.yaml)")
+@test("write_merged_dataset writes <split>/images and <split>/labels (matches thermal_dataset.yaml)", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as lbl_tmp, tempfile.TemporaryDirectory() as out_tmp:
         # Build one ISM pair as a minimal real fixture.
@@ -457,7 +482,7 @@ print("\n── Section 8: end-to-end build ────────────
 
 from ml.scripts.prepare_dataset import build_combined_dataset
 
-@test("build_combined_dataset produces thermal_dataset.yaml-compatible layout")
+@test("build_combined_dataset produces thermal_dataset.yaml-compatible layout", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as out_tmp, tempfile.TemporaryDirectory() as stage_tmp:
         out_dir = Path(out_tmp)
@@ -475,7 +500,7 @@ def _():
         assert (out_dir / "class_distribution.json").exists()
         assert set(report.keys()) == {"train", "val", "test"}
 
-@test("build_combined_dataset class_distribution.json covers 10+ canonical classes")
+@test("build_combined_dataset class_distribution.json covers 10+ canonical classes", needs_datasets=True)
 def _():
     with tempfile.TemporaryDirectory() as out_tmp, tempfile.TemporaryDirectory() as stage_tmp:
         out_dir = Path(out_tmp)
@@ -498,7 +523,7 @@ def _():
 print("\n" + "═" * 65)
 passed = sum(1 for _, ok, _ in _results if ok)
 failed = sum(1 for _, ok, _ in _results if not ok)
-print(f"  Results: {passed} passed, {failed} failed  ({len(_results)} total)")
+print(f"  Results: {passed} passed, {failed} failed, {len(_skipped)} skipped  ({len(_results) + len(_skipped)} total)")
 if failed:
     print("\n  Failed tests:")
     for name, ok, err in _results:
