@@ -58,7 +58,7 @@ The platform is modeled after industry tools like [Raptor Maps](https://raptorma
 | **Best checkpoint** | `solar_thermal_detection/checkpoints/best.pt` | YOLOv8s, 22 MB, primary model |
 | Last epoch | `solar_thermal_detection/runs/thermal/train/weights/last.pt` | 22 MB |
 | Epoch checkpoints | `runs/thermal/train/weights/epoch{0,10,...,70}.pt` | For ablation / rollback |
-| Nano variant | `solar_thermal_detection/notebooks/yolo26n.pt` | 5.3 MB — edge deployment |
+| Nano base weights | `yolo26n.pt` (stock Ultralytics, COCO-pretrained) | 5.3 MB — auto-downloaded by ultralytics, not committed |
 
 The best checkpoint was trained for **100 epochs** on a merged dataset of 20,000 thermal IR images (InfraredSolarModules) + PV archive data, with thermal-specific augmentation (no hue/saturation shifts).
 

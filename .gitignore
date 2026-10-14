@@ -71,6 +71,8 @@ ml/data/labels/
 ml/data/augmented/
 ml/output/annotated/
 ml/runs/thermal/train/weights/
+# Stock Ultralytics pretrained weights are auto-downloaded on first use
+ml/notebooks/*.pt
 
 # Claude Code tooling
 .claude/*
