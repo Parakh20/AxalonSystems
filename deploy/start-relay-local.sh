@@ -3,14 +3,28 @@
 # Run once: chmod +x deploy/start-relay-local.sh
 # Usage: ./deploy/start-relay-local.sh
 
-set -e
-REPO=/home/parakh/Desktop/AxalonSystems
+set -euo pipefail
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Secrets come from the environment or from $REPO/.env.relay (gitignored).
+# Copy deploy/env.relay.example to .env.relay and fill in real values.
+ENV_FILE="${RELAY_ENV_FILE:-$REPO/.env.relay}"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+for var in DRONE_TOKENS OPS_TOKEN TURN_SECRET; do
+  if [ -z "${!var:-}" ]; then
+    echo "[relay] $var is not set (export it or add it to $ENV_FILE)" >&2
+    exit 1
+  fi
+done
+
+export TURN_HOST="${TURN_HOST:-relay.axalonsystems.com}"
 export PYTHONSAFEPATH=1
-export DRONE_TOKENS="drone-01:-kZuq7xmZ8r8Y5SPptrX1aMsxiKjGtpbZYTgNXt8lMw"
-export OPS_TOKEN="8SJ5TKIWIS_cAZ53locG2nTdYm0gWGIH9FbbGu6H4Sg"
-export TURN_HOST="relay.axalonsystems.com"
-export TURN_SECRET="nRk67MA585oLaNLq-8W-AoSUhedoWMiQJBS8B19VzyM"
 
 echo "[relay] starting uvicorn on :8800..."
 cd /tmp
