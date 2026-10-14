@@ -1,42 +1,30 @@
 """Tests for FastAPI endpoints."""
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from unittest.mock import MagicMock
-
-import axalon.api.app as api_module
 
 
 @pytest.fixture
-def client():
-    """FastAPI TestClient with mocked orchestrator and in-memory DB.
+def client(monkeypatch, tmp_path):
+    """FastAPI TestClient bound to a fresh temp SQLite DB.
 
-    Uses StaticPool so all SQLAlchemy operations share one connection — required
-    because SQLite in-memory databases are per-connection. Without StaticPool,
-    create_all() and Session() would each get separate connections, each with
-    their own empty database, causing 'no such table' errors.
+    Jobs and parks are persisted in the DB (no in-memory job dict any more),
+    so each test gets its own database file via AXALON_DB_URL.
     """
-    metadata = api_module.Park.__table__.metadata
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,  # single shared connection = single in-memory DB
-    )
-    metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
+    monkeypatch.setenv("AXALON_DB_URL", f"sqlite:///{tmp_path / 'test_api.db'}")
+    monkeypatch.delenv("AXALON_AUTH_MODE", raising=False)
+    from axalon.db import session as _session
+    monkeypatch.setattr(_session, "_engine", None, raising=False)
+    monkeypatch.setattr(_session, "_SessionLocal", None, raising=False)
 
-    api_module._JOBS.clear()
-    api_module._detector = None
+    from axalon.api.app import app
+    with TestClient(app) as test_client:
+        yield test_client
 
-    original_get_session = api_module.get_session
-    api_module.get_session = lambda: Session()
-    api_module.InspectionOrchestrator = MagicMock()
 
-    yield TestClient(api_module.app)
-
-    api_module.get_session = original_get_session
+def _completed_job(job_id: str) -> None:
+    from axalon.api.support.jobs import _create_job, _update_job
+    _create_job(job_id, park_id="TEST_PARK")
+    _update_job(job_id, state="succeeded")
 
 
 def test_health_ok(client):
@@ -59,28 +47,25 @@ def test_report_unknown_job(client):
     assert resp.status_code == 404
 
 
-def test_report_pdf_download(client, tmp_path):
-    original_output_dir = api_module.OUTPUT_DIR
-    api_module.OUTPUT_DIR = tmp_path
-    try:
-        job_id = "batch-testpdf"
-        report_dir = tmp_path / job_id
-        report_dir.mkdir(parents=True)
-        pdf_path = report_dir / "inspection_report.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 test")
-        api_module._JOBS[job_id] = {"status": "completed"}
+def test_report_pdf_download(client, tmp_path, monkeypatch):
+    import axalon.api.routers.inspection as inspection_router
+    monkeypatch.setattr(inspection_router, "OUTPUT_DIR", tmp_path)
+    job_id = "batch-testpdf"
+    report_dir = tmp_path / job_id
+    report_dir.mkdir(parents=True)
+    pdf_path = report_dir / "inspection_report.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 test")
+    _completed_job(job_id)
 
-        resp = client.get(f"/report/{job_id}?format=pdf")
-        assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("application/pdf")
-        assert resp.content == b"%PDF-1.4 test"
-    finally:
-        api_module.OUTPUT_DIR = original_output_dir
+    resp = client.get(f"/report/{job_id}?format=pdf")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/pdf")
+    assert resp.content == b"%PDF-1.4 test"
 
 
 def test_report_rejects_unknown_format(client):
     job_id = "batch-knownjob"
-    api_module._JOBS[job_id] = {"status": "completed"}
+    _completed_job(job_id)
     resp = client.get(f"/report/{job_id}?format=csv")
     assert resp.status_code == 400
 
